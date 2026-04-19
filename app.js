@@ -161,6 +161,10 @@ function closeRegisterSuccess(){
 async function doLogout(){
   await db.auth.signOut();
   currentUser=null; currentPerfil=null;
+  // Reset UI completamente para evitar que persistan opciones de admin
+  const adminNav = el('admin-nav');
+  if(adminNav) adminNav.style.display='none';
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   clearAuthMessages();
   showPage('auth-page');
 }
@@ -183,6 +187,7 @@ async function checkSession(){
     showPage('auth-page');
     return;
   }
+  // Hay sesión — ir directo a la app sin pasar por auth
   await afterLogin(session.user);
 }
 
@@ -191,11 +196,24 @@ async function checkSession(){
 // ═══════════════════════════════════════════
 async function loadApp(){
   showPage('app-page');
-  safeSet('sidebar-name', currentPerfil.nombre+' '+currentPerfil.apellido);
-  safeSet('sidebar-role', currentPerfil.role==='admin'?'Administrador':'Empleado');
-  el('sidebar-avatar').textContent = currentPerfil.nombre[0]+currentPerfil.apellido[0];
+  // Siempre resetear nav antes de aplicar rol
+  el('admin-nav').style.display='none';
+  const isAdmin = currentPerfil.role==='admin';
+  safeSet('sidebar-name', currentPerfil.nombre_display||(currentPerfil.nombre+' '+currentPerfil.apellido));
+  safeSet('sidebar-role', isAdmin?'Administrador':'Empleado');
+  // Avatar: foto o iniciales
+  const avatarEl = el('sidebar-avatar');
+  if(currentPerfil.foto_url){
+    avatarEl.style.backgroundImage='url('+currentPerfil.foto_url+')';
+    avatarEl.style.backgroundSize='cover';
+    avatarEl.style.backgroundPosition='center';
+    avatarEl.textContent='';
+  } else {
+    avatarEl.style.backgroundImage='';
+    avatarEl.textContent = currentPerfil.nombre[0]+currentPerfil.apellido[0];
+  }
   safeSet('sidebar-local-badge', currentPerfil.local_nombre+' ('+currentPerfil.almacen+')');
-  if(currentPerfil.role==='admin') el('admin-nav').style.display='block';
+  if(isAdmin) el('admin-nav').style.display='block';
   // Load caches
   const [{data:locs},{data:trans}]=await Promise.all([
     db.from('locales').select('*').order('nombre'),
@@ -230,11 +248,15 @@ function setupRealtime(){
 
 async function updateBadges(){
   if(!currentPerfil) return;
-  const local=currentPerfil.local_nombre;
+  const local   = currentPerfil.local_nombre;
+  const isAdmin = currentPerfil.role==='admin';
+
+  let qMis = db.from('pedidos').select('id').not('estado','in','("completo","incompleto","denegado")');
+  let qPara = db.from('pedidos').select('id').in('estado',['pendiente','aceptado','listo']);
+  if(!isAdmin){ qMis=qMis.eq('destino_local',local); qPara=qPara.eq('origen_local',local); }
 
   const [{data:misPed},{data:paraEnv},{data:notifs}]=await Promise.all([
-    db.from('pedidos').select('id').eq('destino_local',local).not('estado','in','("completo","incompleto","denegado")'),
-    db.from('pedidos').select('id').eq('origen_local',local).in('estado',['pendiente','aceptado','armando','listo']),
+    qMis, qPara,
     db.from('notificaciones').select('id').eq('usuario_id',currentPerfil.id).eq('leida',false),
   ]);
 
@@ -280,17 +302,20 @@ function navigateTo(view){
   const ni=el('nav-'+view); if(ni) ni.classList.add('active');
   const titles={
     dashboard:'Dashboard',misPedidos:'Pedidos de mi local',paraEnviar:'Pedidos a despachar',
-    historial:'Historial',misConsultas:'Mis Consultas',usuarios:'Usuarios',
-    sugerencias:'Sugerencias',config:'Configuración'
+    historial:'Historial',misConsultas:'Mis Consultas',chats:'Chats',
+    perfil:'Mi Perfil',usuarios:'Usuarios',sugerencias:'Sugerencias',config:'Configuración'
   };
   safeSet('mobile-title', titles[view]||view);
   el('fab-btn').style.display=['misPedidos','paraEnviar','historial','dashboard'].includes(view)?'flex':'none';
+  updateBadges();
 
   if(view==='dashboard')    renderDashboard();
   if(view==='misPedidos')   renderMisPedidos();
   if(view==='paraEnviar')   renderParaEnviar();
   if(view==='historial')    renderHistorial();
   if(view==='misConsultas') renderMisConsultas();
+  if(view==='chats')        renderChats();
+  if(view==='perfil')       renderPerfil();
   if(view==='usuarios')     renderUsuarios();
   if(view==='sugerencias')  renderSugerencias();
   if(view==='config')       renderConfig();
@@ -305,7 +330,6 @@ function estadoInfo(estado){
     pendiente:  ['⏳','Pendiente','badge-pending'],
     aceptado:   ['✅','Aceptado','badge-accepted'],
     denegado:   ['❌','Denegado','badge-denied'],
-    armando:    ['🔧','En armado','badge-assembling'],
     listo:      ['📦','Listo para enviar','badge-ready'],
     transito:   ['🚚','En viaje','badge-transit'],
     llegado:    ['📍','Llegó a sucursal','badge-arrived'],
@@ -333,13 +357,15 @@ function orderCard(o){
   const pn=prods.slice(0,2).map(p=>p.nombre.substring(0,28)).join(', ')+(prods.length>2?' +'+(prods.length-2)+' más':'');
   const fecha=fmtDate(o.created_at);
   const urgente=o.urgente?' <span class="priority-badge">🔴 URGENTE</span>':'';
+  const viejo=o._viejo?' <span class="priority-badge" style="color:#f7971e">⏰ +24hs</span>':'';
   const isMio=o.destino_local===currentPerfil.local_nombre;
+  const isAdmin=currentPerfil.role==='admin';
   const rol=isMio
     ?'<span style="font-size:10px;font-weight:700;color:var(--text3)">YO PEDÍ</span>'
     :'<span style="font-size:10px;font-weight:700;color:var(--accent4)">ME PIDIERON</span>';
   return '<div class="order-card" onclick="openDetalle(\''+o.id+'\')">'+
     '<div class="order-top"><div>'+
-    '<div class="order-id">'+rol+' &nbsp;#'+o.id.slice(-8,-2).toUpperCase()+urgente+'</div>'+
+    '<div class="order-id">'+rol+' &nbsp;#'+o.id.slice(-8,-2).toUpperCase()+urgente+viejo+'</div>'+
     '<div class="order-title">'+(o.cliente||'Sin cliente')+(o.telefono?' · 📞 '+o.telefono:'')+'</div>'+
     '<div class="order-route">📤 '+o.origen_local+' ('+o.origen_almacen+') → 📥 '+o.destino_local+' ('+o.destino_almacen+')'+(o.transporte?' · 🚛 '+o.transporte:'')+'</div>'+
     '</div><span class="badge '+cls+'">'+icon+' '+label+'</span></div>'+
@@ -373,21 +399,54 @@ async function renderDashboard(){
 //  MIS PEDIDOS (yo soy destino)
 // ═══════════════════════════════════════════
 async function renderMisPedidos(){
-  const local=currentPerfil.local_nombre;
-  // Populate origen filter
-  const sel=el('filter-mis-origen');
-  const cv=sel.value;
-  sel.innerHTML='<option value="">Todos los orígenes</option>'+
-    localesCache.filter(l=>l.nombre!==local).map(l=>'<option value="'+l.nombre+'"'+(cv===l.nombre?' selected':'')+'>'+l.nombre+'</option>').join('');
+  const isAdmin = currentPerfil.role==='admin';
+  const local   = currentPerfil.local_nombre;
 
-  let q=db.from('pedidos').select('*,pedido_productos(*)').eq('destino_local',local)
-    .not('estado','in','("completo","incompleto","denegado")').order('created_at',{ascending:false});
-  const estado=el('filter-mis-estado').value;
-  const origen=sel.value;
-  if(estado) q=q.eq('estado',estado);
-  if(origen) q=q.eq('origen_local',origen);
+  // Populate filters
+  const selOrigen = el('filter-mis-origen');
+  const cvOrigen  = selOrigen.value;
+  selOrigen.innerHTML='<option value="">'+( isAdmin?'Todos los orígenes':'Todos los orígenes')+'</option>'+
+    localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvOrigen===l.nombre?' selected':'')+'>'+l.nombre+'</option>').join('');
+
+  // Filtro por local destino solo para admins
+  const selDestino = el('filter-mis-destino');
+  if(isAdmin){
+    selDestino.style.display='block';
+    const cvDest = selDestino.value;
+    selDestino.innerHTML='<option value="">Todos los destinos</option>'+
+      localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvDest===l.nombre?' selected':'')+'>'+l.nombre+'</option>').join('');
+  } else {
+    selDestino.style.display='none';
+  }
+
+  let q=db.from('pedidos').select('*,pedido_productos(*)')
+    .not('estado','in','("completo","incompleto","denegado")');
+
+  if(!isAdmin) q=q.eq('destino_local',local);
+
+  const estado  = el('filter-mis-estado').value;
+  const origen  = selOrigen.value;
+  const destino = isAdmin ? selDestino.value : local;
+  if(estado)              q=q.eq('estado',estado);
+  if(origen)              q=q.eq('origen_local',origen);
+  if(isAdmin && destino)  q=q.eq('destino_local',destino);
+
+  // Ordenar: pendientes más viejos primero (mayor prioridad)
+  q=q.order('created_at',{ascending:true});
+
   const {data}=await q;
-  renderList('list-misPedidos', data||[], '📤','No tenés pedidos activos');
+  const list = data||[];
+
+  // Marcar pedidos viejos (más de 24hs pendientes) como urgentes visualmente
+  const ahora = Date.now();
+  list.forEach(o=>{
+    if(o.estado==='pendiente'){
+      const horas = (ahora - new Date(o.created_at).getTime()) / 3600000;
+      o._viejo = horas > 24;
+    }
+  });
+
+  renderList('list-misPedidos', list, '📤', isAdmin?'No hay pedidos activos':'No tenés pedidos activos');
 }
 
 // ═══════════════════════════════════════════
@@ -402,17 +461,49 @@ async function switchDespachoTab(tab){
 }
 
 async function renderParaEnviar(){
-  const local=currentPerfil.local_nombre;
-  let q=db.from('pedidos').select('*,pedido_productos(*)').eq('origen_local',local).order('updated_at',{ascending:false});
+  const isAdmin = currentPerfil.role==='admin';
+  const local   = currentPerfil.local_nombre;
+
+  // Filtro por local origen para admins
+  const selOrigen = el('filter-para-origen');
+  if(isAdmin){
+    selOrigen.style.display='block';
+    const cv=selOrigen.value;
+    selOrigen.innerHTML='<option value="">Todos los orígenes</option>'+
+      localesCache.map(l=>'<option value="'+l.nombre+'"'+(cv===l.nombre?' selected':'')+'>'+l.nombre+'</option>').join('');
+  } else {
+    selOrigen.style.display='none';
+  }
+
+  let q=db.from('pedidos').select('*,pedido_productos(*)');
+  if(!isAdmin) q=q.eq('origen_local',local);
+  else if(selOrigen.value) q=q.eq('origen_local',selOrigen.value);
+
   if(despachoTab==='pendientes'){
-    q=q.in('estado',['pendiente','aceptado','armando','listo']);
+    q=q.in('estado',['pendiente','aceptado','listo']);
     const estado=el('filter-env-estado').value;
     if(estado) q=q.eq('estado',estado);
+    q=q.order('created_at',{ascending:true}); // más viejos primero
   } else {
     q=q.in('estado',['transito','completo','incompleto','denegado']);
+    q=q.order('updated_at',{ascending:false});
   }
+
+  // Filtro por fecha
+  const desde = el('filter-desde')?.value;
+  const hasta = el('filter-hasta')?.value;
+  if(desde) q=q.gte('created_at', desde+'T00:00:00');
+  if(hasta) q=q.lte('created_at', hasta+'T23:59:59');
+
   const {data}=await q;
-  renderList('list-paraEnviar', data||[], despachoTab==='pendientes'?'📭':'✅',
+  const list=data||[];
+  list.forEach(o=>{
+    if(['pendiente','aceptado'].includes(o.estado)){
+      const horas=(Date.now()-new Date(o.created_at).getTime())/3600000;
+      o._viejo=horas>24;
+    }
+  });
+  renderList('list-paraEnviar', list, despachoTab==='pendientes'?'📭':'✅',
     despachoTab==='pendientes'?'No hay pedidos pendientes':'No hay pedidos completados aún');
 }
 
@@ -447,11 +538,14 @@ async function openDetalle(orderId){
     '<div class="product-item"><div class="p-info"><div class="p-name">'+p.nombre+'</div><div class="p-code">'+p.codigo+'</div></div><div class="p-qty">x'+p.cantidad+'</div></div>'
   ).join('');
 
-  const stateOrder=['pendiente','aceptado','armando','listo','transito','llegado','completo'];
+  const stateOrder=['pendiente','aceptado','listo','transito','llegado','completo'];
   const steps=[
-    ['pendiente','⏳','Pedido creado'],['aceptado','✅','Aceptado'],['armando','🔧','En armado'],
-    ['listo','📦','Listo para enviar'],['transito','🚚','En viaje'],
-    ['llegado','📍','Llegó a sucursal'],['completo','✅','Completado'],
+    ['pendiente','⏳','Pedido creado'],
+    ['aceptado','✅','Aceptado por el local origen'],
+    ['listo','📦','Listo para enviar'],
+    ['transito','🚚','En viaje'],
+    ['llegado','📍','Llegó a sucursal'],
+    ['completo','✅','Completado'],
   ];
   const ci=stateOrder.indexOf(o.estado);
   let timeline='';
@@ -476,18 +570,19 @@ async function openDetalle(orderId){
   if(o.estado==='incompleto'&&o.faltantes) extra+='<div class="detail-row"><span class="label">Faltantes:</span><span class="value" style="color:var(--accent2)">'+o.faltantes+'</span></div>';
   if(o.notas) extra+='<div class="detail-row"><span class="label">Notas:</span><span class="value">'+o.notas+'</span></div>';
 
+  // Admin puede ver acciones de cualquier local
+  const canOrigen  = isOrigen  || currentPerfil.role==='admin';
+  const canDestino = isDestino || currentPerfil.role==='admin';
   let actions='';
-  if(isOrigen && o.estado==='pendiente'){
+  if(canOrigen && o.estado==='pendiente'){
     actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'aceptar\',\''+o.id+'\')">✅ Aceptar pedido</button><button class="btn btn-danger btn-sm" onclick="accion(\'denegar\',\''+o.id+'\')">❌ Denegar pedido</button></div>';
-  } else if(isOrigen && o.estado==='aceptado'){
-    actions='<div class="actions-bar"><button class="btn btn-warning btn-sm" onclick="accion(\'armando\',\''+o.id+'\')">🔧 Marcar en armado</button></div>';
-  } else if(isOrigen && o.estado==='armando'){
+  } else if(canOrigen && o.estado==='aceptado'){
     actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'listo\',\''+o.id+'\')">📦 Marcar listo para enviar</button></div>';
-  } else if(isOrigen && o.estado==='listo'){
+  } else if(canOrigen && o.estado==='listo'){
     actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'transito\',\''+o.id+'\')">🚚 Marcar en viaje</button></div>';
-  } else if(isDestino && o.estado==='transito'){
+  } else if(canDestino && o.estado==='transito'){
     actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'llegado\',\''+o.id+'\')">📍 Confirmar llegada a sucursal</button></div>';
-  } else if(isDestino && o.estado==='llegado'){
+  } else if(canDestino && o.estado==='llegado'){
     actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'completo\',\''+o.id+'\')">✅ Llegó completo</button><button class="btn btn-warning btn-sm" onclick="accion(\'incompleto\',\''+o.id+'\')">⚠️ Llegó incompleto</button></div>';
   }
 
@@ -507,7 +602,7 @@ async function openDetalle(orderId){
 //  ACCIONES
 // ═══════════════════════════════════════════
 function accion(tipo, orderId){
-  const labels={aceptar:'Aceptar el pedido',armando:'Marcar en armado',transito:'Marcar en viaje',llegado:'Confirmar llegada',completo:'Marcar como completo'};
+  const labels={aceptar:'Aceptar el pedido',transito:'Marcar en viaje',llegado:'Confirmar llegada',completo:'Marcar como completo'};
   if(tipo==='denegar'){
     el('modal-accion-title').textContent='❌ Denegar pedido';
     el('modal-accion-body').innerHTML='<div class="warning-box">⚠️ Esta acción es <strong>irreversible</strong>.</div><div class="form-group" style="margin-top:14px"><label class="form-label">Motivo (obligatorio)</label><textarea class="form-input" id="motivo-den" rows="3" placeholder="Ej: Sin stock..."></textarea></div>';
@@ -550,7 +645,7 @@ function previewFoto(e){
 }
 
 async function confirmarAccion(tipo, orderId){
-  const sm={aceptar:'aceptado',armando:'armando',transito:'transito',llegado:'llegado',completo:'completo'};
+  const sm={aceptar:'aceptado',transito:'transito',llegado:'llegado',completo:'completo'};
   const updates={updated_at:new Date().toISOString()};
   if(tipo==='denegar'){
     const m=el('motivo-den')&&el('motivo-den').value.trim();
@@ -1050,15 +1145,246 @@ function closeSidebar(){el('sidebar').classList.remove('open');el('mobile-overla
 document.addEventListener('DOMContentLoaded', async function(){
   clearAuthMessages();
   showPage('auth-page');
-  
-  // 🔥 ESTA ES LA LÍNEA QUE FALTABA PARA LLENAR EL MENÚ 🔥
-  await populateRegisterLocales(); 
-  
+
+  // Verificar clave empresa (session storage)
+  checkEmpresaClave();
+
   // Close modals on overlay click
   document.querySelectorAll('.modal-overlay').forEach(o=>{
-    o.addEventListener('click', e => { if(e.target === o) closeModal(o.id); });
+    o.addEventListener('click', e=>{ if(e.target===o) closeModal(o.id); });
   });
-  
-  // Verificar si ya hay una sesión abierta
+
+  document.addEventListener('click',e=>{
+    if(!e.target.closest('.product-search-wrap')){
+      const r=el('product-search-results'); if(r) r.classList.remove('show');
+    }
+  });
+
+  // Si hay sesión activa, cargar directo sin pasar por auth
   await checkSession();
 });
+
+// ═══════════════════════════════════════════
+//  CLAVE DE EMPRESA
+// ═══════════════════════════════════════════
+async function verificarClaveEmpresa(){
+  const clave = el('empresa-clave').value.trim();
+  if(!clave) return showErr('empresa-error','Ingresá la clave de acceso.');
+  const {data,error} = await db.from('empresa_config').select('*').eq('clave',clave).single();
+  if(error||!data) return showErr('empresa-error','Clave incorrecta. Contactá al administrador.');
+  // Guardar en session storage para esta sesión
+  sessionStorage.setItem('empresa_clave', clave);
+  sessionStorage.setItem('empresa_nombre', data.nombre);
+  el('empresa-nombre-display').textContent = data.nombre;
+  el('empresa-screen').style.display='none';
+  el('auth-forms').style.display='block';
+  await populateRegisterLocales();
+}
+
+function checkEmpresaClave(){
+  const saved = sessionStorage.getItem('empresa_clave');
+  if(saved){
+    el('empresa-nombre-display').textContent = sessionStorage.getItem('empresa_nombre')||'';
+    el('empresa-screen').style.display='none';
+    el('auth-forms').style.display='block';
+    return true;
+  }
+  return false;
+}
+
+// ═══════════════════════════════════════════
+//  CHATS GENERAL
+// ═══════════════════════════════════════════
+let currentConvId = null;
+
+async function renderChats(){
+  // Load conversations where I'm a member
+  const {data:memberships} = await db.from('conversacion_miembros')
+    .select('conversacion_id').eq('usuario_id',currentPerfil.id);
+  const convIds = (memberships||[]).map(m=>m.conversacion_id);
+
+  const e = el('list-chats');
+  if(!convIds.length){
+    e.innerHTML='<div class="empty-state"><div class="icon">💬</div><p>No tenés conversaciones aún.<br>Creá una nueva con el botón +</p></div>';
+    el('chat-panel').style.display='none'; return;
+  }
+
+  const {data:convs} = await db.from('conversaciones')
+    .select('*').in('id',convIds).order('updated_at',{ascending:false});
+
+  // Get last message for each
+  e.innerHTML = '<div class="conv-list">';
+  for(const conv of convs||[]){
+    const {data:lastMsg} = await db.from('mensajes')
+      .select('texto,usuario_nombre,created_at').eq('conversacion_id',conv.id)
+      .order('created_at',{ascending:false}).limit(1).single();
+    const nombre = conv.es_grupo ? (conv.nombre||'Grupo') : await getConvNombre(conv.id);
+    const hora = lastMsg ? new Date(lastMsg.created_at).toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'}) : '';
+    e.innerHTML += '<div class="conv-item'+(currentConvId===conv.id?' active':'')+'" onclick="openConversacion(\''+conv.id+'\')">'+
+      '<div class="conv-avatar">'+(conv.es_grupo?'👥':'👤')+'</div>'+
+      '<div class="conv-info">'+
+        '<div class="conv-nombre">'+nombre+'</div>'+
+        '<div class="conv-last">'+(lastMsg?(lastMsg.usuario_nombre.split(' ')[0]+': '+lastMsg.texto.substring(0,35)):'Sin mensajes')+'</div>'+
+      '</div>'+
+      '<div class="conv-time">'+hora+'</div>'+
+      '</div>';
+  }
+  e.innerHTML += '</div>';
+}
+
+async function getConvNombre(convId){
+  // Para 1-a-1, mostrar el nombre del otro
+  const {data:members} = await db.from('conversacion_miembros')
+    .select('usuario_id').eq('conversacion_id',convId);
+  const otherId = members?.find(m=>m.usuario_id!==currentPerfil.id)?.usuario_id;
+  if(!otherId) return 'Chat';
+  const {data:perfil} = await db.from('perfiles').select('nombre,apellido,nombre_display').eq('id',otherId).single();
+  return perfil ? (perfil.nombre_display||(perfil.nombre+' '+perfil.apellido)) : 'Usuario';
+}
+
+async function openConversacion(convId){
+  currentConvId = convId;
+  el('chat-panel').style.display='flex';
+  // Get conv info
+  const {data:conv} = await db.from('conversaciones').select('*').eq('id',convId).single();
+  const nombre = conv?.es_grupo ? (conv.nombre||'Grupo') : await getConvNombre(convId);
+  el('chat-conv-title').textContent = nombre;
+  await renderConvMessages();
+  await renderChats(); // refresh list to show active
+  // Realtime
+  db.channel('conv-'+convId)
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'mensajes',filter:'conversacion_id=eq.'+convId},
+      ()=>renderConvMessages()).subscribe();
+}
+
+async function renderConvMessages(){
+  if(!currentConvId) return;
+  const {data:msgs} = await db.from('mensajes').select('*')
+    .eq('conversacion_id',currentConvId).order('created_at');
+  const e = el('conv-messages');
+  if(!msgs||!msgs.length){
+    e.innerHTML='<div style="text-align:center;color:var(--text3);font-size:13px;padding:20px">No hay mensajes aún. ¡Escribí el primero!</div>'; return;
+  }
+  e.innerHTML = msgs.map(m=>{
+    const isOwn = m.usuario_id===currentPerfil.id;
+    const initials = m.usuario_nombre.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    const hora = new Date(m.created_at).toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'});
+    return '<div class="chat-msg '+(isOwn?'own':'other')+'">'+
+      '<div class="chat-avatar" style="background:'+(isOwn?'var(--accent)':'var(--surface3)')+'">'+initials+'</div>'+
+      '<div><div class="chat-bubble">'+m.texto+'</div>'+
+      '<div class="chat-meta" style="text-align:'+(isOwn?'right':'left')+'">'+m.usuario_nombre+' · '+hora+'</div></div></div>';
+  }).join('');
+  e.scrollTop=e.scrollHeight;
+}
+
+async function sendConvMsg(){
+  const inp=el('conv-input');
+  const txt=inp.value.trim(); if(!txt||!currentConvId) return;
+  await db.from('mensajes').insert({
+    conversacion_id:currentConvId, usuario_id:currentPerfil.id,
+    usuario_nombre: currentPerfil.nombre_display||(currentPerfil.nombre+' '+currentPerfil.apellido),
+    texto:txt
+  });
+  await db.from('conversaciones').update({updated_at:new Date().toISOString()}).eq('id',currentConvId);
+  inp.value=''; await renderConvMessages();
+}
+
+async function abrirNuevaConv(){
+  // Load all users
+  const {data:users} = await db.from('perfiles').select('id,nombre,apellido,nombre_display,local_nombre,almacen')
+    .eq('approved',true).neq('id',currentPerfil.id).order('nombre');
+  el('nueva-conv-body').innerHTML=
+    '<div class="form-group"><label class="form-label">Nombre del grupo (solo para grupos)</label>'+
+    '<input class="form-input" type="text" id="nuevo-grupo-nombre" placeholder="Ej: Equipo MDO (dejar vacío para chat individual)"></div>'+
+    '<div class="form-group"><label class="form-label">Seleccioná participantes</label>'+
+    '<div style="max-height:280px;overflow-y:auto;background:var(--surface2);border-radius:var(--radius-sm);padding:8px">'+
+    (users||[]).map(u=>'<label style="display:flex;align-items:center;gap:10px;padding:8px;cursor:pointer;border-radius:6px" onmouseover="this.style.background=\'var(--surface3)\'" onmouseout="this.style.background=\'\'">'+
+      '<input type="checkbox" value="'+u.id+'" style="width:16px;height:16px">'+
+      '<div><div style="font-size:13px;font-weight:500">'+(u.nombre_display||(u.nombre+' '+u.apellido))+'</div>'+
+      '<div style="font-size:11px;color:var(--text2)">'+u.local_nombre+' ('+u.almacen+')</div></div>'+
+      '</label>').join('')+
+    '</div></div>';
+  openModal('modal-nueva-conv');
+}
+
+async function crearConversacion(){
+  const nombre = el('nuevo-grupo-nombre').value.trim();
+  const checks = document.querySelectorAll('#nueva-conv-body input[type="checkbox"]:checked');
+  const participantes = Array.from(checks).map(c=>c.value);
+  if(!participantes.length) return notify('Seleccioná al menos una persona','error');
+  const esGrupo = participantes.length>1 || !!nombre;
+
+  // Check if 1-a-1 already exists
+  if(!esGrupo){
+    const otherId = participantes[0];
+    const {data:mis} = await db.from('conversacion_miembros').select('conversacion_id').eq('usuario_id',currentPerfil.id);
+    const {data:sus} = await db.from('conversacion_miembros').select('conversacion_id').eq('usuario_id',otherId);
+    const misIds = new Set((mis||[]).map(m=>m.conversacion_id));
+    const existente = (sus||[]).find(m=>misIds.has(m.conversacion_id));
+    if(existente){ closeModal('modal-nueva-conv'); await openConversacion(existente.conversacion_id); return; }
+  }
+
+  const {data:conv,error} = await db.from('conversaciones').insert({
+    nombre:nombre||null, es_grupo:esGrupo, creado_por:currentPerfil.id
+  }).select().single();
+  if(error) return notify('Error: '+error.message,'error');
+
+  const todos = [currentPerfil.id, ...participantes];
+  await db.from('conversacion_miembros').insert(todos.map(uid=>({conversacion_id:conv.id,usuario_id:uid})));
+  closeModal('modal-nueva-conv');
+  await openConversacion(conv.id);
+  await renderChats();
+  notify('Conversación creada','success');
+}
+
+// ═══════════════════════════════════════════
+//  PERFIL PERSONAL
+// ═══════════════════════════════════════════
+async function renderPerfil(){
+  const p = currentPerfil;
+  el('perfil-nombre').value = p.nombre_display || (p.nombre+' '+p.apellido);
+  el('perfil-email').value = currentUser.email;
+  el('perfil-local').value = p.local_nombre+' ('+p.almacen+')';
+  // Foto actual
+  const fotoEl = el('perfil-foto-preview');
+  if(p.foto_url){
+    fotoEl.src=p.foto_url; fotoEl.style.display='block';
+  } else {
+    fotoEl.style.display='none';
+  }
+}
+
+async function guardarPerfil(){
+  const nombre = el('perfil-nombre').value.trim();
+  if(!nombre) return notify('El nombre no puede estar vacío','error');
+  const updates = {nombre_display: nombre};
+  if(window._nuevaFotoPerfil) updates.foto_url = window._nuevaFotoPerfil;
+  const {error} = await db.from('perfiles').update(updates).eq('id',currentPerfil.id);
+  if(error) return notify('Error al guardar: '+error.message,'error');
+  currentPerfil.nombre_display = nombre;
+  if(window._nuevaFotoPerfil) currentPerfil.foto_url = window._nuevaFotoPerfil;
+  window._nuevaFotoPerfil = null;
+  // Actualizar sidebar
+  safeSet('sidebar-name', nombre);
+  const avatarEl = el('sidebar-avatar');
+  if(currentPerfil.foto_url){
+    avatarEl.style.backgroundImage='url('+currentPerfil.foto_url+')';
+    avatarEl.style.backgroundSize='cover';
+    avatarEl.style.backgroundPosition='center';
+    avatarEl.textContent='';
+  }
+  notify('Perfil actualizado','success');
+}
+
+function handleFotoPerfil(e){
+  const f=e.target.files[0]; if(!f) return;
+  if(f.size>2*1024*1024) return notify('La foto debe ser menor a 2MB','error');
+  const r=new FileReader();
+  r.onload=ev=>{
+    window._nuevaFotoPerfil=ev.target.result;
+    const prev=el('perfil-foto-preview');
+    prev.src=ev.target.result; prev.style.display='block';
+  };
+  r.readAsDataURL(f);
+}
+

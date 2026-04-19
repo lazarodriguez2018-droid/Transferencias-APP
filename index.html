@@ -9,6 +9,17 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="style.css">
+<style>
+.conv-list { display:flex; flex-direction:column; }
+.conv-item { display:flex; align-items:center; gap:10px; padding:12px 14px; cursor:pointer; border-bottom:1px solid var(--border); transition:background .15s; }
+.conv-item:hover { background:var(--surface2); }
+.conv-item.active { background:rgba(108,99,255,0.12); }
+.conv-avatar { width:38px; height:38px; border-radius:50%; background:var(--surface3); display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
+.conv-info { flex:1; min-width:0; }
+.conv-nombre { font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.conv-last { font-size:12px; color:var(--text2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
+.conv-time { font-size:11px; color:var(--text3); flex-shrink:0; }
+</style>
 </head>
 <body>
 
@@ -20,6 +31,23 @@
       <h1>TransferApp</h1>
       <p>Gestión de transferencias entre locales</p>
     </div>
+    <!-- PANTALLA CLAVE EMPRESA -->
+    <div id="empresa-screen">
+      <div style="text-align:center;margin-bottom:20px">
+        <div style="font-size:13px;color:var(--text2);margin-bottom:16px">Ingresá la clave de acceso de tu empresa para continuar</div>
+      </div>
+      <div class="auth-error" id="empresa-error"></div>
+      <div class="form-group">
+        <label class="form-label">Clave de empresa</label>
+        <input class="form-input" type="password" id="empresa-clave" placeholder="••••••••••"
+          onkeydown="if(event.key==='Enter')verificarClaveEmpresa()">
+      </div>
+      <button class="btn btn-primary" onclick="verificarClaveEmpresa()">Acceder →</button>
+    </div>
+
+    <!-- FORMS AUTH (ocultos hasta verificar clave) -->
+    <div id="auth-forms" style="display:none">
+    <div id="empresa-nombre-display" style="text-align:center;font-size:12px;color:var(--accent);margin-bottom:12px;font-weight:600"></div>
     <div class="auth-tabs">
       <div class="auth-tab active" onclick="switchAuthTab('login')">Iniciar Sesión</div>
       <div class="auth-tab" onclick="switchAuthTab('register')">Registrarse</div>
@@ -65,6 +93,7 @@
       </div>
     </div>
   </div>
+  </div><!-- /auth-forms -->
   <!-- Success overlay -->
   <div id="register-success-overlay" class="success-overlay">
     <div class="success-card">
@@ -132,8 +161,15 @@
           <span class="icon">📋</span> Historial
         </div>
         <div class="nav-item" id="nav-misConsultas" onclick="navigateTo('misConsultas')">
-          <span class="icon">💬</span> Mis Consultas
+          <span class="icon">💡</span> Mis Consultas
           <span class="nav-badge" id="badge-misConsultas" style="display:none">0</span>
+        </div>
+        <div class="nav-item" id="nav-chats" onclick="navigateTo('chats')">
+          <span class="icon">💬</span> Chats
+          <span class="nav-badge" id="badge-chats" style="display:none">0</span>
+        </div>
+        <div class="nav-item" id="nav-perfil" onclick="navigateTo('perfil')">
+          <span class="icon">👤</span> Mi Perfil
         </div>
       </div>
       <div class="nav-section" id="admin-nav" style="display:none">
@@ -222,12 +258,14 @@
           <option value="pendiente">⏳ Pendiente</option>
           <option value="aceptado">✅ Aceptado</option>
           <option value="denegado">❌ Denegado</option>
-          <option value="armando">🔧 En armado</option>
           <option value="listo">📦 Listo para enviar</option>
           <option value="transito">🚚 En viaje</option>
         </select>
         <select class="filter-select" id="filter-mis-origen" onchange="renderMisPedidos()">
           <option value="">Todos los orígenes</option>
+        </select>
+        <select class="filter-select" id="filter-mis-destino" onchange="renderMisPedidos()" style="display:none">
+          <option value="">Todos los destinos</option>
         </select>
       </div>
       <div class="orders-list" id="list-misPedidos">
@@ -253,9 +291,13 @@
           <option value="">Todos los estados</option>
           <option value="pendiente">⏳ Sin aceptar</option>
           <option value="aceptado">✅ Aceptado</option>
-          <option value="armando">🔧 En armado</option>
           <option value="listo">📦 Listo para enviar</option>
         </select>
+        <select class="filter-select" id="filter-para-origen" onchange="renderParaEnviar()" style="display:none">
+          <option value="">Todos los orígenes</option>
+        </select>
+        <input type="date" class="filter-select" id="filter-desde" onchange="renderParaEnviar()" title="Desde fecha">
+        <input type="date" class="filter-select" id="filter-hasta" onchange="renderParaEnviar()" title="Hasta fecha">
       </div>
       <div class="orders-list" id="list-paraEnviar">
         <div class="empty-state"><div class="icon">📭</div><p>No hay pedidos pendientes</p></div>
@@ -319,6 +361,72 @@
       <div class="page-header"><div><h1>Sugerencias y Consultas</h1><p>Mensajes enviados por los empleados</p></div></div>
       <div class="orders-list" id="list-sugerencias">
         <div class="empty-state"><div class="icon">💡</div><p>No hay sugerencias aún</p></div>
+      </div>
+    </div>
+
+    <!-- CHATS -->
+    <div id="view-chats" style="display:none">
+      <div class="page-header">
+        <div><h1>💬 Chats</h1><p>Conversaciones con el equipo</p></div>
+        <button class="btn btn-primary btn-sm" onclick="abrirNuevaConv()" style="white-space:nowrap">+ Nueva conversación</button>
+      </div>
+      <div style="display:flex;gap:0;height:calc(100vh - 120px);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+        <!-- Lista de conversaciones -->
+        <div style="width:280px;border-right:1px solid var(--border);overflow-y:auto;flex-shrink:0">
+          <div id="list-chats" style="height:100%">
+            <div class="empty-state"><div class="icon">💬</div><p>No hay conversaciones</p></div>
+          </div>
+        </div>
+        <!-- Panel de mensajes -->
+        <div id="chat-panel" style="flex:1;display:none;flex-direction:column">
+          <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-weight:600;font-size:15px" id="chat-conv-title">–</div>
+          <div class="chat-messages" id="conv-messages" style="flex:1;max-height:none;border-radius:0"></div>
+          <div style="padding:12px;border-top:1px solid var(--border);display:flex;gap:8px">
+            <input class="form-input" type="text" id="conv-input" placeholder="Escribí un mensaje..."
+              onkeydown="if(event.key==='Enter')sendConvMsg()" style="flex:1">
+            <button class="btn btn-primary btn-sm" onclick="sendConvMsg()" style="height:42px;padding:0 16px">Enviar</button>
+          </div>
+        </div>
+        <!-- Placeholder cuando no hay conv seleccionada -->
+        <div id="chat-placeholder" style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:14px">
+          Seleccioná una conversación o creá una nueva
+        </div>
+      </div>
+    </div>
+
+    <!-- MI PERFIL -->
+    <div id="view-perfil" style="display:none">
+      <div class="page-header"><div><h1>👤 Mi Perfil</h1><p>Editá tu información personal</p></div></div>
+      <div class="card" style="max-width:480px">
+        <div class="card-body">
+          <!-- Foto de perfil -->
+          <div style="text-align:center;margin-bottom:24px">
+            <div style="position:relative;display:inline-block">
+              <div id="perfil-avatar-big" style="width:88px;height:88px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:#fff;margin:0 auto 12px;overflow:hidden;border:3px solid var(--border)">
+                <img id="perfil-foto-preview" style="width:100%;height:100%;object-fit:cover;display:none" alt="Foto">
+                <span id="perfil-avatar-initials"></span>
+              </div>
+            </div>
+            <div>
+              <input type="file" id="perfil-foto-input" accept="image/*" style="display:none" onchange="handleFotoPerfil(event)">
+              <button class="btn btn-ghost btn-sm" onclick="el('perfil-foto-input').click()">📷 Cambiar foto de perfil</button>
+              <div style="font-size:11px;color:var(--text3);margin-top:4px">Máximo 2MB · JPG, PNG, WEBP</div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Nombre visible (como te ven los demás)</label>
+            <input class="form-input" type="text" id="perfil-nombre" placeholder="Tu nombre">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input class="form-input" type="text" id="perfil-email" disabled style="opacity:0.5;cursor:not-allowed">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Local</label>
+            <input class="form-input" type="text" id="perfil-local" disabled style="opacity:0.5;cursor:not-allowed">
+          </div>
+          <button class="btn btn-primary" onclick="guardarPerfil()">Guardar cambios</button>
+        </div>
       </div>
     </div>
 
@@ -579,6 +687,21 @@
     <div class="modal-footer">
       <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-editar-local')">Cancelar</button>
       <button class="btn btn-primary btn-sm" onclick="guardarLocal()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: NUEVA CONVERSACIÓN -->
+<div class="modal-overlay" id="modal-nueva-conv">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <h2>💬 Nueva conversación</h2>
+      <div class="modal-close" onclick="closeModal('modal-nueva-conv')">✕</div>
+    </div>
+    <div class="modal-body" id="nueva-conv-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-nueva-conv')">Cancelar</button>
+      <button class="btn btn-primary btn-sm" onclick="crearConversacion()">Crear</button>
     </div>
   </div>
 </div>
