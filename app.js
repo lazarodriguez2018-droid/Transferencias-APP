@@ -936,11 +936,24 @@ async function agregarLocal(){
 }
 async function editarLocal(id){
   const l=localesCache.find(x=>x.id===id); if(!l) return;
-  const n=prompt('Nombre:',l.nombre); if(!n) return;
-  const a=prompt('Código almacén:',l.almacen); if(!a) return;
-  const em=prompt('Email del local (para notificaciones):',l.email||'');
-  await db.from('locales').update({nombre:n.trim(),almacen:a.trim().toUpperCase(),email:em?em.trim():null}).eq('id',id);
-  await renderAdminLocales(); notify('Local actualizado','success');
+  el('edit-local-id').value=id;
+  el('edit-local-nombre').value=l.nombre;
+  el('edit-local-almacen').value=l.almacen;
+  el('edit-local-email').value=l.email||'';
+  openModal('modal-editar-local');
+}
+
+async function guardarLocal(){
+  const id=el('edit-local-id').value;
+  const n=el('edit-local-nombre').value.trim();
+  const a=el('edit-local-almacen').value.trim().toUpperCase();
+  const em=el('edit-local-email').value.trim();
+  if(!n||!a) return notify('Completá nombre y código','error');
+  const {error}=await db.from('locales').update({nombre:n,almacen:a,email:em||null}).eq('id',id);
+  if(error) return notify('Error al guardar: '+error.message,'error');
+  closeModal('modal-editar-local');
+  await renderAdminLocales();
+  notify('Local actualizado','success');
 }
 async function eliminarLocal(id){
   if(!confirm('¿Eliminar este local?')) return;
