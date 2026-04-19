@@ -1,0 +1,35 @@
+<svg width="300" height="300" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+
+<!-- Background -->
+<rect width="300" height="300" rx="40" fill="#1a1a22"/>
+<rect x="8" y="8" width="284" height="284" rx="34" fill="none" stroke="#6c63ff" stroke-width="1" stroke-opacity="0.3"/>
+
+<!-- Left box -->
+<rect x="38" y="118" width="80" height="96" rx="7" fill="#22222d" stroke="#6c63ff" stroke-width="2"/>
+<path d="M38 118 L78 94 L118 118 Z" fill="#2e2e3e" stroke="#6c63ff" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="78" cy="168" r="6" fill="#6c63ff"/>
+
+<!-- Right box -->
+<rect x="182" y="118" width="80" height="96" rx="7" fill="#22222d" stroke="#6c63ff" stroke-width="2"/>
+<path d="M182 118 L222 94 L262 118 Z" fill="#2e2e3e" stroke="#6c63ff" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="222" cy="168" r="6" fill="#43e97b"/>
+
+<!-- Arrows -->
+<line x1="126" y1="152" x2="174" y2="138" stroke="#6c63ff" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line x1="174" y1="168" x2="126" y2="182" stroke="#43e97b" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+<!-- Label -->
+<rect x="30" y="232" width="240" height="46" rx="10" fill="#22222d"/>
+<text x="150" y="251" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#e8e8f0" letter-spacing="3">TRANSFER</text>
+<text x="150" y="269" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="400" fill="#6c63ff" letter-spacing="5">APP</text>
+
+<!-- Accent dots -->
+<circle cx="110" cy="60" r="4" fill="#6c63ff" opacity="0.5"/>
+<circle cx="150" cy="54" r="5" fill="#6c63ff" opacity="0.7"/>
+<circle cx="190" cy="60" r="4" fill="#43e97b" opacity="0.5"/>
+</svg>
