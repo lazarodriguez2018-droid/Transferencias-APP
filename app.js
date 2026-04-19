@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════════
 //  SUPABASE CONFIG
 // ═══════════════════════════════════════════
-const SUPABASE_URL = 'https://akqqpodyijzjdoibkint.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_ClVgs8WdyAu0McGi0eAaEQ_MovUmDCC';
+const SUPABASE_URL = 'https://fnrsktdjefohnqewnqvi.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_9Jo07NGYr8Rbgr5OUYs4HQ_F9M4_mxo';
 const { createClient } = supabase;
 const db = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -57,22 +57,10 @@ function fmtDateTime(iso){
 //  AUTH
 // ═══════════════════════════════════════════
 function switchAuthTab(tab){
-  clearAuthMessages();
   document.querySelectorAll('.auth-tab').forEach((t,i)=>
     t.classList.toggle('active',(tab==='login'&&i===0)||(tab==='register'&&i===1)));
   el('login-form').style.display    = tab==='login'    ?'block':'none';
   el('register-form').style.display = tab==='register' ?'block':'none';
-}
-
-function clearMessage(id){
-  const e=el(id);
-  if(!e) return;
-  e.textContent='';
-  e.classList.remove('show');
-}
-
-function clearAuthMessages(){
-  ['login-error','reg-error','reg-success'].forEach(clearMessage);
 }
 
 function showErr(id,msg){ const e=el(id); e.textContent=msg; e.classList.add('show'); setTimeout(()=>e.classList.remove('show'),6000); }
@@ -87,7 +75,6 @@ async function populateRegisterLocales(){
 }
 
 async function doLogin(){
-  clearAuthMessages();
   const email=el('login-email').value.trim();
   const pass =el('login-password').value;
   if(!email||!pass) return showErr('login-error','Completá email y contraseña.');
@@ -161,7 +148,6 @@ function closeRegisterSuccess(){
 async function doLogout(){
   await db.auth.signOut();
   currentUser=null; currentPerfil=null;
-  clearAuthMessages();
   showPage('auth-page');
 }
 
@@ -176,13 +162,7 @@ async function afterLogin(user){
 
 async function checkSession(){
   const {data:{session}}=await db.auth.getSession();
-  if(!session){
-    currentUser=null;
-    currentPerfil=null;
-    clearAuthMessages();
-    showPage('auth-page');
-    return;
-  }
+  if(!session) return;
   await afterLogin(session.user);
 }
 
@@ -936,11 +916,24 @@ async function agregarLocal(){
 }
 async function editarLocal(id){
   const l=localesCache.find(x=>x.id===id); if(!l) return;
-  const n=prompt('Nombre:',l.nombre); if(!n) return;
-  const a=prompt('Código almacén:',l.almacen); if(!a) return;
-  const em=prompt('Email del local (para notificaciones):',l.email||'');
-  await db.from('locales').update({nombre:n.trim(),almacen:a.trim().toUpperCase(),email:em?em.trim():null}).eq('id',id);
-  await renderAdminLocales(); notify('Local actualizado','success');
+  el('edit-local-id').value=id;
+  el('edit-local-nombre').value=l.nombre;
+  el('edit-local-almacen').value=l.almacen;
+  el('edit-local-email').value=l.email||'';
+  openModal('modal-editar-local');
+}
+
+async function guardarLocal(){
+  const id=el('edit-local-id').value;
+  const n=el('edit-local-nombre').value.trim();
+  const a=el('edit-local-almacen').value.trim().toUpperCase();
+  const em=el('edit-local-email').value.trim();
+  if(!n||!a) return notify('Completá nombre y código','error');
+  const {error}=await db.from('locales').update({nombre:n,almacen:a,email:em||null}).eq('id',id);
+  if(error) return notify('Error: '+error.message,'error');
+  closeModal('modal-editar-local');
+  await renderAdminLocales();
+  notify('Local actualizado','success');
 }
 async function eliminarLocal(id){
   if(!confirm('¿Eliminar este local?')) return;
@@ -1034,18 +1027,16 @@ function closeSidebar(){el('sidebar').classList.remove('open');el('mobile-overla
 // ═══════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════
-document.addEventListener('DOMContentLoaded', async function(){
-  clearAuthMessages();
+document.addEventListener('DOMContentLoaded',async function(){
   showPage('auth-page');
-  
-  // 🔥 ESTA ES LA LÍNEA QUE FALTABA PARA LLENAR EL MENÚ 🔥
-  await populateRegisterLocales(); 
-  
   // Close modals on overlay click
   document.querySelectorAll('.modal-overlay').forEach(o=>{
-    o.addEventListener('click', e => { if(e.target === o) closeModal(o.id); });
+    o.addEventListener('click',e=>{if(e.target===o)closeModal(o.id);});
   });
-  
-  // Verificar si ya hay una sesión abierta
+  document.addEventListener('click',e=>{
+    if(!e.target.closest('.product-search-wrap')){
+      const r=el('product-search-results'); if(r) r.classList.remove('show');
+    }
+  });
   await checkSession();
 });

@@ -13,7 +13,7 @@
 <body>
 
 <!-- ══════════════════ AUTH PAGE ══════════════════ -->
-<div id="auth-page" class="page active" style="display:flex">
+<div id="auth-page" class="page">
   <div class="auth-card">
     <div class="auth-logo">
       <div class="logo-icon">📦</div>
@@ -58,7 +58,7 @@
       <div id="reg-step2" style="display:none">
         <p style="font-size:13px;color:var(--text2);margin-bottom:16px">Ingresá el código de verificación enviado a <strong id="reg-email-display"></strong></p>
         <div class="form-group"><label class="form-label">Código de verificación</label>
-          <input class="form-input" type="text" id="reg-code" placeholder="12345678" maxlength="10"
+          <input class="form-input" type="text" id="reg-code" placeholder="123456" maxlength="6"
             style="font-family:'DM Mono',monospace;font-size:20px;letter-spacing:4px;text-align:center"></div>
         <button class="btn btn-primary" onclick="doRegisterStep2()" style="margin-bottom:10px">Verificar y crear cuenta</button>
         <button class="btn btn-ghost" onclick="backToStep1()">← Volver</button>
@@ -77,7 +77,7 @@
 </div>
 
 <!-- ══════════════════ PENDING PAGE ══════════════════ -->
-<div id="pending-page" class="page" style="display:none">
+<div id="pending-page" class="page">
   <div class="pending-card">
     <div style="font-size:48px;margin-bottom:14px">⏳</div>
     <h2 style="font-size:20px;font-weight:700;margin-bottom:8px">Cuenta pendiente de aprobación</h2>
@@ -87,7 +87,7 @@
 </div>
 
 <!-- ══════════════════ MAIN APP ══════════════════ -->
-<div id="app-page" class="page" style="display:none">
+<div id="app-page" class="page">
   <div class="mobile-header">
     <span class="hamburger" onclick="toggleSidebar()">☰</span>
     <h2 id="mobile-title">Mis Pedidos</h2>
@@ -550,7 +550,37 @@
   </div>
 </div>
 
-<button class="fab" id="fab-btn" onclick="openNuevoPedido()" style="display:none">+</button>
+<button class="fab" id="fab-btn" onclick="openNuevoPedido()">+</button>
+
+
+<!-- EDITAR LOCAL -->
+<div class="modal-overlay" id="modal-editar-local">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <h2>✏️ Editar local</h2>
+      <div class="modal-close" onclick="closeModal('modal-editar-local')">✕</div>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-local-id">
+      <div class="form-group">
+        <label class="form-label">Nombre del local</label>
+        <input class="form-input" type="text" id="edit-local-nombre" placeholder="Ej: Maldonado">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Código almacén</label>
+        <input class="form-input" type="text" id="edit-local-almacen" placeholder="Ej: MDO" maxlength="6" style="text-transform:uppercase">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email del local (para notificaciones de pedidos)</label>
+        <input class="form-input" type="email" id="edit-local-email" placeholder="local@empresa.com">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-editar-local')">Cancelar</button>
+      <button class="btn btn-primary btn-sm" onclick="guardarLocal()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
 
 <script src="app.js"></script>
 </body>
