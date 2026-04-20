@@ -25,6 +25,22 @@ let productsCache = [];
 //  HELPERS
 // ═══════════════════════════════════════════
 function el(id){ return document.getElementById(id); }
+// ═══════════════════════════════════════════
+//  SPINNER
+// ═══════════════════════════════════════════
+function showSpinner(){
+  let s=el('global-spinner');
+  if(!s){
+    s=document.createElement('div');
+    s.id='global-spinner';
+    s.innerHTML='<div class="spinner-box"><div class="spinner-icon">📦</div><div class="spinner-ring"></div><div class="spinner-txt">Cargando...</div></div>';
+    document.body.appendChild(s);
+  }
+  s.style.display='flex';
+}
+function hideSpinner(){ const s=el('global-spinner'); if(s) s.style.display='none'; }
+async function withSpinner(fn){ showSpinner(); try{ await fn(); }finally{ hideSpinner(); } }
+
 function safeSet(id, val){ const e=el(id); if(e) e.textContent=val; }
 
 function notify(msg, type='info'){
@@ -195,12 +211,13 @@ async function checkSession(){
 //  APP LOAD
 // ═══════════════════════════════════════════
 async function loadApp(){
+  showSpinner();
   showPage('app-page');
   // Siempre resetear nav antes de aplicar rol
   el('admin-nav').style.display='none';
   const isAdmin = currentPerfil.role==='admin';
   safeSet('sidebar-name', currentPerfil.nombre_display||(currentPerfil.nombre+' '+currentPerfil.apellido));
-  safeSet('sidebar-role', isAdmin?'Administrador':'Empleado');
+  safeSet('sidebar-role', isAdmin?'Supervisor':'Local');
   // Avatar: foto o iniciales
   const avatarEl = el('sidebar-avatar');
   if(currentPerfil.foto_url){
@@ -222,8 +239,8 @@ async function loadApp(){
   localesCache     = locs||[];
   transportesCache = trans||[];
   await updateBadges();
+  hideSpinner();
   navigateTo('misPedidos');
-  // Realtime notifications
   setupRealtime();
 }
 
@@ -251,9 +268,9 @@ async function updateBadges(){
   const local   = currentPerfil.local_nombre;
   const isAdmin = currentPerfil.role==='admin';
 
-  let qMis = db.from('pedidos').select('id').not('estado','in','("completo","incompleto","denegado")');
-  let qPara = db.from('pedidos').select('id').in('estado',['pendiente','aceptado','listo']);
-  if(!isAdmin){ qMis=qMis.eq('destino_local',local); qPara=qPara.eq('origen_local',local); }
+  // Badges siempre filtran por local propio (empleados Y supervisores)
+  const qMis  = db.from('pedidos').select('id').not('estado','in','("completo","incompleto","denegado")').eq('destino_local',local);
+  const qPara = db.from('pedidos').select('id').in('estado',['pendiente','aceptado','listo']).eq('origen_local',local);
 
   const [{data:misPed},{data:paraEnv},{data:notifs}]=await Promise.all([
     qMis, qPara,
@@ -309,16 +326,10 @@ function navigateTo(view){
   el('fab-btn').style.display=['misPedidos','paraEnviar','historial','dashboard'].includes(view)?'flex':'none';
   updateBadges();
 
-  if(view==='dashboard')    renderDashboard();
-  if(view==='misPedidos')   renderMisPedidos();
-  if(view==='paraEnviar')   renderParaEnviar();
-  if(view==='historial')    renderHistorial();
-  if(view==='misConsultas') renderMisConsultas();
-  if(view==='chats')        renderChats();
-  if(view==='perfil')       renderPerfil();
-  if(view==='usuarios')     renderUsuarios();
-  if(view==='sugerencias')  renderSugerencias();
-  if(view==='config')       renderConfig();
+  const _rm={dashboard:renderDashboard,misPedidos:renderMisPedidos,paraEnviar:renderParaEnviar,
+    historial:renderHistorial,misConsultas:renderMisConsultas,chats:renderChats,
+    perfil:renderPerfil,usuarios:renderUsuarios,sugerencias:renderSugerencias,config:renderConfig};
+  if(_rm[view]) withSpinner(()=>_rm[view]());
   closeSidebar();
 }
 
@@ -375,9 +386,12 @@ function orderCard(o){
 
 async function renderList(elId, pedidos, emptyIcon, emptyMsg){
   const e=el(elId);
-  e.innerHTML=pedidos.length
-    ?pedidos.map(o=>orderCard(o)).join('')
-    :'<div class="empty-state"><div class="icon">'+emptyIcon+'</div><p>'+emptyMsg+'</p></div>';
+  if(!pedidos.length){
+    e.innerHTML='<div class="empty-state"><div class="icon">'+emptyIcon+'</div><p>'+emptyMsg+'</p></div>';
+    return;
+  }
+  // Sort: pending old ones first with warning
+  e.innerHTML=pedidos.map(o=>orderCard(o)).join('');
 }
 
 // ═══════════════════════════════════════════
@@ -402,17 +416,17 @@ async function renderMisPedidos(){
   const isAdmin = currentPerfil.role==='admin';
   const local   = currentPerfil.local_nombre;
 
-  // Populate filters
+  // Populate filtro origen
   const selOrigen = el('filter-mis-origen');
   const cvOrigen  = selOrigen.value;
-  selOrigen.innerHTML='<option value="">'+( isAdmin?'Todos los orígenes':'Todos los orígenes')+'</option>'+
+  selOrigen.innerHTML='<option value="">Todos los orígenes</option>'+
     localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvOrigen===l.nombre?' selected':'')+'>'+l.nombre+'</option>').join('');
 
-  // Filtro por local destino solo para admins
+  // Filtro destino — visible para admins
   const selDestino = el('filter-mis-destino');
   if(isAdmin){
-    selDestino.style.display='block';
-    const cvDest = selDestino.value;
+    selDestino.style.display='';
+    const cvDest=selDestino.value;
     selDestino.innerHTML='<option value="">Todos los destinos</option>'+
       localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvDest===l.nombre?' selected':'')+'>'+l.nombre+'</option>').join('');
   } else {
@@ -422,31 +436,37 @@ async function renderMisPedidos(){
   let q=db.from('pedidos').select('*,pedido_productos(*)')
     .not('estado','in','("completo","incompleto","denegado")');
 
+  // Empleado: solo sus pedidos (es destino). Admin: puede ver todos pero con filtros
   if(!isAdmin) q=q.eq('destino_local',local);
 
   const estado  = el('filter-mis-estado').value;
   const origen  = selOrigen.value;
-  const destino = isAdmin ? selDestino.value : local;
-  if(estado)              q=q.eq('estado',estado);
-  if(origen)              q=q.eq('origen_local',origen);
-  if(isAdmin && destino)  q=q.eq('destino_local',destino);
+  const destino = isAdmin ? selDestino.value : '';
+  if(estado)  q=q.eq('estado',estado);
+  if(origen)  q=q.eq('origen_local',origen);
+  if(destino) q=q.eq('destino_local',destino);
 
-  // Ordenar: pendientes más viejos primero (mayor prioridad)
   q=q.order('created_at',{ascending:true});
 
-  const {data}=await q;
-  const list = data||[];
+  // Filtros de fecha
+  const misDesde=el('filter-mis-desde')?.value;
+  const misHasta=el('filter-mis-hasta')?.value;
+  if(misDesde) q=q.gte('created_at',misDesde+'T00:00:00');
+  if(misHasta) q=q.lte('created_at',misHasta+'T23:59:59');
 
-  // Marcar pedidos viejos (más de 24hs pendientes) como urgentes visualmente
-  const ahora = Date.now();
+  const {data}=await q;
+  const list=data||[];
+  // Actualizar subtítulo según rol
+  safeSet('mis-pedidos-subtitle', isAdmin
+    ?'Todos los pedidos solicitados — usá los filtros para buscar'
+    :'Pedidos que tu local solicitó. Seguí el estado acá.');
+  const ahora=Date.now();
   list.forEach(o=>{
-    if(o.estado==='pendiente'){
-      const horas = (ahora - new Date(o.created_at).getTime()) / 3600000;
-      o._viejo = horas > 24;
+    if(['pendiente','aceptado'].includes(o.estado)){
+      o._viejo=(ahora-new Date(o.created_at).getTime())/3600000>24;
     }
   });
-
-  renderList('list-misPedidos', list, '📤', isAdmin?'No hay pedidos activos':'No tenés pedidos activos');
+  renderList('list-misPedidos',list,'📤',isAdmin?'No hay pedidos activos':'No tenés pedidos activos');
 }
 
 // ═══════════════════════════════════════════
@@ -464,46 +484,52 @@ async function renderParaEnviar(){
   const isAdmin = currentPerfil.role==='admin';
   const local   = currentPerfil.local_nombre;
 
-  // Filtro por local origen para admins
-  const selOrigen = el('filter-para-origen');
+  // Filtros de local — visibles para admins
+  const selOrigen  = el('filter-para-origen');
+  const selDestino = el('filter-para-destino');
   if(isAdmin){
-    selOrigen.style.display='block';
-    const cv=selOrigen.value;
+    selOrigen.style.display='';
+    selDestino.style.display='';
+    const cvO=selOrigen.value, cvD=selDestino.value;
     selOrigen.innerHTML='<option value="">Todos los orígenes</option>'+
-      localesCache.map(l=>'<option value="'+l.nombre+'"'+(cv===l.nombre?' selected':'')+'>'+l.nombre+'</option>').join('');
+      localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvO===l.nombre?' selected':'')+'>'+l.nombre+'</option>').join('');
+    selDestino.innerHTML='<option value="">Todos los destinos</option>'+
+      localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvD===l.nombre?' selected':'')+'>'+l.nombre+'</option>').join('');
   } else {
     selOrigen.style.display='none';
+    selDestino.style.display='none';
   }
 
   let q=db.from('pedidos').select('*,pedido_productos(*)');
   if(!isAdmin) q=q.eq('origen_local',local);
-  else if(selOrigen.value) q=q.eq('origen_local',selOrigen.value);
+  else {
+    if(selOrigen.value)  q=q.eq('origen_local',selOrigen.value);
+    if(selDestino.value) q=q.eq('destino_local',selDestino.value);
+  }
 
   if(despachoTab==='pendientes'){
     q=q.in('estado',['pendiente','aceptado','listo']);
     const estado=el('filter-env-estado').value;
     if(estado) q=q.eq('estado',estado);
-    q=q.order('created_at',{ascending:true}); // más viejos primero
+    q=q.order('created_at',{ascending:true});
   } else {
     q=q.in('estado',['transito','completo','incompleto','denegado']);
     q=q.order('updated_at',{ascending:false});
   }
 
-  // Filtro por fecha
-  const desde = el('filter-desde')?.value;
-  const hasta = el('filter-hasta')?.value;
-  if(desde) q=q.gte('created_at', desde+'T00:00:00');
-  if(hasta) q=q.lte('created_at', hasta+'T23:59:59');
+  // Filtro por fecha (date pickers)
+  const desde=el('filter-desde')?.value;
+  const hasta=el('filter-hasta')?.value;
+  if(desde) q=q.gte('created_at',desde+'T00:00:00');
+  if(hasta) q=q.lte('created_at',hasta+'T23:59:59');
 
   const {data}=await q;
   const list=data||[];
   list.forEach(o=>{
-    if(['pendiente','aceptado'].includes(o.estado)){
-      const horas=(Date.now()-new Date(o.created_at).getTime())/3600000;
-      o._viejo=horas>24;
-    }
+    if(['pendiente','aceptado'].includes(o.estado))
+      o._viejo=(Date.now()-new Date(o.created_at).getTime())/3600000>24;
   });
-  renderList('list-paraEnviar', list, despachoTab==='pendientes'?'📭':'✅',
+  renderList('list-paraEnviar',list,despachoTab==='pendientes'?'📭':'✅',
     despachoTab==='pendientes'?'No hay pedidos pendientes':'No hay pedidos completados aún');
 }
 
@@ -690,7 +716,8 @@ async function notificarCambioEstado(orderId, estado){
   const labels={aceptado:'✅ Pedido aceptado',denegado:'❌ Pedido denegado',armando:'🔧 En armado',listo:'📦 Listo para enviar',transito:'🚚 En viaje',llegado:'📍 Llegó a sucursal',completo:'✅ Pedido completado',incompleto:'⚠️ Pedido incompleto'};
   const titulo=labels[estado]||estado;
   const cuerpo='#'+orderId.slice(-8,-2).toUpperCase()+' · '+o.origen_local+' → '+o.destino_local+(o.cliente?' · '+o.cliente:'');
-  const destinatarios=users.filter(u=>u.id!==currentPerfil.id&&(u.local_nombre===o.origen_local||u.local_nombre===o.destino_local||u.role==='admin'));
+  // Solo notificar a usuarios de los locales origen y destino (no a todos los admins)
+  const destinatarios=users.filter(u=>u.id!==currentPerfil.id&&(u.local_nombre===o.origen_local||u.local_nombre===o.destino_local));
   if(destinatarios.length){
     await db.from('notificaciones').insert(destinatarios.map(u=>({usuario_id:u.id,titulo,cuerpo,pedido_id:orderId})));
   }
@@ -737,15 +764,27 @@ function updateRoutePreview(){
   safeSet('rp-destino', dv?dv.split('|')[0]:'–');
 }
 
+let _searchTimeout=null;
 function searchProducts(){
   const q=el('product-search-input').value.trim().toLowerCase();
   const res=el('product-search-results');
   if(q.length<2){res.classList.remove('show');return;}
-  const results=productsCache.filter(p=>p.nombre.toLowerCase().includes(q)||p.codigo.toLowerCase().includes(q)).slice(0,30);
-  if(!results.length){res.innerHTML='<div class="product-result"><div class="p-name" style="color:var(--text2)">Sin resultados</div></div>';res.classList.add('show');return;}
-  window._sr=results;
-  res.innerHTML=results.map((p,i)=>'<div class="product-result" onclick="selProd('+i+')"><div class="p-name">'+p.nombre+'</div><div class="p-code">'+p.codigo+(p.marca?' · '+p.marca:'')+'</div></div>').join('');
-  res.classList.add('show');
+  // Debounce 300ms para no spamear queries
+  clearTimeout(_searchTimeout);
+  _searchTimeout=setTimeout(async()=>{
+    // Buscar siempre directo en Supabase para evitar problemas de cache incompleto
+    let query=db.from('productos').select('codigo,nombre,marca').order('nombre').limit(30);
+    // Intentar búsqueda por nombre Y código
+    query=query.or('nombre.ilike.%'+q+'%,codigo.ilike.%'+q+'%');
+    const {data:results}=await query;
+    if(!results||!results.length){
+      res.innerHTML='<div class="product-result"><div class="p-name" style="color:var(--text2)">Sin resultados para "'+q+'"</div></div>';
+      res.classList.add('show'); return;
+    }
+    window._sr=results;
+    res.innerHTML=results.map((p,i)=>'<div class="product-result" onclick="selProd('+i+')"><div class="p-name">'+p.nombre+'</div><div class="p-code">'+p.codigo+(p.marca?' · '+p.marca:'')+'</div></div>').join('');
+    res.classList.add('show');
+  },300);
 }
 
 function selProd(idx){
@@ -795,7 +834,7 @@ async function crearPedido(){
   await db.from('pedido_historial').insert({pedido_id:pedido.id,estado:'pendiente',usuario_id:currentPerfil.id});
   // Notify origen local users
   const {data:users}=await db.from('perfiles').select('id,local_nombre,role').eq('approved',true);
-  const dest=users?.filter(u=>u.id!==currentPerfil.id&&(u.local_nombre===oNom||u.role==='admin'))||[];
+  const dest=users?.filter(u=>u.id!==currentPerfil.id&&u.local_nombre===oNom)||[];
   if(dest.length) await db.from('notificaciones').insert(dest.map(u=>({usuario_id:u.id,titulo:'📦 Nuevo pedido de '+dNom,cuerpo:'#'+pedido.id.slice(-8,-2).toUpperCase()+(pedido.cliente?' · '+pedido.cliente:''),pedido_id:pedido.id})));
   closeModal('modal-nuevo-pedido');
   notify('¡Pedido creado exitosamente!','success');
@@ -978,12 +1017,12 @@ async function renderUsuarios(){
   el('users-all-body').innerHTML=(users||[]).map(u=>
     '<tr><td>'+u.nombre+' '+u.apellido+'</td>'+
     '<td>'+u.local_nombre+' ('+u.almacen+')</td>'+
-    '<td><span class="badge '+(u.role==='admin'?'badge-admin':'badge-empleado')+'">'+u.role+'</span></td>'+
+    '<td><span class="badge '+(u.role==='admin'?'badge-admin':'badge-empleado')+'">'+(u.role==='admin'?'Supervisor':'Local')+'</span></td>'+
     '<td><span class="badge '+(u.approved?'badge-complete':'badge-pending')+'">'+(u.approved?'Activo':'Pendiente')+'</span></td>'+
     '<td style="display:flex;gap:6px;flex-wrap:wrap">'+
     (u.id!==currentPerfil.id
-      ?(u.role!=='admin'?'<button class="btn btn-ghost btn-sm" onclick="setAdmin(\''+u.id+'\',true)">↑ Admin</button>':'')
-       +(u.role==='admin'?'<button class="btn btn-ghost btn-sm" onclick="setAdmin(\''+u.id+'\',false)">↓ Empleado</button>':'')
+      ?(u.role!=='admin'?'<button class="btn btn-ghost btn-sm" onclick="setAdmin(\''+u.id+'\',true)">↑ Supervisor</button>':'')
+       +(u.role==='admin'?'<button class="btn btn-ghost btn-sm" onclick="setAdmin(\''+u.id+'\',false)">↓ Local</button>':'')
       :'<span style="font-size:12px;color:var(--text3)">Tú</span>')+
     '</td></tr>').join('');
   await updateBadges();

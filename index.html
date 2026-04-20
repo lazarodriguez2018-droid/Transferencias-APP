@@ -20,6 +20,57 @@
 .conv-last { font-size:12px; color:var(--text2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
 .conv-time { font-size:11px; color:var(--text3); flex-shrink:0; }
 </style>
+
+<style>
+/* SPINNER */
+#global-spinner {
+  display:none; position:fixed; inset:0; z-index:9999;
+  background:rgba(15,15,19,0.75); backdrop-filter:blur(4px);
+  align-items:center; justify-content:center;
+}
+.spinner-box {
+  display:flex; flex-direction:column; align-items:center; gap:16px;
+}
+.spinner-icon {
+  font-size:48px; animation:spinnerBounce 1s ease-in-out infinite;
+}
+@keyframes spinnerBounce {
+  0%,100%{ transform:translateY(0) scale(1); }
+  50%{ transform:translateY(-12px) scale(1.1); }
+}
+.spinner-ring {
+  width:48px; height:48px; border:3px solid rgba(108,99,255,0.2);
+  border-top:3px solid #6c63ff; border-radius:50%;
+  animation:spinnerSpin .8s linear infinite;
+}
+@keyframes spinnerSpin{ to{ transform:rotate(360deg); } }
+.spinner-txt {
+  font-size:13px; color:var(--text2); font-family:'DM Sans',sans-serif;
+  letter-spacing:0.5px;
+}
+
+/* FILTROS DE FECHA */
+input[type="date"].filter-select {
+  color-scheme: dark;
+  min-width:130px;
+}
+input[type="date"].filter-select::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity:0.6;
+  cursor:pointer;
+}
+
+/* CONV LIST */
+.conv-list { display:flex; flex-direction:column; }
+.conv-item { display:flex; align-items:center; gap:10px; padding:12px 14px; cursor:pointer; border-bottom:1px solid var(--border); transition:background .15s; }
+.conv-item:hover { background:var(--surface2); }
+.conv-item.active { background:rgba(108,99,255,0.12); }
+.conv-avatar { width:38px; height:38px; border-radius:50%; background:var(--surface3); display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
+.conv-info { flex:1; min-width:0; }
+.conv-nombre { font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.conv-last { font-size:12px; color:var(--text2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
+.conv-time { font-size:11px; color:var(--text3); flex-shrink:0; }
+</style>
 </head>
 <body>
 
@@ -267,6 +318,8 @@
         <select class="filter-select" id="filter-mis-destino" onchange="renderMisPedidos()" style="display:none">
           <option value="">Todos los destinos</option>
         </select>
+        <input type="date" class="filter-select" id="filter-mis-desde" onchange="renderMisPedidos()" title="Desde">
+        <input type="date" class="filter-select" id="filter-mis-hasta" onchange="renderMisPedidos()" title="Hasta">
       </div>
       <div class="orders-list" id="list-misPedidos">
         <div class="empty-state"><div class="icon">📤</div><p>No tenés pedidos activos</p></div>
@@ -296,8 +349,11 @@
         <select class="filter-select" id="filter-para-origen" onchange="renderParaEnviar()" style="display:none">
           <option value="">Todos los orígenes</option>
         </select>
-        <input type="date" class="filter-select" id="filter-desde" onchange="renderParaEnviar()" title="Desde fecha">
-        <input type="date" class="filter-select" id="filter-hasta" onchange="renderParaEnviar()" title="Hasta fecha">
+        <select class="filter-select" id="filter-para-destino" onchange="renderParaEnviar()" style="display:none">
+          <option value="">Todos los destinos</option>
+        </select>
+        <input type="date" class="filter-select" id="filter-desde" onchange="renderParaEnviar()" placeholder="Desde" title="Desde">
+        <input type="date" class="filter-select" id="filter-hasta" onchange="renderParaEnviar()" placeholder="Hasta" title="Hasta">
       </div>
       <div class="orders-list" id="list-paraEnviar">
         <div class="empty-state"><div class="icon">📭</div><p>No hay pedidos pendientes</p></div>
