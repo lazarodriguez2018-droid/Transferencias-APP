@@ -270,7 +270,15 @@ async function updateBadges(){
 
   // Badges siempre filtran por local propio (empleados Y supervisores)
   const qMis  = db.from('pedidos').select('id').not('estado','in','("completo","incompleto","denegado")').eq('destino_local',local);
-  const qPara = db.from('pedidos').select('id').in('estado',['pendiente','aceptado','listo']).eq('origen_local',local);
+  // Para enviar: incluir pedidos de escala donde este local es la escala
+  const escalasDe = Object.entries(ESCALAS).filter(([d,e])=>e.escala===local).map(([d])=>d);
+  let qPara = db.from('pedidos').select('id').in('estado',['pendiente','aceptado','listo','transito_escala','en_escala','listo_escala']);
+  if(escalasDe.length>0){
+    // Soy local de escala O soy origen
+    qPara = qPara.or('origen_local.eq.'+local+',destino_local.in.('+escalasDe.map(d=>'"'+d+'"').join(',')+')');
+  } else {
+    qPara = qPara.eq('origen_local',local);
+  }
 
   const [{data:misPed},{data:paraEnv},{data:notifs}]=await Promise.all([
     qMis, qPara,
@@ -309,6 +317,28 @@ async function updateBadges(){
   el('badge-misConsultas').textContent=mr; el('badge-misConsultas').style.display=mr>0?'flex':'none';
 }
 
+
+// ═══════════════════════════════════════════
+//  LÓGICA DE ESCALA
+// ═══════════════════════════════════════════
+const ESCALAS = {
+  'Maldonado': { escala: 'Punta del Este', almacen: 'PDE' }
+  // Agregar más locales con escala acá si es necesario
+};
+
+function tieneEscala(destino_local) {
+  return !!ESCALAS[destino_local];
+}
+
+function getEscala(destino_local) {
+  return ESCALAS[destino_local] || null;
+}
+
+// Estados que pertenecen a la fase de escala
+const ESTADOS_ESCALA = ['transito_escala','en_escala','listo_escala'];
+// Estados que pertenecen a la fase final (destino real)
+const ESTADOS_FINAL  = ['transito','llegado','completo','incompleto'];
+
 // ═══════════════════════════════════════════
 //  NAVIGATION
 // ═══════════════════════════════════════════
@@ -338,14 +368,17 @@ function navigateTo(view){
 // ═══════════════════════════════════════════
 function estadoInfo(estado){
   const m={
-    pendiente:  ['⏳','Pendiente','badge-pending'],
-    aceptado:   ['✅','Aceptado','badge-accepted'],
-    denegado:   ['❌','Denegado','badge-denied'],
-    listo:      ['📦','Listo para enviar','badge-ready'],
-    transito:   ['🚚','En viaje','badge-transit'],
-    llegado:    ['📍','Llegó a sucursal','badge-arrived'],
-    completo:   ['✅','Completo','badge-complete'],
-    incompleto: ['⚠️','Incompleto','badge-incomplete'],
+    pendiente:        ['⏳','Pendiente','badge-pending'],
+    aceptado:         ['✅','Aceptado','badge-accepted'],
+    denegado:         ['❌','Denegado','badge-denied'],
+    listo:            ['📦','Listo para enviar','badge-ready'],
+    transito_escala:  ['🚚','En viaje a escala','badge-transit'],
+    en_escala:        ['📍','En depósito escala','badge-arrived'],
+    listo_escala:     ['📦','Listo para enviar a destino','badge-ready'],
+    transito:         ['🚚','En viaje al destino','badge-transit'],
+    llegado:          ['📍','Llegó a sucursal','badge-arrived'],
+    completo:         ['✅','Completo','badge-complete'],
+    incompleto:       ['⚠️','Incompleto','badge-incomplete'],
   };
   return m[estado]||['❓',estado,'badge-pending'];
 }
@@ -378,7 +411,7 @@ function orderCard(o){
     '<div class="order-top"><div>'+
     '<div class="order-id">'+rol+' &nbsp;#'+o.id.slice(-8,-2).toUpperCase()+urgente+viejo+'</div>'+
     '<div class="order-title">'+(o.cliente||'Sin cliente')+(o.telefono?' · 📞 '+o.telefono:'')+'</div>'+
-    '<div class="order-route">📤 '+o.origen_local+' ('+o.origen_almacen+') → 📥 '+o.destino_local+' ('+o.destino_almacen+')'+(o.transporte?' · 🚛 '+o.transporte:'')+'</div>'+
+    (tieneEscala(o.destino_local)?'<div class="order-route">📤 '+o.origen_local+' → 🔄 '+getEscala(o.destino_local).escala+' → 📥 '+o.destino_local+(o.transporte?' · 🚛 '+o.transporte:'')+'</div>':'<div class="order-route">📤 '+o.origen_local+' ('+o.origen_almacen+') → 📥 '+o.destino_local+' ('+o.destino_almacen+')'+(o.transporte?' · 🚛 '+o.transporte:'')+'</div>')+
     '</div><span class="badge '+cls+'">'+icon+' '+label+'</span></div>'+
     '<div class="order-meta"><span class="order-date">📅 '+fecha+'</span><span class="order-products">🏷️ '+pn+'</span></div>'+
     '</div>';
@@ -500,15 +533,24 @@ async function renderParaEnviar(){
     selDestino.style.display='none';
   }
 
+  // Locales para los cuales soy escala
+  const soyEscalaDe = Object.entries(ESCALAS).filter(([d,e])=>e.escala===local).map(([d])=>d);
+
   let q=db.from('pedidos').select('*,pedido_productos(*)');
-  if(!isAdmin) q=q.eq('origen_local',local);
-  else {
+  if(!isAdmin){
+    if(soyEscalaDe.length>0){
+      // Veo mis pedidos propios + los pedidos donde soy escala
+      q=q.or('origen_local.eq.'+local+',destino_local.in.('+soyEscalaDe.map(d=>'"'+d+'"').join(',')+')');
+    } else {
+      q=q.eq('origen_local',local);
+    }
+  } else {
     if(selOrigen.value)  q=q.eq('origen_local',selOrigen.value);
     if(selDestino.value) q=q.eq('destino_local',selDestino.value);
   }
 
   if(despachoTab==='pendientes'){
-    q=q.in('estado',['pendiente','aceptado','listo']);
+    q=q.in('estado',['pendiente','aceptado','listo','transito_escala','en_escala','listo_escala']);
     const estado=el('filter-env-estado').value;
     if(estado) q=q.eq('estado',estado);
     q=q.order('created_at',{ascending:true});
@@ -564,15 +606,34 @@ async function openDetalle(orderId){
     '<div class="product-item"><div class="p-info"><div class="p-name">'+p.nombre+'</div><div class="p-code">'+p.codigo+'</div></div><div class="p-qty">x'+p.cantidad+'</div></div>'
   ).join('');
 
-  const stateOrder=['pendiente','aceptado','listo','transito','llegado','completo'];
-  const steps=[
-    ['pendiente','⏳','Pedido creado'],
-    ['aceptado','✅','Aceptado por el local origen'],
-    ['listo','📦','Listo para enviar'],
-    ['transito','🚚','En viaje'],
-    ['llegado','📍','Llegó a sucursal'],
-    ['completo','✅','Completado'],
-  ];
+  // Determinar si el pedido tiene escala
+  const escalaInfo = tieneEscala(o.destino_local) ? getEscala(o.destino_local) : null;
+
+  let stateOrder, steps;
+  if(escalaInfo){
+    stateOrder=['pendiente','aceptado','listo','transito_escala','en_escala','listo_escala','transito','llegado','completo'];
+    steps=[
+      ['pendiente','⏳','Pedido creado'],
+      ['aceptado','✅','Aceptado por el local origen'],
+      ['listo','📦','Listo — en camino a '+escalaInfo.escala],
+      ['transito_escala','🚚','En viaje a '+escalaInfo.escala],
+      ['en_escala','📍',escalaInfo.escala+' confirma recepción'],
+      ['listo_escala','📦',escalaInfo.escala+' despacha a '+o.destino_local],
+      ['transito','🚚','En viaje a '+o.destino_local],
+      ['llegado','📍','Llegó a '+o.destino_local],
+      ['completo','✅','Completado'],
+    ];
+  } else {
+    stateOrder=['pendiente','aceptado','listo','transito','llegado','completo'];
+    steps=[
+      ['pendiente','⏳','Pedido creado'],
+      ['aceptado','✅','Aceptado por el local origen'],
+      ['listo','📦','Listo para enviar'],
+      ['transito','🚚','En viaje'],
+      ['llegado','📍','Llegó a sucursal'],
+      ['completo','✅','Completado'],
+    ];
+  }
   const ci=stateOrder.indexOf(o.estado);
   let timeline='';
   if(o.estado==='denegado'){
@@ -580,7 +641,9 @@ async function openDetalle(orderId){
   } else {
     timeline=steps.map((s,i)=>{
       const idx=stateOrder.indexOf(s[0]);
-      const done=idx<ci, cur=s[0]===o.estado||(o.estado==='incompleto'&&s[0]==='completo'), isLast=i===steps.length-1;
+      const done=idx<ci;
+      const cur=s[0]===o.estado||(o.estado==='incompleto'&&s[0]==='completo');
+      const isLast=i===steps.length-1;
       return '<div class="timeline-item"><div class="timeline-line">'+
         '<div class="timeline-dot '+(done?'done':'')+(cur?' current':'')+'"></div>'+
         (!isLast?'<div class="timeline-connector"></div>':'')+
@@ -595,21 +658,47 @@ async function openDetalle(orderId){
   if(o.foto_url)   extra+='<br><img src="'+o.foto_url+'" class="photo-preview" alt="Foto">';
   if(o.estado==='incompleto'&&o.faltantes) extra+='<div class="detail-row"><span class="label">Faltantes:</span><span class="value" style="color:var(--accent2)">'+o.faltantes+'</span></div>';
   if(o.notas) extra+='<div class="detail-row"><span class="label">Notas:</span><span class="value">'+o.notas+'</span></div>';
+  if(o.faltantes_escala) extra+='<div class="detail-row"><span class="label">Faltó en escala:</span><span class="value" style="color:#a855f7">'+o.faltantes_escala+'</span></div>';
 
-  // Admin puede ver acciones de cualquier local
   const canOrigen  = isOrigen  || currentPerfil.role==='admin';
   const canDestino = isDestino || currentPerfil.role==='admin';
+  const esEscala   = escalaInfo !== null;
+  const isEscalaLocal = escalaInfo && currentPerfil.local_nombre === escalaInfo.escala;
+  const canEscala  = isEscalaLocal || currentPerfil.role==='admin';
   let actions='';
-  if(canOrigen && o.estado==='pendiente'){
-    actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'aceptar\',\''+o.id+'\')">✅ Aceptar pedido</button><button class="btn btn-danger btn-sm" onclick="accion(\'denegar\',\''+o.id+'\')">❌ Denegar pedido</button></div>';
-  } else if(canOrigen && o.estado==='aceptado'){
-    actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'listo\',\''+o.id+'\')">📦 Marcar listo para enviar</button></div>';
-  } else if(canOrigen && o.estado==='listo'){
-    actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'transito\',\''+o.id+'\')">🚚 Marcar en viaje</button></div>';
-  } else if(canDestino && o.estado==='transito'){
-    actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'llegado\',\''+o.id+'\')">📍 Confirmar llegada a sucursal</button></div>';
-  } else if(canDestino && o.estado==='llegado'){
-    actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'completo\',\''+o.id+'\')">✅ Llegó completo</button><button class="btn btn-warning btn-sm" onclick="accion(\'incompleto\',\''+o.id+'\')">⚠️ Llegó incompleto</button></div>';
+
+  if(esEscala){
+    // ── FLUJO CON ESCALA ──
+    if(canOrigen && o.estado==='pendiente'){
+      actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'aceptar\',\''+o.id+'\')">✅ Aceptar pedido</button><button class="btn btn-danger btn-sm" onclick="accion(\'denegar\',\''+o.id+'\')">❌ Denegar pedido</button></div>';
+    } else if(canOrigen && o.estado==='aceptado'){
+      actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'listo\',\''+o.id+'\')">📦 Marcar listo para enviar a '+escalaInfo.escala+'</button></div>';
+    } else if(canOrigen && o.estado==='listo'){
+      actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'transito_escala\',\''+o.id+'\')">🚚 Marcar en viaje hacia '+escalaInfo.escala+'</button></div>';
+    } else if(canEscala && o.estado==='transito_escala'){
+      actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'en_escala_completo\',\''+o.id+'\')">✅ Llegó completo a '+escalaInfo.escala+'</button><button class="btn btn-warning btn-sm" onclick="accion(\'en_escala_incompleto\',\''+o.id+'\')">⚠️ Llegó incompleto a '+escalaInfo.escala+'</button></div>';
+    } else if(canEscala && o.estado==='en_escala'){
+      actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'listo_escala\',\''+o.id+'\')">📦 Marcar listo para enviar a '+o.destino_local+'</button></div>';
+    } else if(canEscala && o.estado==='listo_escala'){
+      actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'transito\',\''+o.id+'\')">🚚 Marcar en viaje hacia '+o.destino_local+'</button></div>';
+    } else if(canDestino && o.estado==='transito'){
+      actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'llegado\',\''+o.id+'\')">📍 Confirmar llegada a '+o.destino_local+'</button></div>';
+    } else if(canDestino && o.estado==='llegado'){
+      actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'completo\',\''+o.id+'\')">✅ Llegó completo</button><button class="btn btn-warning btn-sm" onclick="accion(\'incompleto\',\''+o.id+'\')">⚠️ Llegó incompleto</button></div>';
+    }
+  } else {
+    // ── FLUJO NORMAL ──
+    if(canOrigen && o.estado==='pendiente'){
+      actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'aceptar\',\''+o.id+'\')">✅ Aceptar pedido</button><button class="btn btn-danger btn-sm" onclick="accion(\'denegar\',\''+o.id+'\')">❌ Denegar pedido</button></div>';
+    } else if(canOrigen && o.estado==='aceptado'){
+      actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'listo\',\''+o.id+'\')">📦 Marcar listo para enviar</button></div>';
+    } else if(canOrigen && o.estado==='listo'){
+      actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'transito\',\''+o.id+'\')">🚚 Marcar en viaje</button></div>';
+    } else if(canDestino && o.estado==='transito'){
+      actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'llegado\',\''+o.id+'\')">📍 Confirmar llegada a sucursal</button></div>';
+    } else if(canDestino && o.estado==='llegado'){
+      actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'completo\',\''+o.id+'\')">✅ Llegó completo</button><button class="btn btn-warning btn-sm" onclick="accion(\'incompleto\',\''+o.id+'\')">⚠️ Llegó incompleto</button></div>';
+    }
   }
 
   el('modal-detalle-body').innerHTML=
@@ -620,7 +709,10 @@ async function openDetalle(orderId){
     '<div class="detail-section"><h4>Productos ('+(o.pedido_productos||[]).length+')</h4><div class="product-items">'+prods+'</div></div>'+
     '<div class="detail-section"><h4>Seguimiento</h4><div class="timeline">'+timeline+'</div></div>'+
     actions+
-    '<div style="margin-top:12px"><button class="btn btn-ghost btn-sm" onclick="openChat(\''+o.id+'\')">💬 Chat del pedido</button></div>';
+    '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">'+
+    '<button class="btn btn-ghost btn-sm" onclick="openChat(\''+o.id+'\')">💬 Chat del pedido</button>'+
+    (o.telefono?'<button class="btn btn-success btn-sm" onclick="abrirWhatsApp(\''+o.telefono+'\',\''+( o.cliente||'')+'\')" style="background:#25d366;border-color:#25d366;color:#fff">💬 WhatsApp cliente</button>':'')+
+    '</div>';
   openModal('modal-detalle');
 }
 
@@ -628,7 +720,7 @@ async function openDetalle(orderId){
 //  ACCIONES
 // ═══════════════════════════════════════════
 function accion(tipo, orderId){
-  const labels={aceptar:'Aceptar el pedido',transito:'Marcar en viaje',llegado:'Confirmar llegada',completo:'Marcar como completo'};
+  const labels={aceptar:'Aceptar el pedido',transito:'Marcar en viaje',transito_escala:'Marcar en viaje a escala',en_escala_completo:'Llegó completo a escala',en_escala_incompleto:'Llegó incompleto a escala',listo_escala:'Listo para enviar a destino',llegado:'Confirmar llegada final',completo:'Marcar como completo'};
   if(tipo==='denegar'){
     el('modal-accion-title').textContent='❌ Denegar pedido';
     el('modal-accion-body').innerHTML='<div class="warning-box">⚠️ Esta acción es <strong>irreversible</strong>.</div><div class="form-group" style="margin-top:14px"><label class="form-label">Motivo (obligatorio)</label><textarea class="form-input" id="motivo-den" rows="3" placeholder="Ej: Sin stock..."></textarea></div>';
@@ -651,10 +743,11 @@ function accion(tipo, orderId){
     el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-primary btn-sm" onclick="confirmarAccion(\'listo\',\''+orderId+'\')">Confirmar</button>';
     openModal('modal-accion'); return;
   }
-  if(tipo==='incompleto'){
-    el('modal-accion-title').textContent='⚠️ Llegó incompleto';
+  if(tipo==='incompleto' || tipo==='en_escala_incompleto'){
+    const label = tipo==='en_escala_incompleto' ? 'Llegó incompleto a escala' : 'Llegó incompleto';
+    el('modal-accion-title').textContent='⚠️ '+label;
     el('modal-accion-body').innerHTML='<div class="warning-box">⚠️ Esta acción es <strong>irreversible</strong>.</div><div class="form-group" style="margin-top:14px"><label class="form-label">¿Qué faltó? (obligatorio)</label><textarea class="form-input" id="faltantes-det" rows="3" placeholder="Ej: Faltó 1 unidad de..."></textarea></div>';
-    el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-warning btn-sm" onclick="confirmarAccion(\'incompleto\',\''+orderId+'\')">Confirmar</button>';
+    el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-warning btn-sm" onclick="confirmarAccion(\''+tipo+'\',\''+orderId+'\')">Confirmar</button>';
     openModal('modal-accion'); return;
   }
   el('modal-accion-title').textContent=labels[tipo]||'Confirmar';
@@ -671,7 +764,11 @@ function previewFoto(e){
 }
 
 async function confirmarAccion(tipo, orderId){
-  const sm={aceptar:'aceptado',transito:'transito',llegado:'llegado',completo:'completo'};
+  const sm={
+    aceptar:'aceptado', transito:'transito', transito_escala:'transito_escala',
+    en_escala_completo:'en_escala', listo_escala:'listo_escala',
+    llegado:'llegado', completo:'completo'
+  };
   const updates={updated_at:new Date().toISOString()};
   if(tipo==='denegar'){
     const m=el('motivo-den')&&el('motivo-den').value.trim();
@@ -690,6 +787,12 @@ async function confirmarAccion(tipo, orderId){
     const f=el('faltantes-det')&&el('faltantes-det').value.trim();
     if(!f) return notify('Indicá qué faltó','error');
     updates.estado='incompleto'; updates.faltantes=f;
+  } else if(tipo==='en_escala_incompleto'){
+    const f=el('faltantes-det')&&el('faltantes-det').value.trim();
+    if(!f) return notify('Indicá qué faltó','error');
+    // Llegó incompleto a la escala pero igual sigue el proceso
+    updates.estado='en_escala';
+    updates.faltantes_escala=f;
   } else {
     updates.estado=sm[tipo]||tipo;
   }
@@ -713,11 +816,16 @@ async function notificarCambioEstado(orderId, estado){
   if(!o) return;
   const {data:users}=await db.from('perfiles').select('id,local_nombre,role').eq('approved',true);
   if(!users) return;
-  const labels={aceptado:'✅ Pedido aceptado',denegado:'❌ Pedido denegado',armando:'🔧 En armado',listo:'📦 Listo para enviar',transito:'🚚 En viaje',llegado:'📍 Llegó a sucursal',completo:'✅ Pedido completado',incompleto:'⚠️ Pedido incompleto'};
+  const labels={aceptado:'✅ Pedido aceptado',denegado:'❌ Pedido denegado',listo:'📦 Listo para enviar',transito_escala:'🚚 En viaje a escala',en_escala:'📍 Llegó a escala',listo_escala:'📦 Sale de escala al destino',transito:'🚚 En viaje al destino final',llegado:'📍 Llegó a sucursal destino',completo:'✅ Pedido completado',incompleto:'⚠️ Pedido incompleto'};
   const titulo=labels[estado]||estado;
   const cuerpo='#'+orderId.slice(-8,-2).toUpperCase()+' · '+o.origen_local+' → '+o.destino_local+(o.cliente?' · '+o.cliente:'');
   // Solo notificar a usuarios de los locales origen y destino (no a todos los admins)
-  const destinatarios=users.filter(u=>u.id!==currentPerfil.id&&(u.local_nombre===o.origen_local||u.local_nombre===o.destino_local));
+  // Incluir local de escala si aplica
+  const escalaLocal = getEscala(o.destino_local)?.escala || null;
+  const destinatarios=users.filter(u=>
+    u.id!==currentPerfil.id &&
+    (u.local_nombre===o.origen_local || u.local_nombre===o.destino_local || (escalaLocal && u.local_nombre===escalaLocal))
+  );
   if(destinatarios.length){
     await db.from('notificaciones').insert(destinatarios.map(u=>({usuario_id:u.id,titulo,cuerpo,pedido_id:orderId})));
   }
@@ -760,8 +868,21 @@ async function openNuevoPedido(){
 
 function updateRoutePreview(){
   const ov=el('new-origen').value, dv=el('new-destino').value;
-  safeSet('rp-origen', ov?ov.split('|')[0]:'–');
-  safeSet('rp-destino', dv?dv.split('|')[0]:'–');
+  const oNom=ov?ov.split('|')[0]:'–';
+  const dNom=dv?dv.split('|')[0]:'–';
+  safeSet('rp-origen', oNom);
+  safeSet('rp-destino', dNom);
+  // Mostrar aviso de escala si el destino tiene escala
+  const escalaBox=el('escala-aviso');
+  if(escalaBox){
+    const esc=dv?getEscala(dNom):null;
+    if(esc){
+      escalaBox.style.display='block';
+      escalaBox.innerHTML='🔄 <strong>Escala automática:</strong> La mercadería pasará primero por <strong>'+esc.escala+'</strong> antes de llegar a <strong>'+dNom+'</strong>.';
+    } else {
+      escalaBox.style.display='none';
+    }
+  }
 }
 
 let _searchTimeout=null;
@@ -834,7 +955,9 @@ async function crearPedido(){
   await db.from('pedido_historial').insert({pedido_id:pedido.id,estado:'pendiente',usuario_id:currentPerfil.id});
   // Notify origen local users
   const {data:users}=await db.from('perfiles').select('id,local_nombre,role').eq('approved',true);
-  const dest=users?.filter(u=>u.id!==currentPerfil.id&&u.local_nombre===oNom)||[];
+  // Notificar origen + escala si aplica
+  const escalaCrear = getEscala(dNom);
+  const dest=users?.filter(u=>u.id!==currentPerfil.id&&(u.local_nombre===oNom||(escalaCrear&&u.local_nombre===escalaCrear.escala)))||[];
   if(dest.length) await db.from('notificaciones').insert(dest.map(u=>({usuario_id:u.id,titulo:'📦 Nuevo pedido de '+dNom,cuerpo:'#'+pedido.id.slice(-8,-2).toUpperCase()+(pedido.cliente?' · '+pedido.cliente:''),pedido_id:pedido.id})));
   closeModal('modal-nuevo-pedido');
   notify('¡Pedido creado exitosamente!','success');
@@ -1053,12 +1176,15 @@ async function renderConfig(){
 async function renderAdminLocales(){
   const {data}=await db.from('locales').select('*').order('nombre');
   localesCache=data||[];
-  el('locales-body').innerHTML=localesCache.map((l)=>
-    '<tr><td style="font-weight:600">'+l.nombre+'</td>'+
+  el('locales-body').innerHTML=localesCache.map((l)=>{
+    const esc=getEscala(l.nombre);
+    return '<tr><td style="font-weight:600">'+l.nombre+'</td>'+
     '<td style="font-family:\'DM Mono\',monospace">'+l.almacen+'</td>'+
     '<td>'+(l.email||'<span style="color:var(--text3)">Sin email</span>')+'</td>'+
+    '<td>'+(esc?'<span style="color:#a855f7;font-size:12px">🔄 '+esc.escala+'</span>':'<span style="color:var(--text3);font-size:12px">Directo</span>')+'</td>'+
     '<td><button class="btn btn-ghost btn-sm" onclick="editarLocal(\''+l.id+'\')">✏️</button> '+
-    '<button class="btn btn-danger btn-sm" onclick="eliminarLocal(\''+l.id+'\')">🗑️</button></td></tr>').join('');
+    '<button class="btn btn-danger btn-sm" onclick="eliminarLocal(\''+l.id+'\')">🗑️</button></td></tr>';
+  }).join('');
 }
 async function agregarLocal(){
   const n=el('new-local-nombre').value.trim(), a=el('new-local-almacen').value.trim().toUpperCase(), em=el('new-local-email').value.trim();
@@ -1229,6 +1355,20 @@ function checkEmpresaClave(){
     return true;
   }
   return false;
+}
+
+
+// ═══════════════════════════════════════════
+//  WHATSAPP
+// ═══════════════════════════════════════════
+function abrirWhatsApp(telefono, nombre){
+  if(!telefono) return notify('Este pedido no tiene teléfono del cliente','info');
+  // Limpiar el número: sacar espacios, guiones, paréntesis
+  const num = telefono.replace(/[\s\-\(\)]/g,'');
+  const texto = encodeURIComponent('Hola '+( nombre||'')+'! Te contactamos desde TransferApp respecto a tu pedido.');
+  // Si el número no tiene código de país, agregar +598 (Uruguay)
+  const numFinal = num.startsWith('+') ? num : '+598'+num;
+  window.open('https://wa.me/'+numFinal.replace('+','')+'?text='+texto,'_blank');
 }
 
 // ═══════════════════════════════════════════
