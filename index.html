@@ -219,6 +219,9 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
           <span class="icon">💬</span> Chats
           <span class="nav-badge" id="badge-chats" style="display:none">0</span>
         </div>
+        <div class="nav-item" id="nav-agenda" onclick="navigateTo('agenda')">
+          <span class="icon">👥</span> Agenda
+        </div>
         <div class="nav-item" id="nav-perfil" onclick="navigateTo('perfil')">
           <span class="icon">👤</span> Mi Perfil
         </div>
@@ -381,6 +384,21 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
       </div>
     </div>
 
+    <!-- AGENDA DE CLIENTES -->
+    <div id="view-agenda" style="display:none">
+      <div class="page-header">
+        <div><h1>👥 Agenda de Clientes</h1><p>Contactos compartidos entre todos los locales</p></div>
+        <button class="btn btn-primary btn-sm" onclick="abrirNuevoCliente()" style="white-space:nowrap">+ Nuevo cliente</button>
+      </div>
+      <div class="filters">
+        <input type="text" class="filter-select" id="agenda-search" placeholder="Buscar por nombre, teléfono o dirección..."
+          oninput="renderAgenda()" style="flex:1;min-width:200px">
+      </div>
+      <div id="agenda-list">
+        <div class="empty-state"><div class="icon">👥</div><p>No hay clientes en la agenda aún</p></div>
+      </div>
+    </div>
+
     <!-- USUARIOS (admin) -->
     <div id="view-usuarios" style="display:none">
       <div class="page-header"><div><h1>Usuarios</h1><p>Aprobá cuentas y gestioná permisos</p></div></div>
@@ -530,9 +548,32 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         </div>
       </div>
 
+      <!-- PADRÓN EXTRA -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3>🛒 Padrón extra (ítems fuera del sistema)</h3></div>
+        <div class="card-body">
+          <p style="font-size:13px;color:var(--text2);margin-bottom:14px">
+            Agregá ítems que no están en el padrón de mercaderías pero que se piden entre locales.<br>
+            <span style="color:var(--text3);font-size:12px">Ej: rollos POS, bolsas, material de empaque, etc.</span>
+          </p>
+          <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+            <input class="form-input" type="text" id="extra-nombre" placeholder="Nombre del ítem *" style="flex:2;min-width:140px">
+            <input class="form-input" type="text" id="extra-desc" placeholder="Descripción (opcional)" style="flex:2;min-width:140px">
+            <input class="form-input" type="text" id="extra-unidad" placeholder="Unidad (ej: rollo, bolsa)" style="flex:1;min-width:100px">
+            <button class="btn btn-primary btn-sm" onclick="agregarItemExtra()" style="height:42px;white-space:nowrap">+ Agregar</button>
+          </div>
+          <div style="margin-bottom:8px">
+            <input class="form-input" type="text" id="padron-extra-search" placeholder="Buscar ítem..." oninput="renderPadronExtra()" style="width:100%;max-width:300px;padding:8px 12px;font-size:13px">
+          </div>
+          <div id="padron-extra-list">
+            <div class="empty-state"><div class="icon">📋</div><p>No hay ítems en el padrón extra</p></div>
+          </div>
+        </div>
+      </div>
+
       <!-- PRODUCTOS -->
       <div class="card">
-        <div class="card-header"><h3>🏷️ Padrón de productos</h3></div>
+        <div class="card-header"><h3>📦 Padrón de mercaderías (Excel)</h3></div>
         <div class="card-body">
           <p style="font-size:13px;color:var(--text2);margin-bottom:12px">
             Subí un nuevo <strong>.xlsx</strong> para reemplazar el padrón actual para todos los usuarios.
@@ -595,7 +636,10 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Nombre del cliente (opcional)</label>
-          <input class="form-input" type="text" id="new-cliente" placeholder="Nombre del cliente">
+          <div style="position:relative">
+          <input class="form-input" type="text" id="new-cliente" placeholder="Nombre del cliente o buscá en agenda..." oninput="searchClienteAgenda()">
+          <div id="cliente-suggestions" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);z-index:100;max-height:200px;overflow-y:auto"></div>
+        </div>
         </div>
         <div class="form-group">
           <label class="form-label">Teléfono del cliente (opcional)</label>
@@ -759,6 +803,35 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
     <div class="modal-footer">
       <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-nueva-conv')">Cancelar</button>
       <button class="btn btn-primary btn-sm" onclick="crearConversacion()">Crear</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: CLIENTE -->
+<div class="modal-overlay" id="modal-cliente">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <h2 id="modal-cliente-title">➕ Nuevo cliente</h2>
+      <div class="modal-close" onclick="closeModal('modal-cliente')">✕</div>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="cliente-id">
+      <div class="form-group">
+        <label class="form-label">Nombre completo *</label>
+        <input class="form-input" type="text" id="cliente-nombre" placeholder="Juan García">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Teléfono</label>
+        <input class="form-input" type="tel" id="cliente-telefono" placeholder="099 123 456">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Dirección</label>
+        <input class="form-input" type="text" id="cliente-direccion" placeholder="Ej: Av. Italia 1234, Montevideo">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-cliente')">Cancelar</button>
+      <button class="btn btn-primary btn-sm" onclick="guardarCliente()">Guardar</button>
     </div>
   </div>
 </div>
