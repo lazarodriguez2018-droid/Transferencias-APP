@@ -334,7 +334,7 @@ function showConfirm(msg, onConfirm, opts={}){
   el('modal-accion-body').innerHTML =
     '<div style="font-size:14px;color:var(--text2);line-height:1.6;padding:4px 0">'+msg+'</div>';
   el('modal-accion-footer').innerHTML =
-    '<button class="btn btn-ghost btn-sm" onclick="closeModal('modal-accion')">Cancelar</button>'+
+    '<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button>'+
     '<button class="btn '+btnClass+' btn-sm" id="confirm-ok-btn">'+btnLabel+'</button>';
   openModal('modal-accion');
   setTimeout(()=>{
