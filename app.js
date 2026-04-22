@@ -107,7 +107,9 @@ async function doLogin(){
   const email=el('login-email').value.trim();
   const pass =el('login-password').value;
   if(!email||!pass) return showErr('login-error','Completá email y contraseña.');
+  showSpinner();
   const {data,error}=await db.auth.signInWithPassword({email,password:pass});
+  hideSpinner();
   if(error) return showErr('login-error', error.message==='Invalid login credentials'?'Email o contraseña incorrectos.':error.message);
   await afterLogin(data.user);
 }
@@ -144,9 +146,10 @@ function backToStep1(){
 async function doRegisterStep2(){
   const token=el('reg-code').value.trim();
   if(!token||token.length<6) return showErr('reg-error','Ingresá el código de 6 dígitos.');
+  showSpinner();
   // Verify OTP
   const {data,error}=await db.auth.verifyOtp({email:regData.email,token,type:'signup'});
-  if(error) return showErr('reg-error','Código incorrecto o expirado. '+error.message);
+  if(error){ hideSpinner(); return showErr('reg-error','Código incorrecto o expirado. '+error.message); }
   // Check if first user → admin
   const {count}=await db.from('perfiles').select('*',{count:'exact',head:true});
   const isFirst=(count||0)===0;
@@ -156,6 +159,7 @@ async function doRegisterStep2(){
     local_nombre:regData.localNombre, almacen:regData.almacen,
     role:isFirst?'admin':'empleado', approved:isFirst
   });
+  hideSpinner();
   if(pe) return showErr('reg-error','Error al crear perfil: '+pe.message);
   el('reg-step2').style.display='none';
   el('reg-step1').style.display='block';
@@ -242,7 +246,6 @@ async function loadApp(){
   hideSpinner();
   navigateTo('misPedidos');
   setupRealtime();
-  setupSessionTimeout();
 }
 
 function setupRealtime(){
@@ -321,24 +324,23 @@ async function updateBadges(){
 
 
 // ═══════════════════════════════════════════
-//  SESIÓN — timeout 30 min por inactividad
+//  CONFIRM MODAL — reemplaza confirm() nativo
 // ═══════════════════════════════════════════
-let _sessionTimer = null;
-const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutos
-
-function resetSessionTimer(){
-  clearTimeout(_sessionTimer);
-  _sessionTimer = setTimeout(async()=>{
-    notify('Sesión cerrada por inactividad (30 min)','info');
-    await doLogout();
-  }, SESSION_TIMEOUT);
-}
-
-function setupSessionTimeout(){
-  ['click','keydown','mousemove','touchstart'].forEach(ev=>{
-    document.addEventListener(ev, resetSessionTimer, {passive:true});
-  });
-  resetSessionTimer();
+function showConfirm(msg, onConfirm, opts={}){
+  const title   = opts.title   || '¿Confirmar?';
+  const btnLabel= opts.btnLabel|| 'Confirmar';
+  const btnClass= opts.btnClass|| 'btn-danger';
+  el('modal-accion-title').textContent = title;
+  el('modal-accion-body').innerHTML =
+    '<div style="font-size:14px;color:var(--text2);line-height:1.6;padding:4px 0">'+msg+'</div>';
+  el('modal-accion-footer').innerHTML =
+    '<button class="btn btn-ghost btn-sm" onclick="closeModal('modal-accion')">Cancelar</button>'+
+    '<button class="btn '+btnClass+' btn-sm" id="confirm-ok-btn">'+btnLabel+'</button>';
+  openModal('modal-accion');
+  setTimeout(()=>{
+    const btn = el('confirm-ok-btn');
+    if(btn) btn.onclick = ()=>{ closeModal('modal-accion'); onConfirm(); };
+  }, 50);
 }
 
 // ═══════════════════════════════════════════
@@ -373,8 +375,7 @@ function navigateTo(view){
   const titles={
     dashboard:'Dashboard',misPedidos:'Pedidos de mi local',paraEnviar:'Pedidos a despachar',
     historial:'Historial',misConsultas:'Mis Consultas',chats:'Chats',
-    perfil:'Mi Perfil',usuarios:'Usuarios',sugerencias:'Sugerencias',
-    config:'Configuración',agenda:'Agenda de Clientes'
+    perfil:'Mi Perfil',usuarios:'Usuarios',sugerencias:'Sugerencias',config:'Configuración'
   };
   safeSet('mobile-title', titles[view]||view);
   el('fab-btn').style.display=['misPedidos','paraEnviar','historial','dashboard'].includes(view)?'flex':'none';
@@ -382,8 +383,7 @@ function navigateTo(view){
 
   const _rm={dashboard:renderDashboard,misPedidos:renderMisPedidos,paraEnviar:renderParaEnviar,
     historial:renderHistorial,misConsultas:renderMisConsultas,chats:renderChats,
-    perfil:renderPerfil,usuarios:renderUsuarios,sugerencias:renderSugerencias,
-    config:renderConfig,agenda:renderAgenda};
+    perfil:renderPerfil,usuarios:renderUsuarios,sugerencias:renderSugerencias,config:renderConfig};
   if(_rm[view]) withSpinner(()=>_rm[view]());
   closeSidebar();
 }
@@ -427,7 +427,6 @@ function orderCard(o){
   const fecha=fmtDate(o.created_at);
   const urgente=o.urgente?' <span class="priority-badge">🔴 URGENTE</span>':'';
   const viejo=o._viejo?' <span class="priority-badge" style="color:#f7971e">⏰ +24hs</span>':'';
-  const parcial=o.aceptado_parcial?' <span class="priority-badge" style="color:#f7971e">⚠️ PARCIAL</span>':'';
   const isMio=o.destino_local===currentPerfil.local_nombre;
   const isAdmin=currentPerfil.role==='admin';
   const rol=isMio
@@ -684,7 +683,6 @@ async function openDetalle(orderId){
   if(o.foto_url)   extra+='<br><img src="'+o.foto_url+'" class="photo-preview" alt="Foto">';
   if(o.estado==='incompleto'&&o.faltantes) extra+='<div class="detail-row"><span class="label">Faltantes:</span><span class="value" style="color:var(--accent2)">'+o.faltantes+'</span></div>';
   if(o.notas) extra+='<div class="detail-row"><span class="label">Notas:</span><span class="value">'+o.notas+'</span></div>';
-  if(o.nota_parcial) extra+='<div class="detail-row"><span class="label">Aceptado parcial:</span><span class="value" style="color:#f7971e">⚠️ '+o.nota_parcial+'</span></div>';
   if(o.faltantes_escala) extra+='<div class="detail-row"><span class="label">Faltó en escala:</span><span class="value" style="color:#a855f7">'+o.faltantes_escala+'</span></div>';
 
   const canOrigen  = isOrigen  || currentPerfil.role==='admin';
@@ -697,11 +695,7 @@ async function openDetalle(orderId){
   if(esEscala){
     // ── FLUJO CON ESCALA ──
     if(canOrigen && o.estado==='pendiente'){
-      actions='<div class="actions-bar">'+
-        '<button class="btn btn-success btn-sm" onclick="accion(\'aceptar\',\''+o.id+'\')">✅ Aceptar completo</button>'+
-        '<button class="btn btn-warning btn-sm" onclick="accion(\'aceptar_incompleto\',\''+o.id+'\')">⚠️ Aceptar parcial</button>'+
-        '<button class="btn btn-danger btn-sm" onclick="accion(\'denegar\',\''+o.id+'\')">❌ Denegar</button>'+
-        '</div>';
+      actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'aceptar\',\''+o.id+'\')">✅ Aceptar pedido</button><button class="btn btn-danger btn-sm" onclick="accion(\'denegar\',\''+o.id+'\')">❌ Denegar pedido</button></div>';
     } else if(canOrigen && o.estado==='aceptado'){
       actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'listo\',\''+o.id+'\')">📦 Marcar listo para enviar a '+escalaInfo.escala+'</button></div>';
     } else if(canOrigen && o.estado==='listo'){
@@ -720,11 +714,7 @@ async function openDetalle(orderId){
   } else {
     // ── FLUJO NORMAL ──
     if(canOrigen && o.estado==='pendiente'){
-      actions='<div class="actions-bar">'+
-        '<button class="btn btn-success btn-sm" onclick="accion(\'aceptar\',\''+o.id+'\')">✅ Aceptar completo</button>'+
-        '<button class="btn btn-warning btn-sm" onclick="accion(\'aceptar_incompleto\',\''+o.id+'\')">⚠️ Aceptar parcial</button>'+
-        '<button class="btn btn-danger btn-sm" onclick="accion(\'denegar\',\''+o.id+'\')">❌ Denegar</button>'+
-        '</div>';
+      actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'aceptar\',\''+o.id+'\')">✅ Aceptar pedido</button><button class="btn btn-danger btn-sm" onclick="accion(\'denegar\',\''+o.id+'\')">❌ Denegar pedido</button></div>';
     } else if(canOrigen && o.estado==='aceptado'){
       actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'listo\',\''+o.id+'\')">📦 Marcar listo para enviar</button></div>';
     } else if(canOrigen && o.estado==='listo'){
@@ -747,9 +737,6 @@ async function openDetalle(orderId){
     '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">'+
     '<button class="btn btn-ghost btn-sm" onclick="openChat(\''+o.id+'\')">💬 Chat del pedido</button>'+
     (o.telefono?'<button class="btn btn-success btn-sm" onclick="abrirWhatsApp(\''+o.telefono+'\',\''+( o.cliente||'')+'\')" style="background:#25d366;border-color:#25d366;color:#fff">💬 WhatsApp cliente</button>':'')+
-    (currentPerfil.role==='admin'?
-      '<button class="btn btn-warning btn-sm" onclick="retrocederEstado(\''+o.id+'\')">↩️ Retroceder estado</button>'+
-      '<button class="btn btn-danger btn-sm" onclick="eliminarPedido(\''+o.id+'\')">🗑️ Eliminar pedido</button>':'')+
     '</div>';
   openModal('modal-detalle');
 }
@@ -758,16 +745,12 @@ async function openDetalle(orderId){
 //  ACCIONES
 // ═══════════════════════════════════════════
 function accion(tipo, orderId){
-  const labels={aceptar:'Aceptar el pedido completo',aceptar_incompleto:'Aceptar con items parciales',transito:'Marcar en viaje',transito_escala:'Marcar en viaje a escala',en_escala_completo:'Llegó completo a escala',en_escala_incompleto:'Llegó incompleto a escala',listo_escala:'Listo para enviar a destino',llegado:'Confirmar llegada final',completo:'Marcar como completo'};
+  const labels={aceptar:'Aceptar el pedido',transito:'Marcar en viaje',transito_escala:'Marcar en viaje a escala',en_escala_completo:'Llegó completo a escala',en_escala_incompleto:'Llegó incompleto a escala',listo_escala:'Listo para enviar a destino',llegado:'Confirmar llegada final',completo:'Marcar como completo'};
   if(tipo==='denegar'){
     el('modal-accion-title').textContent='❌ Denegar pedido';
     el('modal-accion-body').innerHTML='<div class="warning-box">⚠️ Esta acción es <strong>irreversible</strong>.</div><div class="form-group" style="margin-top:14px"><label class="form-label">Motivo (obligatorio)</label><textarea class="form-input" id="motivo-den" rows="3" placeholder="Ej: Sin stock..."></textarea></div>';
     el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-danger btn-sm" onclick="confirmarAccion(\'denegar\',\''+orderId+'\')">Confirmar denegación</button>';
     openModal('modal-accion'); return;
-  }
-  if(tipo==='aceptar_incompleto'){
-    // Cargar productos del pedido para que el usuario elija cuáles envía
-    abrirAceptarIncompleto(orderId); return;
   }
   if(tipo==='listo'){
     fotoBase64=null;
@@ -807,21 +790,15 @@ function previewFoto(e){
 
 async function confirmarAccion(tipo, orderId){
   const sm={
-    aceptar:'aceptado', aceptar_incompleto:'aceptado', transito:'transito',
-    transito_escala:'transito_escala', en_escala_completo:'en_escala',
-    listo_escala:'listo_escala', llegado:'llegado', completo:'completo'
+    aceptar:'aceptado', transito:'transito', transito_escala:'transito_escala',
+    en_escala_completo:'en_escala', listo_escala:'listo_escala',
+    llegado:'llegado', completo:'completo'
   };
   const updates={updated_at:new Date().toISOString()};
   if(tipo==='denegar'){
     const m=el('motivo-den')&&el('motivo-den').value.trim();
     if(!m) return notify('Ingresá el motivo','error');
     updates.estado='denegado'; updates.motivo_denegacion=m;
-  } else if(tipo==='aceptar_incompleto'){
-    // Los productos ya fueron actualizados por abrirAceptarIncompleto
-    updates.estado='aceptado';
-    updates.aceptado_parcial=true;
-    const nota=el('accion-nota-parcial')&&el('accion-nota-parcial').value.trim();
-    if(nota) updates.nota_parcial=nota;
   } else if(tipo==='listo'){
     let transp=el('accion-transporte')&&el('accion-transporte').value;
     if(transp==='__otro__') transp=el('transporte-otro-input')&&el('transporte-otro-input').value.trim();
@@ -935,9 +912,6 @@ function updateRoutePreview(){
 
 let _searchTimeout=null;
 function searchProducts(){
-  return searchProductsExtra();
-}
-function _searchProductsOriginal(){
   const q=el('product-search-input').value.trim().toLowerCase();
   const res=el('product-search-results');
   if(q.length<2){res.classList.remove('show');return;}
@@ -1076,26 +1050,12 @@ async function renderNotifPanel(){
   const {data:notifs}=await db.from('notificaciones').select('*').eq('usuario_id',currentPerfil.id).order('created_at',{ascending:false}).limit(30);
   const listEl=el('notif-list');
   if(!notifs||!notifs.length){listEl.innerHTML='<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">Sin notificaciones</div>';return;}
-  // Add delete all button to header
-  const panelHeader=el('notif-panel')?.querySelector('.notif-panel-header');
-  if(panelHeader&&notifs.length>0&&!panelHeader.querySelector('.notif-del-all')){
-    const delBtn=document.createElement('button');
-    delBtn.className='notif-del-all';
-    delBtn.textContent='🗑️ Eliminar todas';
-    delBtn.style.cssText='font-size:11px;background:none;border:none;cursor:pointer;color:var(--accent2);padding:0';
-    delBtn.onclick=eliminarTodasNotifs;
-    panelHeader.appendChild(delBtn);
-  }
   listEl.innerHTML=notifs.map(n=>{
     const time=fmtDateTime(n.created_at);
-    return '<div class="notif-item '+(n.leida?'':'unread')+'" style="position:relative">'+
-      '<div onclick="clickNotif(\''+n.id+'\',\''+(n.pedido_id||'')+'\')" style="flex:1;cursor:pointer">'+
-        '<div class="n-title">'+n.titulo+'</div>'+
-        (n.cuerpo?'<div class="n-body">'+n.cuerpo+'</div>':'')+
-        '<div class="n-time">'+time+'</div>'+
-      '</div>'+
-      '<button onclick="eliminarNotif(\''+n.id+'\')" style="position:absolute;top:8px;right:8px;background:none;border:none;cursor:pointer;color:var(--text3);font-size:14px;padding:2px 6px" title="Eliminar">✕</button>'+
-    '</div>';
+    return '<div class="notif-item '+(n.leida?'':'unread')+'" onclick="clickNotif(\''+n.id+'\',\''+(n.pedido_id||'')+'\')">'+
+      '<div class="n-title">'+n.titulo+'</div>'+
+      (n.cuerpo?'<div class="n-body">'+n.cuerpo+'</div>':'')+
+      '<div class="n-time">'+time+'</div></div>';
   }).join('');
 }
 async function clickNotif(notifId, orderId){
@@ -1222,9 +1182,10 @@ async function aprobarUser(uid){
   await renderUsuarios(); notify('Usuario aprobado','success');
 }
 async function rechazarUser(uid){
-  if(!confirm('¿Eliminar este usuario?')) return;
-  await db.from('perfiles').delete().eq('id',uid);
-  await renderUsuarios(); notify('Usuario eliminado','info');
+  showConfirm('¿Eliminar este usuario permanentemente?', async()=>{
+    await db.from('perfiles').delete().eq('id',uid);
+    await renderUsuarios(); notify('Usuario eliminado','info');
+  }, {title:'Eliminar usuario', btnLabel:'Sí, eliminar'});
 }
 async function setAdmin(uid,makeAdmin){
   await db.from('perfiles').update({role:makeAdmin?'admin':'empleado'}).eq('id',uid);
@@ -1235,7 +1196,7 @@ async function setAdmin(uid,makeAdmin){
 //  ADMIN — CONFIG
 // ═══════════════════════════════════════════
 async function renderConfig(){
-  await Promise.all([renderAdminLocales(),renderTransportes(),renderAdminProducts(),renderPadronExtra()]);
+  await Promise.all([renderAdminLocales(),renderTransportes(),renderAdminProducts()]);
 }
 
 async function renderAdminLocales(){
@@ -1243,20 +1204,29 @@ async function renderAdminLocales(){
   localesCache=data||[];
   el('locales-body').innerHTML=localesCache.map((l)=>{
     const esc=getEscala(l.nombre);
-    return '<tr><td style="font-weight:600">'+l.nombre+'</td>'+
+    return '<tr>'+
+    '<td style="font-weight:600">'+l.nombre+'</td>'+
     '<td style="font-family:\'DM Mono\',monospace">'+l.almacen+'</td>'+
-    '<td>'+(l.email||'<span style="color:var(--text3)">Sin email</span>')+'</td>'+
-    '<td>'+(esc?'<span style="color:#a855f7;font-size:12px">🔄 '+esc.escala+'</span>':'<span style="color:var(--text3);font-size:12px">Directo</span>')+'</td>'+
-    '<td><button class="btn btn-ghost btn-sm" onclick="editarLocal(\''+l.id+'\')">✏️</button> '+
+    '<td style="font-size:12px;color:var(--text2)">'+(l.email||'<span style="color:var(--text3)">–</span>')+'</td>'+
+    '<td style="font-size:12px;color:var(--text2)">'+(l.telefono||'<span style="color:var(--text3)">–</span>')+'</td>'+
+    '<td style="font-size:12px;color:var(--text2);max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(l.direccion||'<span style="color:var(--text3)">–</span>')+'</td>'+
+    '<td>'+(esc?'<span style="color:#a855f7;font-size:11px">🔄 '+esc.escala+'</span>':'<span style="color:var(--text3);font-size:11px">Directo</span>')+'</td>'+
+    '<td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="editarLocal(\''+l.id+'\')">✏️</button> '+
     '<button class="btn btn-danger btn-sm" onclick="eliminarLocal(\''+l.id+'\')">🗑️</button></td></tr>';
   }).join('');
 }
 async function agregarLocal(){
-  const n=el('new-local-nombre').value.trim(), a=el('new-local-almacen').value.trim().toUpperCase(), em=el('new-local-email').value.trim();
+  const n=el('new-local-nombre').value.trim(), a=el('new-local-almacen').value.trim().toUpperCase();
+  const em=el('new-local-email').value.trim();
+  const tel=el('new-local-tel')?.value.trim()||'';
+  const dir=el('new-local-dir')?.value.trim()||'';
   if(!n||!a) return notify('Completá nombre y código','error');
-  const {error}=await db.from('locales').insert({nombre:n,almacen:a,email:em||null});
+  const {error}=await db.from('locales').insert({nombre:n,almacen:a,email:em||null,telefono:tel||null,direccion:dir||null});
   if(error) return notify(error.message,'error');
-  el('new-local-nombre').value=''; el('new-local-almacen').value=''; el('new-local-email').value='';
+  el('new-local-nombre').value=''; el('new-local-almacen').value='';
+  el('new-local-email').value='';
+  if(el('new-local-tel')) el('new-local-tel').value='';
+  if(el('new-local-dir')) el('new-local-dir').value='';
   await renderAdminLocales(); notify('Local agregado','success');
 }
 async function editarLocal(id){
@@ -1265,6 +1235,8 @@ async function editarLocal(id){
   el('edit-local-nombre').value=l.nombre;
   el('edit-local-almacen').value=l.almacen;
   el('edit-local-email').value=l.email||'';
+  el('edit-local-tel').value=l.telefono||'';
+  el('edit-local-dir').value=l.direccion||'';
   openModal('modal-editar-local');
 }
 
@@ -1273,17 +1245,20 @@ async function guardarLocal(){
   const n=el('edit-local-nombre').value.trim();
   const a=el('edit-local-almacen').value.trim().toUpperCase();
   const em=el('edit-local-email').value.trim();
+  const tel=el('edit-local-tel').value.trim();
+  const dir=el('edit-local-dir').value.trim();
   if(!n||!a) return notify('Completá nombre y código','error');
-  const {error}=await db.from('locales').update({nombre:n,almacen:a,email:em||null}).eq('id',id);
+  const {error}=await db.from('locales').update({nombre:n,almacen:a,email:em||null,telefono:tel||null,direccion:dir||null}).eq('id',id);
   if(error) return notify('Error al guardar: '+error.message,'error');
   closeModal('modal-editar-local');
   await renderAdminLocales();
   notify('Local actualizado','success');
 }
 async function eliminarLocal(id){
-  if(!confirm('¿Eliminar este local?')) return;
-  await db.from('locales').delete().eq('id',id);
-  await renderAdminLocales(); notify('Local eliminado','info');
+  showConfirm('¿Eliminar este local? Los pedidos existentes no se verán afectados.', async()=>{
+    await db.from('locales').delete().eq('id',id);
+    await renderAdminLocales(); notify('Local eliminado','info');
+  }, {title:'Eliminar local', btnLabel:'Sí, eliminar'});
 }
 
 async function renderTransportes(){
@@ -1359,6 +1334,127 @@ async function handlePadronUpload(e){
     }catch(err){notify('Error: '+err.message,'error');}
   };
   r.readAsBinaryString(f); e.target.value='';
+}
+
+
+// ═══════════════════════════════════════════
+//  ETIQUETA PDF — genera e imprime en A4
+// ═══════════════════════════════════════════
+async function generarEtiqueta(orderId){
+  const {data:o}=await db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single();
+  if(!o) return notify('No se pudo cargar el pedido','error');
+
+  // Obtener datos completos de los locales
+  const {data:locales}=await db.from('locales').select('*');
+  const localMap={};
+  (locales||[]).forEach(l=>{ localMap[l.nombre]=l; });
+
+  const origen  = localMap[o.origen_local]  || {nombre:o.origen_local,  almacen:o.origen_almacen,  direccion:'',telefono:''};
+  const destino = localMap[o.destino_local] || {nombre:o.destino_local, almacen:o.destino_almacen, direccion:'',telefono:''};
+
+  const empresa = sessionStorage.getItem('empresa_nombre') || 'Sucan';
+  const fecha   = new Date().toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit',year:'2-digit'});
+  const pedidoId= o.id.slice(-8,-2).toUpperCase();
+  const prods   = (o.pedido_productos||[]).map(p=>p.nombre+(p.cantidad>1?' x'+p.cantidad:'')).join(', ');
+
+  // Generar HTML para imprimir
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Etiqueta Pedido #${pedidoId}</title>
+<style>
+  @page { size:A4; margin:20mm; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Arial',sans-serif; background:#fff; color:#111; }
+  .etiqueta {
+    width:100%; min-height:calc(297mm - 40mm);
+    border:3px solid #111; border-radius:8px;
+    padding:28px 32px; display:flex; flex-direction:column; gap:0;
+  }
+  .header {
+    text-align:center; border-bottom:2px solid #111;
+    padding-bottom:18px; margin-bottom:24px;
+  }
+  .header .logo { font-size:28px; font-weight:900; letter-spacing:3px; text-transform:uppercase; }
+  .header .sub  { font-size:12px; color:#555; margin-top:4px; letter-spacing:1px; }
+  .header .pedido-id { font-size:13px; font-family:monospace; background:#f0f0f0; padding:4px 10px; border-radius:4px; margin-top:8px; display:inline-block; }
+  .bloque { margin-bottom:28px; }
+  .bloque-titulo {
+    font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:2px;
+    color:#fff; background:#111; padding:5px 12px; border-radius:4px;
+    display:inline-block; margin-bottom:14px;
+  }
+  .bloque-titulo.dest { background:#333; }
+  .local-nombre { font-size:22px; font-weight:800; margin-bottom:6px; }
+  .local-dato   { font-size:14px; color:#333; margin-bottom:4px; display:flex; gap:8px; align-items:flex-start; }
+  .local-dato span { min-width:90px; font-weight:600; color:#111; }
+  .divisor { border:none; border-top:1px dashed #bbb; margin:0 0 24px 0; }
+  .productos { background:#f8f8f8; border-radius:6px; padding:14px 16px; margin-bottom:24px; }
+  .productos .p-titulo { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:#555; margin-bottom:8px; }
+  .productos .p-lista  { font-size:13px; line-height:1.7; }
+  .footer { margin-top:auto; border-top:2px solid #111; padding-top:16px; display:flex; justify-content:space-between; align-items:flex-end; }
+  .footer .fecha { font-size:13px; }
+  .footer .fecha span { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#555; display:block; margin-bottom:2px; }
+  .footer .qr-placeholder { width:70px; height:70px; border:2px dashed #ccc; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:10px; color:#aaa; text-align:center; }
+  ${o.urgente ? '.etiqueta { border-color:#cc0000; } .header .logo { color:#cc0000; }' : ''}
+  @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
+</style>
+</head>
+<body>
+<div class="etiqueta">
+
+  <div class="header">
+    <div class="logo">${empresa}</div>
+    <div class="sub">Sistema de transferencias entre locales</div>
+    <div class="pedido-id">Pedido #${pedidoId}</div>
+    ${o.urgente ? '<div style="color:#cc0000;font-weight:700;font-size:13px;margin-top:6px">⚠ PEDIDO URGENTE</div>' : ''}
+  </div>
+
+  <div class="bloque">
+    <div class="bloque-titulo">📤 Remitente</div>
+    <div class="local-nombre">${empresa} ${origen.nombre}</div>
+    <div class="local-dato"><span>Almacén:</span> ${origen.almacen}</div>
+    ${origen.direccion ? '<div class="local-dato"><span>Dirección:</span> '+origen.direccion+'</div>' : ''}
+    ${origen.telefono  ? '<div class="local-dato"><span>Teléfono:</span> '+origen.telefono+'</div>'  : ''}
+  </div>
+
+  <hr class="divisor">
+
+  <div class="bloque">
+    <div class="bloque-titulo dest">📥 Destinatario</div>
+    <div class="local-nombre">${empresa} ${destino.nombre}</div>
+    <div class="local-dato"><span>Almacén:</span> ${destino.almacen}</div>
+    ${destino.direccion ? '<div class="local-dato"><span>Dirección:</span> '+destino.direccion+'</div>' : ''}
+    ${destino.telefono  ? '<div class="local-dato"><span>Teléfono:</span> '+destino.telefono+'</div>'  : ''}
+  </div>
+
+  ${o.cliente ? '<div class="bloque"><div class="bloque-titulo" style="background:#555">👤 Cliente</div><div class="local-nombre" style="font-size:17px">'+o.cliente+'</div>'+(o.telefono?'<div class="local-dato"><span>Teléfono:</span> '+o.telefono+'</div>':'')+'</div><hr class="divisor">' : ''}
+
+  <div class="productos">
+    <div class="p-titulo">Contenido del envío</div>
+    <div class="p-lista">${prods||'Sin detalle de productos'}</div>
+  </div>
+
+  ${o.notas ? '<div style="border:1px solid #ddd;border-radius:6px;padding:12px 14px;margin-bottom:20px;font-size:13px;color:#333"><strong>Notas:</strong> '+o.notas+'</div>' : ''}
+
+  <div class="footer">
+    <div class="fecha">
+      <span>Fecha</span>
+      ${fecha}
+    </div>
+    ${o.remito ? '<div class="fecha"><span>N° Remito</span>'+o.remito+'</div>' : ''}
+    ${o.tracking ? '<div class="fecha"><span>Tracking</span>'+o.tracking+'</div>' : ''}
+  </div>
+
+</div>
+<script>window.onload=()=>{ window.print(); window.onafterprint=()=>window.close(); }<\/script>
+</body></html>`;
+
+  const win = window.open('','_blank','width=800,height=900');
+  if(!win) return notify('Bloqueador de popups activo — permití ventanas emergentes para generar la etiqueta','error');
+  win.document.write(html);
+  win.document.close();
 }
 
 // ═══════════════════════════════════════════
@@ -1632,315 +1728,3 @@ function handleFotoPerfil(e){
   r.readAsDataURL(f);
 }
 
-
-// ═══════════════════════════════════════════
-//  ACEPTAR PARCIAL — elegir ítems a enviar
-// ═══════════════════════════════════════════
-async function abrirAceptarIncompleto(orderId){
-  const {data:o}=await db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single();
-  if(!o) return;
-  const prods=o.pedido_productos||[];
-  el('modal-accion-title').textContent='⚠️ Aceptar pedido parcialmente';
-  el('modal-accion-body').innerHTML=
-    '<div class="warning-box" style="margin-bottom:14px">⚠️ Esta acción es <strong>irreversible</strong>. Indicá qué productos y cantidades podés enviar.</div>'+
-    '<div class="form-group"><label class="form-label">Productos que vas a enviar</label>'+
-    '<div style="background:var(--surface2);border-radius:var(--radius-sm);overflow:hidden">'+
-    prods.map((p,i)=>
-      '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border)">'+
-        '<input type="checkbox" id="parcial-check-'+i+'" checked style="width:16px;height:16px;flex-shrink:0">'+
-        '<div style="flex:1"><div style="font-size:13px;font-weight:500">'+p.nombre+'</div><div style="font-size:11px;color:var(--text3);font-family:monospace">'+p.codigo+'</div></div>'+
-        '<div style="display:flex;align-items:center;gap:6px">'+
-          '<span style="font-size:12px;color:var(--text2)">Pedido: x'+p.cantidad+'</span>'+
-          '<input type="number" id="parcial-qty-'+i+'" value="'+p.cantidad+'" min="0" max="'+p.cantidad+'" '+
-            'style="width:60px;padding:4px 8px;background:var(--surface3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;text-align:center">'+
-        '</div>'+
-      '</div>'
-    ).join('')+
-    '</div></div>'+
-    '<div class="form-group"><label class="form-label">Nota sobre faltantes (opcional)</label>'+
-    '<textarea class="form-input" id="accion-nota-parcial" rows="2" placeholder="Ej: Sin stock del producto X hasta la semana que viene..."></textarea></div>';
-  // Sync checkbox with qty
-  setTimeout(()=>{
-    prods.forEach((_,i)=>{
-      const chk=document.getElementById('parcial-check-'+i);
-      const qty=document.getElementById('parcial-qty-'+i);
-      if(chk&&qty){
-        chk.addEventListener('change',()=>{ qty.disabled=!chk.checked; if(!chk.checked) qty.value=0; else qty.value=prods[i].cantidad; });
-        qty.addEventListener('input',()=>{ chk.checked=parseInt(qty.value||0)>0; });
-      }
-    });
-  },100);
-  el('modal-accion-footer').innerHTML=
-    '<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button>'+
-    '<button class="btn btn-warning btn-sm" onclick="confirmarAceptarParcial(\''+orderId+'\')">Confirmar aceptación parcial</button>';
-  openModal('modal-accion');
-}
-
-async function confirmarAceptarParcial(orderId){
-  const {data:o}=await db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single();
-  if(!o) return;
-  const prods=o.pedido_productos||[];
-  const nuevosProds=[];
-  const removedProds=[];
-  prods.forEach((p,i)=>{
-    const chk=document.getElementById('parcial-check-'+i);
-    const qty=parseInt(document.getElementById('parcial-qty-'+i)?.value||0);
-    if(chk&&chk.checked&&qty>0) nuevosProds.push({...p,cantidad:qty});
-    else removedProds.push(p.nombre);
-  });
-  if(!nuevosProds.length) return notify('Tenés que enviar al menos 1 producto','error');
-  const nota=el('accion-nota-parcial')?.value.trim()||'';
-  const faltantesTexto=removedProds.length?'No se envía: '+removedProds.join(', ')+(nota?' — '+nota:''):nota;
-  // Update product quantities
-  for(const p of nuevosProds){
-    await db.from('pedido_productos').update({cantidad:p.cantidad}).eq('id',p.id);
-  }
-  // Remove unchecked products
-  const removedIds=prods.filter((_,i)=>{
-    const chk=document.getElementById('parcial-check-'+i);
-    const qty=parseInt(document.getElementById('parcial-qty-'+i)?.value||0);
-    return !chk||!chk.checked||qty<=0;
-  }).map(p=>p.id);
-  if(removedIds.length) await db.from('pedido_productos').delete().in('id',removedIds);
-  // Update pedido
-  const {error}=await db.from('pedidos').update({
-    estado:'aceptado', aceptado_parcial:true,
-    nota_parcial:faltantesTexto||null,
-    updated_at:new Date().toISOString()
-  }).eq('id',orderId);
-  if(error) return notify('Error: '+error.message,'error');
-  await db.from('pedido_historial').insert({pedido_id:orderId,estado:'aceptado',usuario_id:currentPerfil.id});
-  await notificarCambioEstado(orderId,'aceptado');
-  closeModal('modal-accion'); closeModal('modal-detalle');
-  notify('Pedido aceptado parcialmente','success');
-  await updateBadges(); refreshView();
-}
-
-// ═══════════════════════════════════════════
-//  PADRÓN EXTRA — ítems fuera del sistema
-// ═══════════════════════════════════════════
-async function renderPadronExtra(){
-  const q=(el('padron-extra-search')?.value.trim()||'').toLowerCase();
-  let query=db.from('padron_extra').select('*').order('nombre');
-  if(q) query=query.ilike('nombre','%'+q+'%');
-  const {data}=await query;
-  const e=el('padron-extra-list');
-  if(!data||!data.length){
-    e.innerHTML='<div class="empty-state"><div class="icon">📋</div><p>No hay ítems en el padrón extra aún</p></div>';
-    return;
-  }
-  e.innerHTML='<div style="overflow-x:auto"><table class="admin-table">'+
-    '<thead><tr><th>Nombre</th><th>Descripción</th><th>Unidad</th><th>Acciones</th></tr></thead><tbody>'+
-    data.map(item=>
-      '<tr>'+
-      '<td style="font-weight:500">'+item.nombre+'</td>'+
-      '<td style="color:var(--text2);font-size:13px">'+(item.descripcion||'–')+'</td>'+
-      '<td style="font-size:13px">'+(item.unidad||'unidad')+'</td>'+
-      '<td style="display:flex;gap:6px">'+
-        '<button class="btn btn-danger btn-sm" onclick="eliminarItemExtra(\''+item.id+'\')">🗑️</button>'+
-      '</td></tr>'
-    ).join('')+
-    '</tbody></table></div>';
-}
-
-async function agregarItemExtra(){
-  const nombre=el('extra-nombre').value.trim();
-  const desc=el('extra-desc').value.trim();
-  const unidad=el('extra-unidad').value.trim()||'unidad';
-  if(!nombre) return notify('Ingresá el nombre del ítem','error');
-  const {error}=await db.from('padron_extra').insert({nombre,descripcion:desc||null,unidad});
-  if(error) return notify('Error: '+error.message,'error');
-  el('extra-nombre').value=''; el('extra-desc').value=''; el('extra-unidad').value='';
-  await renderPadronExtra();
-  notify('Ítem agregado al padrón extra','success');
-}
-
-async function eliminarItemExtra(id){
-  if(!confirm('¿Eliminar este ítem del padrón extra?')) return;
-  await db.from('padron_extra').delete().eq('id',id);
-  await renderPadronExtra();
-  notify('Ítem eliminado','info');
-}
-
-// Búsqueda en padrón extra para nuevo pedido
-let _extraTimeout=null;
-function searchProductsExtra(){
-  const q=el('product-search-input').value.trim().toLowerCase();
-  const res=el('product-search-results');
-  if(q.length<2){res.classList.remove('show');return;}
-  clearTimeout(_extraTimeout);
-  _extraTimeout=setTimeout(async()=>{
-    // Buscar en ambos padrón principal Y padrón extra en paralelo
-    const [r1,r2]=await Promise.all([
-      db.from('productos').select('codigo,nombre,marca').or('nombre.ilike.%'+q+'%,codigo.ilike.%'+q+'%').order('nombre').limit(20),
-      db.from('padron_extra').select('id,nombre,descripcion,unidad').ilike('nombre','%'+q+'%').limit(10)
-    ]);
-    const results=[
-      ...(r1.data||[]).map(p=>({...p,_fuente:'padron'})),
-      ...(r2.data||[]).map(p=>({codigo:p.id,nombre:p.nombre,marca:p.descripcion||'',_fuente:'extra',unidad:p.unidad}))
-    ];
-    if(!results.length){
-      res.innerHTML='<div class="product-result"><div class="p-name" style="color:var(--text2)">Sin resultados</div></div>';
-      res.classList.add('show'); return;
-    }
-    window._sr=results;
-    res.innerHTML=results.map((p,i)=>
-      '<div class="product-result" onclick="selProd('+i+')">'+
-        '<div class="p-name">'+p.nombre+(p._fuente==='extra'?' <span style="font-size:10px;background:rgba(168,85,247,0.2);color:#a855f7;padding:1px 5px;border-radius:4px">EXTRA</span>':'')+'</div>'+
-        '<div class="p-code">'+(p._fuente==='padron'?p.codigo:p.unidad||'unidad')+(p.marca?' · '+p.marca:'')+'</div>'+
-      '</div>'
-    ).join('');
-    res.classList.add('show');
-  },300);
-}
-
-// ═══════════════════════════════════════════
-//  AGENDA DE CLIENTES
-// ═══════════════════════════════════════════
-async function renderAgenda(){
-  const q=(el('agenda-search')?.value.trim()||'').toLowerCase();
-  let query=db.from('clientes_agenda').select('*').order('nombre');
-  if(q) query=query.or('nombre.ilike.%'+q+'%,telefono.ilike.%'+q+'%,direccion.ilike.%'+q+'%');
-  const {data}=await query;
-  const e=el('agenda-list');
-  if(!data||!data.length){
-    e.innerHTML='<div class="empty-state"><div class="icon">👥</div><p>No hay clientes en la agenda aún</p></div>';
-    return;
-  }
-  e.innerHTML=data.map(c=>
-    '<div class="card" style="margin-bottom:10px;padding:14px 18px">'+
-      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">'+
-        '<div>'+
-          '<div style="font-size:15px;font-weight:600">'+c.nombre+'</div>'+
-          (c.telefono?'<div style="font-size:13px;color:var(--text2);margin-top:3px">📞 '+c.telefono+'</div>':'')+
-          (c.direccion?'<div style="font-size:13px;color:var(--text2);margin-top:2px">📍 '+c.direccion+'</div>':'')+
-        '</div>'+
-        '<div style="display:flex;gap:6px">'+
-          (c.telefono?'<button class="btn btn-success btn-sm" onclick="abrirWhatsApp(\''+c.telefono+'\',\''+c.nombre+'\')" style="background:#25d366;border-color:#25d366;color:#fff">💬</button>':'')+
-          '<button class="btn btn-ghost btn-sm" onclick="editarCliente(\''+c.id+'\')">✏️</button>'+
-          '<button class="btn btn-danger btn-sm" onclick="eliminarCliente(\''+c.id+'\')">🗑️</button>'+
-        '</div>'+
-      '</div>'+
-    '</div>'
-  ).join('');
-}
-
-async function guardarCliente(){
-  const id=el('cliente-id').value;
-  const nombre=el('cliente-nombre').value.trim();
-  const telefono=el('cliente-telefono').value.trim();
-  const direccion=el('cliente-direccion').value.trim();
-  if(!nombre) return notify('El nombre es obligatorio','error');
-  const data={nombre,telefono:telefono||null,direccion:direccion||null};
-  const {error}=id
-    ?await db.from('clientes_agenda').update(data).eq('id',id)
-    :await db.from('clientes_agenda').insert(data);
-  if(error) return notify('Error: '+error.message,'error');
-  closeModal('modal-cliente');
-  await renderAgenda();
-  notify(id?'Cliente actualizado':'Cliente agregado','success');
-}
-
-async function editarCliente(id){
-  const {data:c}=await db.from('clientes_agenda').select('*').eq('id',id).single();
-  if(!c) return;
-  el('cliente-id').value=c.id;
-  el('cliente-nombre').value=c.nombre;
-  el('cliente-telefono').value=c.telefono||'';
-  el('cliente-direccion').value=c.direccion||'';
-  el('modal-cliente-title').textContent='✏️ Editar cliente';
-  openModal('modal-cliente');
-}
-
-async function eliminarCliente(id){
-  if(!confirm('¿Eliminar este cliente de la agenda?')) return;
-  await db.from('clientes_agenda').delete().eq('id',id);
-  await renderAgenda();
-  notify('Cliente eliminado','info');
-}
-
-function abrirNuevoCliente(){
-  el('cliente-id').value='';
-  el('cliente-nombre').value='';
-  el('cliente-telefono').value='';
-  el('cliente-direccion').value='';
-  el('modal-cliente-title').textContent='➕ Nuevo cliente';
-  openModal('modal-cliente');
-}
-
-// Búsqueda de cliente en nuevo pedido (autocompletar)
-let _clienteTimeout=null;
-function searchClienteAgenda(){
-  const q=el('new-cliente').value.trim().toLowerCase();
-  const res=el('cliente-suggestions');
-  if(q.length<2){res.style.display='none';return;}
-  clearTimeout(_clienteTimeout);
-  _clienteTimeout=setTimeout(async()=>{
-    const {data}=await db.from('clientes_agenda').select('*')
-      .or('nombre.ilike.%'+q+'%,telefono.ilike.%'+q+'%').limit(5);
-    if(!data||!data.length){res.style.display='none';return;}
-    res.style.display='block';
-    res.innerHTML=data.map(c=>
-      '<div class="product-result" onclick="seleccionarCliente(\''+c.id+'\')">'+
-        '<div class="p-name">'+c.nombre+'</div>'+
-        '<div class="p-code">'+(c.telefono||'')+(c.direccion?' · '+c.direccion:'')+'</div>'+
-      '</div>'
-    ).join('');
-  },250);
-}
-
-async function seleccionarCliente(id){
-  const {data:c}=await db.from('clientes_agenda').select('*').eq('id',id).single();
-  if(!c) return;
-  el('new-cliente').value=c.nombre;
-  el('new-telefono').value=c.telefono||'';
-  el('cliente-suggestions').style.display='none';
-}
-
-// ═══════════════════════════════════════════
-//  BORRAR/EDITAR PEDIDOS — solo admins
-// ═══════════════════════════════════════════
-async function eliminarPedido(orderId){
-  if(!confirm('¿Eliminar este pedido permanentemente? Esta acción no se puede deshacer.')) return;
-  await db.from('pedido_productos').delete().eq('pedido_id',orderId);
-  await db.from('pedido_historial').delete().eq('pedido_id',orderId);
-  await db.from('chat_mensajes').delete().eq('pedido_id',orderId);
-  await db.from('notificaciones').delete().eq('pedido_id',orderId);
-  await db.from('pedidos').delete().eq('id',orderId);
-  closeModal('modal-detalle');
-  notify('Pedido eliminado','info');
-  await updateBadges(); refreshView();
-}
-
-async function retrocederEstado(orderId){
-  const {data:o}=await db.from('pedidos').select('*').eq('id',orderId).single();
-  if(!o) return;
-  const flujoNormal=['pendiente','aceptado','listo','transito','llegado','completo','incompleto'];
-  const flujoEscala=['pendiente','aceptado','listo','transito_escala','en_escala','listo_escala','transito','llegado','completo','incompleto'];
-  const flujo=tieneEscala(o.destino_local)?flujoEscala:flujoNormal;
-  const idx=flujo.indexOf(o.estado);
-  if(idx<=0) return notify('Este pedido ya está en el estado inicial','info');
-  const estadoAnterior=flujo[idx-1];
-  if(!confirm('¿Volver el pedido al estado "'+estadoAnterior+'"? Solo hacé esto si fue un error.')) return;
-  await db.from('pedidos').update({estado:estadoAnterior,updated_at:new Date().toISOString()}).eq('id',orderId);
-  await db.from('pedido_historial').insert({pedido_id:orderId,estado:estadoAnterior+'_retroceso',usuario_id:currentPerfil.id});
-  closeModal('modal-detalle');
-  notify('Estado retrocedido a: '+estadoAnterior,'success');
-  await updateBadges(); refreshView();
-}
-
-// ═══════════════════════════════════════════
-//  BORRAR NOTIFICACIONES
-// ═══════════════════════════════════════════
-async function eliminarNotif(notifId){
-  await db.from('notificaciones').delete().eq('id',notifId);
-  await updateNotifBadge();
-  await renderNotifPanel();
-}
-
-async function eliminarTodasNotifs(){
-  if(!confirm('¿Eliminar todas las notificaciones?')) return;
-  await db.from('notificaciones').delete().eq('usuario_id',currentPerfil.id);
-  await updateNotifBadge();
-  await renderNotifPanel();
-}
