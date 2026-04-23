@@ -25,6 +25,7 @@ let productsCache = [];
 //  HELPERS
 // ═══════════════════════════════════════════
 function el(id){ return document.getElementById(id); }
+
 // ═══════════════════════════════════════════
 //  SPINNER
 // ═══════════════════════════════════════════
@@ -129,7 +130,6 @@ async function doRegisterStep1(){
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showErr('reg-error','Email inválido.');
   const [localNombre,almacen]=localVal.split('|');
   regData={nombre,apellido,localNombre,almacen,email,pass};
-  // Sign up with Supabase — sends verification email automatically
   const {error}=await db.auth.signUp({email,password:pass,options:{emailRedirectTo:window.location.href}});
   if(error) return showErr('reg-error',error.message);
   el('reg-email-display').textContent=email;
@@ -147,13 +147,10 @@ async function doRegisterStep2(){
   const token=el('reg-code').value.trim();
   if(!token||token.length<6) return showErr('reg-error','Ingresá el código de 6 dígitos.');
   showSpinner();
-  // Verify OTP
   const {data,error}=await db.auth.verifyOtp({email:regData.email,token,type:'signup'});
   if(error){ hideSpinner(); return showErr('reg-error','Código incorrecto o expirado. '+error.message); }
-  // Check if first user → admin
   const {count}=await db.from('perfiles').select('*',{count:'exact',head:true});
   const isFirst=(count||0)===0;
-  // Create perfil
   const {error:pe}=await db.from('perfiles').insert({
     id:data.user.id, nombre:regData.nombre, apellido:regData.apellido,
     local_nombre:regData.localNombre, almacen:regData.almacen,
@@ -181,7 +178,6 @@ function closeRegisterSuccess(){
 async function doLogout(){
   await db.auth.signOut();
   currentUser=null; currentPerfil=null;
-  // Reset UI completamente para evitar que persistan opciones de admin
   const adminNav = el('admin-nav');
   if(adminNav) adminNav.style.display='none';
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
@@ -207,7 +203,6 @@ async function checkSession(){
     showPage('auth-page');
     return;
   }
-  // Hay sesión — ir directo a la app sin pasar por auth
   await afterLogin(session.user);
 }
 
@@ -217,12 +212,10 @@ async function checkSession(){
 async function loadApp(){
   showSpinner();
   showPage('app-page');
-  // Siempre resetear nav antes de aplicar rol
   el('admin-nav').style.display='none';
   const isAdmin = currentPerfil.role==='admin';
   safeSet('sidebar-name', currentPerfil.nombre_display||(currentPerfil.nombre+' '+currentPerfil.apellido));
   safeSet('sidebar-role', isAdmin?'Supervisor':'Local');
-  // Avatar: foto o iniciales
   const avatarEl = el('sidebar-avatar');
   if(currentPerfil.foto_url){
     avatarEl.style.backgroundImage='url('+currentPerfil.foto_url+')';
@@ -235,7 +228,7 @@ async function loadApp(){
   }
   safeSet('sidebar-local-badge', currentPerfil.local_nombre+' ('+currentPerfil.almacen+')');
   if(isAdmin) el('admin-nav').style.display='block';
-  // Load caches
+  
   const [{data:locs},{data:trans}]=await Promise.all([
     db.from('locales').select('*').order('nombre'),
     db.from('transportes').select('*').order('nombre'),
@@ -249,7 +242,6 @@ async function loadApp(){
 }
 
 function setupRealtime(){
-  // Listen for new notifications for current user
   db.channel('notifs-'+currentPerfil.id)
     .on('postgres_changes',{event:'INSERT',schema:'public',table:'notificaciones',filter:'usuario_id=eq.'+currentPerfil.id},
       payload=>{
@@ -258,7 +250,6 @@ function setupRealtime(){
         notify('🔔 '+n.titulo,'info');
       })
     .subscribe();
-  // Listen for pedido changes in my locals
   db.channel('pedidos-changes')
     .on('postgres_changes',{event:'UPDATE',schema:'public',table:'pedidos'},
       ()=>{ refreshView(); updateBadges(); })
@@ -272,13 +263,10 @@ async function updateBadges(){
   const local   = currentPerfil.local_nombre;
   const isAdmin = currentPerfil.role==='admin';
 
-  // Badges siempre filtran por local propio (empleados Y supervisores)
-  const qMis  = db.from('pedidos').select('id').not('estado','in','("completo","incompleto","denegado")').eq('destino_local',local);
-  // Para enviar: incluir pedidos de escala donde este local es la escala
+  const qMis  = db.from('pedidos').select('id').not('estado','in','("completo","incompleto","denegado","cancelado")').eq('destino_local',local);
   const escalasDe = Object.entries(ESCALAS).filter(([d,e])=>e.escala===local).map(([d])=>d);
   let qPara = db.from('pedidos').select('id').in('estado',['pendiente','aceptado','listo','transito_escala','en_escala','listo_escala']);
   if(escalasDe.length>0){
-    // Soy local de escala O soy origen
     qPara = qPara.or('origen_local.eq.'+local+',destino_local.in.('+escalasDe.map(d=>'"'+d+'"').join(',')+')');
   } else {
     qPara = qPara.eq('origen_local',local);
@@ -305,7 +293,6 @@ async function updateBadges(){
     el('badge-sugerencias').textContent=su; el('badge-sugerencias').style.display=su>0?'flex':'none';
   }
 
-  // Dashboard stats
   const [{data:listos},{data:completados}]=await Promise.all([
     db.from('pedidos').select('id').eq('origen_local',local).eq('estado','listo'),
     db.from('pedidos').select('id').or('origen_local.eq.'+local+',destino_local.eq.'+local).in('estado',['completo','incompleto']),
@@ -315,16 +302,13 @@ async function updateBadges(){
   safeSet('stat-listos', listos?.length||0);
   safeSet('stat-completados', completados?.length||0);
 
-  // Mis consultas badge
   const {data:misRespuestas}=await db.from('sugerencias').select('id').eq('usuario_id',currentPerfil.id).eq('respuesta_leida',false).not('respuesta','is',null);
   const mr=misRespuestas?.length||0;
   el('badge-misConsultas').textContent=mr; el('badge-misConsultas').style.display=mr>0?'flex':'none';
 }
 
-
-
 // ═══════════════════════════════════════════
-//  CONFIRM MODAL — reemplaza confirm() nativo
+//  CONFIRM MODAL
 // ═══════════════════════════════════════════
 function showConfirm(msg, onConfirm, opts={}){
   const title   = opts.title   || '¿Confirmar?';
@@ -348,21 +332,10 @@ function showConfirm(msg, onConfirm, opts={}){
 // ═══════════════════════════════════════════
 const ESCALAS = {
   'Maldonado': { escala: 'Punta del Este', almacen: 'PDE' }
-  // Agregar más locales con escala acá si es necesario
 };
 
-function tieneEscala(destino_local) {
-  return !!ESCALAS[destino_local];
-}
-
-function getEscala(destino_local) {
-  return ESCALAS[destino_local] || null;
-}
-
-// Estados que pertenecen a la fase de escala
-const ESTADOS_ESCALA = ['transito_escala','en_escala','listo_escala'];
-// Estados que pertenecen a la fase final (destino real)
-const ESTADOS_FINAL  = ['transito','llegado','completo','incompleto'];
+function tieneEscala(destino_local) { return !!ESCALAS[destino_local]; }
+function getEscala(destino_local) { return ESCALAS[destino_local] || null; }
 
 // ═══════════════════════════════════════════
 //  NAVIGATION
@@ -396,6 +369,7 @@ function estadoInfo(estado){
     pendiente:        ['⏳','Pendiente','badge-pending'],
     aceptado:         ['✅','Aceptado','badge-accepted'],
     denegado:         ['❌','Denegado','badge-denied'],
+    cancelado:        ['🚫','Cancelado','badge-denied'],
     listo:            ['📦','Listo para enviar','badge-ready'],
     transito_escala:  ['🚚','En viaje a escala','badge-transit'],
     en_escala:        ['📍','En depósito escala','badge-arrived'],
@@ -448,7 +422,6 @@ async function renderList(elId, pedidos, emptyIcon, emptyMsg){
     e.innerHTML='<div class="empty-state"><div class="icon">'+emptyIcon+'</div><p>'+emptyMsg+'</p></div>';
     return;
   }
-  // Sort: pending old ones first with warning
   e.innerHTML=pedidos.map(o=>orderCard(o)).join('');
 }
 
@@ -474,13 +447,11 @@ async function renderMisPedidos(){
   const isAdmin = currentPerfil.role==='admin';
   const local   = currentPerfil.local_nombre;
 
-  // Populate filtro origen
   const selOrigen = el('filter-mis-origen');
   const cvOrigen  = selOrigen.value;
   selOrigen.innerHTML='<option value="">Todos los orígenes</option>'+
     localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvOrigen===l.nombre?' selected':'')+'>'+l.nombre+'</option>').join('');
 
-  // Filtro destino — visible para admins
   const selDestino = el('filter-mis-destino');
   if(isAdmin){
     selDestino.style.display='';
@@ -492,9 +463,8 @@ async function renderMisPedidos(){
   }
 
   let q=db.from('pedidos').select('*,pedido_productos(*)')
-    .not('estado','in','("completo","incompleto","denegado")');
+    .not('estado','in','("completo","incompleto","denegado","cancelado")');
 
-  // Empleado: solo sus pedidos (es destino). Admin: puede ver todos pero con filtros
   if(!isAdmin) q=q.eq('destino_local',local);
 
   const estado  = el('filter-mis-estado').value;
@@ -506,7 +476,6 @@ async function renderMisPedidos(){
 
   q=q.order('created_at',{ascending:true});
 
-  // Filtros de fecha
   const misDesde=el('filter-mis-desde')?.value;
   const misHasta=el('filter-mis-hasta')?.value;
   if(misDesde) q=q.gte('created_at',misDesde+'T00:00:00');
@@ -514,7 +483,6 @@ async function renderMisPedidos(){
 
   const {data}=await q;
   const list=data||[];
-  // Actualizar subtítulo según rol
   safeSet('mis-pedidos-subtitle', isAdmin
     ?'Todos los pedidos solicitados — usá los filtros para buscar'
     :'Pedidos que tu local solicitó. Seguí el estado acá.');
@@ -542,7 +510,6 @@ async function renderParaEnviar(){
   const isAdmin = currentPerfil.role==='admin';
   const local   = currentPerfil.local_nombre;
 
-  // Filtros de local — visibles para admins
   const selOrigen  = el('filter-para-origen');
   const selDestino = el('filter-para-destino');
   if(isAdmin){
@@ -558,13 +525,11 @@ async function renderParaEnviar(){
     selDestino.style.display='none';
   }
 
-  // Locales para los cuales soy escala
   const soyEscalaDe = Object.entries(ESCALAS).filter(([d,e])=>e.escala===local).map(([d])=>d);
 
   let q=db.from('pedidos').select('*,pedido_productos(*)');
   if(!isAdmin){
     if(soyEscalaDe.length>0){
-      // Veo mis pedidos propios + los pedidos donde soy escala
       q=q.or('origen_local.eq.'+local+',destino_local.in.('+soyEscalaDe.map(d=>'"'+d+'"').join(',')+')');
     } else {
       q=q.eq('origen_local',local);
@@ -580,11 +545,10 @@ async function renderParaEnviar(){
     if(estado) q=q.eq('estado',estado);
     q=q.order('created_at',{ascending:true});
   } else {
-    q=q.in('estado',['transito','completo','incompleto','denegado']);
+    q=q.in('estado',['transito','completo','incompleto','denegado','cancelado']);
     q=q.order('updated_at',{ascending:false});
   }
 
-  // Filtro por fecha (date pickers)
   const desde=el('filter-desde')?.value;
   const hasta=el('filter-hasta')?.value;
   if(desde) q=q.gte('created_at',desde+'T00:00:00');
@@ -607,7 +571,7 @@ async function renderHistorial(){
   const local=currentPerfil.local_nombre;
   const tipo=el('filter-hist-tipo').value;
   const estado=el('filter-hist-estado').value;
-  let q=db.from('pedidos').select('*,pedido_productos(*)').in('estado',['completo','incompleto','denegado']).order('updated_at',{ascending:false});
+  let q=db.from('pedidos').select('*,pedido_productos(*)').in('estado',['completo','incompleto','denegado','cancelado']).order('updated_at',{ascending:false});
   if(tipo==='misPedidos')  q=q.eq('destino_local',local);
   else if(tipo==='despachados') q=q.eq('origen_local',local);
   else q=q.or('origen_local.eq.'+local+',destino_local.eq.'+local);
@@ -631,7 +595,6 @@ async function openDetalle(orderId){
     '<div class="product-item"><div class="p-info"><div class="p-name">'+p.nombre+'</div><div class="p-code">'+p.codigo+'</div></div><div class="p-qty">x'+p.cantidad+'</div></div>'
   ).join('');
 
-  // Determinar si el pedido tiene escala
   const escalaInfo = tieneEscala(o.destino_local) ? getEscala(o.destino_local) : null;
 
   let stateOrder, steps;
@@ -663,6 +626,8 @@ async function openDetalle(orderId){
   let timeline='';
   if(o.estado==='denegado'){
     timeline='<div style="color:var(--accent2);font-size:13px;padding:6px 0">❌ Pedido denegado<br><span style="color:var(--text2)">Motivo: '+(o.motivo_denegacion||'No especificado')+'</span></div>';
+  } else if(o.estado==='cancelado'){
+    timeline='<div style="color:var(--accent2);font-size:13px;padding:6px 0">🚫 Pedido cancelado<br><span style="color:var(--text2)">Cancelado por el solicitante</span></div>';
   } else {
     timeline=steps.map((s,i)=>{
       const idx=stateOrder.indexOf(s[0]);
@@ -693,9 +658,8 @@ async function openDetalle(orderId){
   let actions='';
 
   if(esEscala){
-    // ── FLUJO CON ESCALA ──
     if(canOrigen && o.estado==='pendiente'){
-      actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'aceptar\',\''+o.id+'\')">✅ Aceptar pedido</button><button class="btn btn-danger btn-sm" onclick="accion(\'denegar\',\''+o.id+'\')">❌ Denegar pedido</button></div>';
+      actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'aceptar\',\''+o.id+'\')">✅ Aceptar pedido</button><button class="btn btn-warning btn-sm" onclick="accion(\'fuera_mercaderia\',\''+o.id+'\')">⚠️ Sin Stock</button><button class="btn btn-danger btn-sm" onclick="accion(\'denegar\',\''+o.id+'\')">❌ Denegar pedido</button></div>';
     } else if(canOrigen && o.estado==='aceptado'){
       actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'listo\',\''+o.id+'\')">📦 Marcar listo para enviar a '+escalaInfo.escala+'</button></div>';
     } else if(canOrigen && o.estado==='listo'){
@@ -712,9 +676,8 @@ async function openDetalle(orderId){
       actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'completo\',\''+o.id+'\')">✅ Llegó completo</button><button class="btn btn-warning btn-sm" onclick="accion(\'incompleto\',\''+o.id+'\')">⚠️ Llegó incompleto</button></div>';
     }
   } else {
-    // ── FLUJO NORMAL ──
     if(canOrigen && o.estado==='pendiente'){
-      actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'aceptar\',\''+o.id+'\')">✅ Aceptar pedido</button><button class="btn btn-danger btn-sm" onclick="accion(\'denegar\',\''+o.id+'\')">❌ Denegar pedido</button></div>';
+      actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'aceptar\',\''+o.id+'\')">✅ Aceptar pedido</button><button class="btn btn-warning btn-sm" onclick="accion(\'fuera_mercaderia\',\''+o.id+'\')">⚠️ Sin Stock</button><button class="btn btn-danger btn-sm" onclick="accion(\'denegar\',\''+o.id+'\')">❌ Denegar pedido</button></div>';
     } else if(canOrigen && o.estado==='aceptado'){
       actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'listo\',\''+o.id+'\')">📦 Marcar listo para enviar</button></div>';
     } else if(canOrigen && o.estado==='listo'){
@@ -735,6 +698,8 @@ async function openDetalle(orderId){
     '<div class="detail-section"><h4>Seguimiento</h4><div class="timeline">'+timeline+'</div></div>'+
     actions+
     '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">'+
+    '<button class="btn btn-primary btn-sm" onclick="generarEtiqueta(\''+o.id+'\')">🖨️ Imprimir Etiqueta</button>'+
+    (o.estado === 'pendiente' && canDestino ? '<button class="btn btn-danger btn-sm" onclick="accion(\'cancelar\',\''+o.id+'\')">🚫 Cancelar Pedido</button>' : '')+
     '<button class="btn btn-ghost btn-sm" onclick="openChat(\''+o.id+'\')">💬 Chat del pedido</button>'+
     (o.telefono?'<button class="btn btn-success btn-sm" onclick="abrirWhatsApp(\''+o.telefono+'\',\''+( o.cliente||'')+'\')" style="background:#25d366;border-color:#25d366;color:#fff">💬 WhatsApp cliente</button>':'')+
     '</div>';
@@ -746,6 +711,21 @@ async function openDetalle(orderId){
 // ═══════════════════════════════════════════
 function accion(tipo, orderId){
   const labels={aceptar:'Aceptar el pedido',transito:'Marcar en viaje',transito_escala:'Marcar en viaje a escala',en_escala_completo:'Llegó completo a escala',en_escala_incompleto:'Llegó incompleto a escala',listo_escala:'Listo para enviar a destino',llegado:'Confirmar llegada final',completo:'Marcar como completo'};
+  
+  if(tipo==='cancelar'){
+    el('modal-accion-title').textContent='🚫 Cancelar pedido';
+    el('modal-accion-body').innerHTML='<div class="warning-box">⚠️ ¿Estás seguro que querés cancelar este pedido? Esta acción no se puede deshacer.</div>';
+    el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Volver</button><button class="btn btn-danger btn-sm" onclick="confirmarAccion(\'cancelar\',\''+orderId+'\')">Sí, cancelar</button>';
+    openModal('modal-accion'); return;
+  }
+  
+  if(tipo==='fuera_mercaderia'){
+    el('modal-accion-title').textContent='⚠️ Fuera de Mercadería';
+    el('modal-accion-body').innerHTML='<div class="warning-box">Se denegará el pedido porque falta stock.</div><div class="form-group" style="margin-top:14px"><label class="form-label">Detalle qué faltó:</label><textarea class="form-input" id="motivo-den" rows="3" placeholder="Ej: No nos quedó stock de la remera..."></textarea></div>';
+    el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-warning btn-sm" onclick="confirmarAccion(\'denegar\',\''+orderId+'\')">Confirmar falta de stock</button>';
+    openModal('modal-accion'); return;
+  }
+
   if(tipo==='denegar'){
     el('modal-accion-title').textContent='❌ Denegar pedido';
     el('modal-accion-body').innerHTML='<div class="warning-box">⚠️ Esta acción es <strong>irreversible</strong>.</div><div class="form-group" style="margin-top:14px"><label class="form-label">Motivo (obligatorio)</label><textarea class="form-input" id="motivo-den" rows="3" placeholder="Ej: Sin stock..."></textarea></div>';
@@ -795,7 +775,10 @@ async function confirmarAccion(tipo, orderId){
     llegado:'llegado', completo:'completo'
   };
   const updates={updated_at:new Date().toISOString()};
-  if(tipo==='denegar'){
+
+  if(tipo==='cancelar'){
+    updates.estado='cancelado';
+  } else if(tipo==='denegar'){
     const m=el('motivo-den')&&el('motivo-den').value.trim();
     if(!m) return notify('Ingresá el motivo','error');
     updates.estado='denegado'; updates.motivo_denegacion=m;
@@ -815,7 +798,6 @@ async function confirmarAccion(tipo, orderId){
   } else if(tipo==='en_escala_incompleto'){
     const f=el('faltantes-det')&&el('faltantes-det').value.trim();
     if(!f) return notify('Indicá qué faltó','error');
-    // Llegó incompleto a la escala pero igual sigue el proceso
     updates.estado='en_escala';
     updates.faltantes_escala=f;
   } else {
@@ -825,10 +807,7 @@ async function confirmarAccion(tipo, orderId){
   const {error}=await db.from('pedidos').update(updates).eq('id',orderId);
   if(error) return notify('Error al actualizar: '+error.message,'error');
 
-  // Historial
   await db.from('pedido_historial').insert({pedido_id:orderId,estado:updates.estado,usuario_id:currentPerfil.id});
-
-  // Notificar a los otros participantes
   await notificarCambioEstado(orderId, updates.estado);
 
   closeModal('modal-accion'); closeModal('modal-detalle');
@@ -841,11 +820,9 @@ async function notificarCambioEstado(orderId, estado){
   if(!o) return;
   const {data:users}=await db.from('perfiles').select('id,local_nombre,role').eq('approved',true);
   if(!users) return;
-  const labels={aceptado:'✅ Pedido aceptado',denegado:'❌ Pedido denegado',listo:'📦 Listo para enviar',transito_escala:'🚚 En viaje a escala',en_escala:'📍 Llegó a escala',listo_escala:'📦 Sale de escala al destino',transito:'🚚 En viaje al destino final',llegado:'📍 Llegó a sucursal destino',completo:'✅ Pedido completado',incompleto:'⚠️ Pedido incompleto'};
+  const labels={aceptado:'✅ Pedido aceptado',denegado:'❌ Pedido denegado',cancelado:'🚫 Pedido cancelado',listo:'📦 Listo para enviar',transito_escala:'🚚 En viaje a escala',en_escala:'📍 Llegó a escala',listo_escala:'📦 Sale de escala al destino',transito:'🚚 En viaje al destino final',llegado:'📍 Llegó a sucursal destino',completo:'✅ Pedido completado',incompleto:'⚠️ Pedido incompleto'};
   const titulo=labels[estado]||estado;
   const cuerpo='#'+orderId.slice(-8,-2).toUpperCase()+' · '+o.origen_local+' → '+o.destino_local+(o.cliente?' · '+o.cliente:'');
-  // Solo notificar a usuarios de los locales origen y destino (no a todos los admins)
-  // Incluir local de escala si aplica
   const escalaLocal = getEscala(o.destino_local)?.escala || null;
   const destinatarios=users.filter(u=>
     u.id!==currentPerfil.id &&
@@ -877,13 +854,11 @@ async function openNuevoPedido(){
   renderSelectedProducts();
   const opts=localesCache.map(l=>'<option value="'+l.nombre+'|'+l.almacen+'">'+l.nombre+' ('+l.almacen+')</option>').join('');
   el('new-origen').innerHTML=opts; el('new-destino').innerHTML=opts;
-  // Default destino = mi local, origen = primer local distinto
   const dest=el('new-destino');
   for(let i=0;i<dest.options.length;i++){ if(dest.options[i].value.startsWith(currentPerfil.local_nombre+'|')){dest.selectedIndex=i;break;} }
   const orig=el('new-origen');
   for(let i=0;i<orig.options.length;i++){ if(!orig.options[i].value.startsWith(currentPerfil.local_nombre+'|')){orig.selectedIndex=i;break;} }
   updateRoutePreview();
-  // Load products if not cached
   if(!productsCache.length){
     const {data}=await db.from('productos').select('codigo,nombre,marca').order('nombre').limit(6000);
     productsCache=data||[];
@@ -897,7 +872,6 @@ function updateRoutePreview(){
   const dNom=dv?dv.split('|')[0]:'–';
   safeSet('rp-origen', oNom);
   safeSet('rp-destino', dNom);
-  // Mostrar aviso de escala si el destino tiene escala
   const escalaBox=el('escala-aviso');
   if(escalaBox){
     const esc=dv?getEscala(dNom):null;
@@ -915,12 +889,9 @@ function searchProducts(){
   const q=el('product-search-input').value.trim().toLowerCase();
   const res=el('product-search-results');
   if(q.length<2){res.classList.remove('show');return;}
-  // Debounce 300ms para no spamear queries
   clearTimeout(_searchTimeout);
   _searchTimeout=setTimeout(async()=>{
-    // Buscar siempre directo en Supabase para evitar problemas de cache incompleto
     let query=db.from('productos').select('codigo,nombre,marca').order('nombre').limit(30);
-    // Intentar búsqueda por nombre Y código
     query=query.or('nombre.ilike.%'+q+'%,codigo.ilike.%'+q+'%');
     const {data:results}=await query;
     if(!results||!results.length){
@@ -975,12 +946,9 @@ async function crearPedido(){
     estado:'pendiente',creado_por:currentPerfil.id
   }).select().single();
   if(error) return notify('Error al crear pedido: '+error.message,'error');
-  // Insert products
   await db.from('pedido_productos').insert(newOrderProducts.map(p=>({pedido_id:pedido.id,codigo:p.codigo,nombre:p.nombre,marca:p.marca,cantidad:p.cantidad})));
   await db.from('pedido_historial').insert({pedido_id:pedido.id,estado:'pendiente',usuario_id:currentPerfil.id});
-  // Notify origen local users
   const {data:users}=await db.from('perfiles').select('id,local_nombre,role').eq('approved',true);
-  // Notificar origen + escala si aplica
   const escalaCrear = getEscala(dNom);
   const dest=users?.filter(u=>u.id!==currentPerfil.id&&(u.local_nombre===oNom||(escalaCrear&&u.local_nombre===escalaCrear.escala)))||[];
   if(dest.length) await db.from('notificaciones').insert(dest.map(u=>({usuario_id:u.id,titulo:'📦 Nuevo pedido de '+dNom,cuerpo:'#'+pedido.id.slice(-8,-2).toUpperCase()+(pedido.cliente?' · '+pedido.cliente:''),pedido_id:pedido.id})));
@@ -997,7 +965,6 @@ async function openChat(orderId){
   el('chat-title').textContent='💬 Chat — Pedido #'+orderId.slice(-8,-2).toUpperCase();
   await renderChatMessages();
   openModal('modal-chat');
-  // Realtime chat
   db.channel('chat-'+orderId)
     .on('postgres_changes',{event:'INSERT',schema:'public',table:'chat_mensajes',filter:'pedido_id=eq.'+orderId},
       ()=>renderChatMessages()).subscribe();
@@ -1074,7 +1041,6 @@ async function marcarTodasLeidas(){
 // ═══════════════════════════════════════════
 async function renderMisConsultas(){
   const {data:sugs}=await db.from('sugerencias').select('*').eq('usuario_id',currentPerfil.id).order('created_at',{ascending:false});
-  // Mark responses as read
   await db.from('sugerencias').update({respuesta_leida:true}).eq('usuario_id',currentPerfil.id).not('respuesta','is',null);
   const e=el('list-misConsultas');
   if(!sugs||!sugs.length){
@@ -1098,7 +1064,6 @@ async function enviarSugerencia(){
   if(!asunto||!texto) return notify('Completá asunto y mensaje','error');
   const {error}=await db.from('sugerencias').insert({usuario_id:currentPerfil.id,usuario_nombre:currentPerfil.nombre+' '+currentPerfil.apellido,local_nombre:currentPerfil.local_nombre,email:currentUser.email,asunto,texto});
   if(error) return notify('Error: '+error.message,'error');
-  // Notificar admins
   const {data:admins}=await db.from('perfiles').select('id').eq('role','admin').eq('approved',true);
   if(admins&&admins.length) await db.from('notificaciones').insert(admins.map(a=>({usuario_id:a.id,titulo:'💡 Nueva consulta de '+currentPerfil.local_nombre,cuerpo:asunto})));
   el('sug-asunto').value=''; el('sug-texto').value='';
@@ -1151,8 +1116,6 @@ async function responderSugerencia(){
 // ═══════════════════════════════════════════
 async function renderUsuarios(){
   const {data:users}=await db.from('perfiles').select('*').order('created_at');
-  const {data:authUsers}=await db.from('perfiles').select('id,nombre,apellido,local_nombre,almacen,role,approved,created_at');
-  // Get emails from auth (we'll just use what we have in perfiles)
   const pending=users?.filter(u=>!u.approved)||[];
   const pe=el('users-pending-list');
   pe.innerHTML=pending.length
@@ -1322,7 +1285,6 @@ async function handlePadronUpload(e){
         products.push({codigo:String(row[iC]||''),nombre:String(row[iN]||''),marca:String(row[iM]||'')});
       }
       if(!products.length) return notify('Sin productos válidos','error');
-      // Delete all and re-insert in chunks
       await db.from('productos').delete().neq('id','00000000-0000-0000-0000-000000000000');
       const chunkSize=500;
       for(let i=0;i<products.length;i+=chunkSize){
@@ -1344,7 +1306,6 @@ async function generarEtiqueta(orderId){
   const {data:o}=await db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single();
   if(!o) return notify('No se pudo cargar el pedido','error');
 
-  // Obtener datos completos de los locales
   const {data:locales}=await db.from('locales').select('*');
   const localMap={};
   (locales||[]).forEach(l=>{ localMap[l.nombre]=l; });
@@ -1357,7 +1318,6 @@ async function generarEtiqueta(orderId){
   const pedidoId= o.id.slice(-8,-2).toUpperCase();
   const prods   = (o.pedido_productos||[]).map(p=>p.nombre+(p.cantidad>1?' x'+p.cantidad:'')).join(', ');
 
-  // Generar HTML para imprimir
   const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -1472,10 +1432,8 @@ document.addEventListener('DOMContentLoaded', async function(){
   clearAuthMessages();
   showPage('auth-page');
 
-  // Verificar clave empresa (session storage)
   checkEmpresaClave();
 
-  // Close modals on overlay click
   document.querySelectorAll('.modal-overlay').forEach(o=>{
     o.addEventListener('click', e=>{ if(e.target===o) closeModal(o.id); });
   });
@@ -1486,7 +1444,6 @@ document.addEventListener('DOMContentLoaded', async function(){
     }
   });
 
-  // Si hay sesión activa, cargar directo sin pasar por auth
   await checkSession();
 });
 
@@ -1498,7 +1455,6 @@ async function verificarClaveEmpresa(){
   if(!clave) return showErr('empresa-error','Ingresá la clave de acceso.');
   const {data,error} = await db.from('empresa_config').select('*').eq('clave',clave).single();
   if(error||!data) return showErr('empresa-error','Clave incorrecta. Contactá al administrador.');
-  // Guardar en session storage para esta sesión
   sessionStorage.setItem('empresa_clave', clave);
   sessionStorage.setItem('empresa_nombre', data.nombre);
   el('empresa-nombre-display').textContent = data.nombre;
@@ -1518,16 +1474,13 @@ function checkEmpresaClave(){
   return false;
 }
 
-
 // ═══════════════════════════════════════════
 //  WHATSAPP
 // ═══════════════════════════════════════════
 function abrirWhatsApp(telefono, nombre){
   if(!telefono) return notify('Este pedido no tiene teléfono del cliente','info');
-  // Limpiar el número: sacar espacios, guiones, paréntesis
   const num = telefono.replace(/[\s\-\(\)]/g,'');
   const texto = encodeURIComponent('Hola '+( nombre||'')+'! Te contactamos desde TransferApp respecto a tu pedido.');
-  // Si el número no tiene código de país, agregar +598 (Uruguay)
   const numFinal = num.startsWith('+') ? num : '+598'+num;
   window.open('https://wa.me/'+numFinal.replace('+','')+'?text='+texto,'_blank');
 }
@@ -1538,7 +1491,6 @@ function abrirWhatsApp(telefono, nombre){
 let currentConvId = null;
 
 async function renderChats(){
-  // Load conversations where I'm a member
   const {data:memberships} = await db.from('conversacion_miembros')
     .select('conversacion_id').eq('usuario_id',currentPerfil.id);
   const convIds = (memberships||[]).map(m=>m.conversacion_id);
@@ -1552,7 +1504,6 @@ async function renderChats(){
   const {data:convs} = await db.from('conversaciones')
     .select('*').in('id',convIds).order('updated_at',{ascending:false});
 
-  // Get last message for each
   e.innerHTML = '<div class="conv-list">';
   for(const conv of convs||[]){
     const {data:lastMsg} = await db.from('mensajes')
@@ -1573,7 +1524,6 @@ async function renderChats(){
 }
 
 async function getConvNombre(convId){
-  // Para 1-a-1, mostrar el nombre del otro
   const {data:members} = await db.from('conversacion_miembros')
     .select('usuario_id').eq('conversacion_id',convId);
   const otherId = members?.find(m=>m.usuario_id!==currentPerfil.id)?.usuario_id;
@@ -1585,13 +1535,11 @@ async function getConvNombre(convId){
 async function openConversacion(convId){
   currentConvId = convId;
   el('chat-panel').style.display='flex';
-  // Get conv info
   const {data:conv} = await db.from('conversaciones').select('*').eq('id',convId).single();
   const nombre = conv?.es_grupo ? (conv.nombre||'Grupo') : await getConvNombre(convId);
   el('chat-conv-title').textContent = nombre;
   await renderConvMessages();
-  await renderChats(); // refresh list to show active
-  // Realtime
+  await renderChats();
   db.channel('conv-'+convId)
     .on('postgres_changes',{event:'INSERT',schema:'public',table:'mensajes',filter:'conversacion_id=eq.'+convId},
       ()=>renderConvMessages()).subscribe();
@@ -1630,7 +1578,6 @@ async function sendConvMsg(){
 }
 
 async function abrirNuevaConv(){
-  // Load all users
   const {data:users} = await db.from('perfiles').select('id,nombre,apellido,nombre_display,local_nombre,almacen')
     .eq('approved',true).neq('id',currentPerfil.id).order('nombre');
   el('nueva-conv-body').innerHTML=
@@ -1654,7 +1601,6 @@ async function crearConversacion(){
   if(!participantes.length) return notify('Seleccioná al menos una persona','error');
   const esGrupo = participantes.length>1 || !!nombre;
 
-  // Check if 1-a-1 already exists
   if(!esGrupo){
     const otherId = participantes[0];
     const {data:mis} = await db.from('conversacion_miembros').select('conversacion_id').eq('usuario_id',currentPerfil.id);
@@ -1685,7 +1631,6 @@ async function renderPerfil(){
   el('perfil-nombre').value = p.nombre_display || (p.nombre+' '+p.apellido);
   el('perfil-email').value = currentUser.email;
   el('perfil-local').value = p.local_nombre+' ('+p.almacen+')';
-  // Foto actual
   const fotoEl = el('perfil-foto-preview');
   if(p.foto_url){
     fotoEl.src=p.foto_url; fotoEl.style.display='block';
@@ -1704,7 +1649,6 @@ async function guardarPerfil(){
   currentPerfil.nombre_display = nombre;
   if(window._nuevaFotoPerfil) currentPerfil.foto_url = window._nuevaFotoPerfil;
   window._nuevaFotoPerfil = null;
-  // Actualizar sidebar
   safeSet('sidebar-name', nombre);
   const avatarEl = el('sidebar-avatar');
   if(currentPerfil.foto_url){
@@ -1727,4 +1671,3 @@ function handleFotoPerfil(e){
   };
   r.readAsDataURL(f);
 }
-
