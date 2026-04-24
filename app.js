@@ -23,26 +23,9 @@ let productsCache = [];
 let agendaCache = [];
 let clienteDesdePedido = false;
 
-const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 1 hora
-const IDLE_WARNING_MS = 5 * 60 * 1000; // aviso 5 min antes
-const IDLE_CHECK_INTERVAL_MS = 30 * 1000;
-let idleIntervalId = null;
-let idleWarned = false;
-let activityListenersBound = false;
-let lastActivityWriteMs = 0;
-
-function normalizeExtraProduct(row){
-return {
-id: row?.id || null,
-codigo: row?.codigo ?? row?.cod ?? row?.sku ?? '',
-nombre: row?.nombre ?? row?.producto ?? row?.descripcion ?? '',
-marca: row?.marca ?? row?.categoria ?? row?.unidad ?? row?.descripcion ?? ''
-};
-}
-
-const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 1 hora
-const IDLE_WARNING_MS = 5 * 60 * 1000; // aviso 5 min antes
-const IDLE_CHECK_INTERVAL_MS = 30 * 1000;
+var IDLE_TIMEOUT_MS = window.IDLE_TIMEOUT_MS || (60 * 60 * 1000); // 1 hora
+var IDLE_WARNING_MS = window.IDLE_WARNING_MS || (5 * 60 * 1000); // aviso 5 min antes
+var IDLE_CHECK_INTERVAL_MS = window.IDLE_CHECK_INTERVAL_MS || (30 * 1000);
 let idleIntervalId = null;
 let idleWarned = false;
 let activityListenersBound = false;
