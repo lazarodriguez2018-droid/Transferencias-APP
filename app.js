@@ -21,6 +21,15 @@ let currentChatOrderId = null;
 let currentSugId = null;
 let productsCache = [];
 
+function normalizeExtraProduct(row){
+return {
+id: row?.id || null,
+codigo: row?.codigo ?? row?.cod ?? row?.sku ?? '',
+nombre: row?.nombre ?? row?.producto ?? row?.descripcion ?? '',
+marca: row?.marca ?? row?.categoria ?? row?.unidad ?? row?.descripcion ?? ''
+};
+}
+
 // ═══════════════════════════════════════════
 //  HELPERS
 // ═══════════════════════════════════════════
@@ -901,10 +910,10 @@ updateRoutePreview();
 if(!productsCache.length){
 const [baseRes,extraRes]=await Promise.all([
 db.from('productos').select('codigo,nombre,marca').order('nombre').limit(6000),
-db.from('padron_extra').select('codigo,nombre,marca').order('nombre').limit(6000)
+db.from('padron_extra').select('*').order('nombre').limit(6000)
 ]);
 const base=baseRes.data||[];
-const extra=extraRes.error?[]:(extraRes.data||[]);
+const extra=extraRes.error?[]:(extraRes.data||[]).map(normalizeExtraProduct);
 productsCache=[...base,...extra];
 }
 openModal('modal-nuevo-pedido');
@@ -940,10 +949,10 @@ _searchTimeout=setTimeout(async()=>{
 // Buscar en padrón principal + padrón extra
 const [baseRes,extraRes]=await Promise.all([
 db.from('productos').select('codigo,nombre,marca').or('nombre.ilike.%'+q+'%,codigo.ilike.%'+q+'%').order('nombre').limit(30),
-db.from('padron_extra').select('codigo,nombre,marca').or('nombre.ilike.%'+q+'%,codigo.ilike.%'+q+'%').order('nombre').limit(30)
+db.from('padron_extra').select('*').ilike('nombre','%'+q+'%').order('nombre').limit(30)
 ]);
 const base=baseRes.data||[];
-const extra=extraRes.error?[]:(extraRes.data||[]);
+const extra=extraRes.error?[]:(extraRes.data||[]).map(normalizeExtraProduct);
 const merged=[...base,...extra];
 const map=new Map();
 merged.forEach(p=>{
@@ -1323,14 +1332,14 @@ safeSet('products-extra-count', extraCount);
 safeSet('products-total-count', baseCount+extraCount);
 const q=(el('admin-search-prod')&&el('admin-search-prod').value.trim())||'';
 let qBase=db.from('productos').select('codigo,nombre,marca').order('nombre').limit(100);
-let qExtra=db.from('padron_extra').select('codigo,nombre,marca').order('nombre').limit(100);
+let qExtra=db.from('padron_extra').select('*').order('nombre').limit(100);
 if(q){
 qBase=qBase.or('nombre.ilike.%'+q+'%,codigo.ilike.%'+q+'%');
-qExtra=qExtra.or('nombre.ilike.%'+q+'%,codigo.ilike.%'+q+'%');
+qExtra=qExtra.ilike('nombre','%'+q+'%');
 }
 const [baseRes,extraRes]=await Promise.all([qBase,qExtra]);
 const base=(baseRes.data||[]).map(p=>Object.assign({},p,{_fuente:'Principal'}));
-const extra=(extraRes.error?[]:(extraRes.data||[])).map(p=>Object.assign({},p,{_fuente:'Extra'}));
+const extra=(extraRes.error?[]:(extraRes.data||[]).map(normalizeExtraProduct)).map(p=>Object.assign({},p,{_fuente:'Extra'}));
 const merged=[...base,...extra].sort((a,b)=>String(a.nombre||'').localeCompare(String(b.nombre||''))).slice(0,100);
 el('admin-products-body').innerHTML=(merged||[]).map(p=>
 '<tr><td style="font-family:\'DM Mono\',monospace;font-size:11px">'+p.codigo+'</td>'+
@@ -1341,14 +1350,14 @@ el('admin-products-body').innerHTML=(merged||[]).map(p=>
 
 async function renderPadronExtra(){
 const q=(el('admin-search-extra')&&el('admin-search-extra').value.trim())||'';
-let query=db.from('padron_extra').select('id,codigo,nombre,marca').order('nombre').limit(200);
-if(q) query=query.or('nombre.ilike.%'+q+'%,codigo.ilike.%'+q+'%,marca.ilike.%'+q+'%');
+let query=db.from('padron_extra').select('*').order('nombre').limit(200);
+if(q) query=query.ilike('nombre','%'+q+'%');
 const {data,error}=await query;
 if(error){
 el('extra-products-body').innerHTML='<tr><td colspan="5" style="color:var(--text3);font-size:12px">No se pudo cargar padrón extra</td></tr>';
 return;
 }
-el('extra-products-body').innerHTML=(data||[]).map(p=>
+el('extra-products-body').innerHTML=(data||[]).map(normalizeExtraProduct).map(p=>
 '<tr>'+
 '<td style="font-family:\'DM Mono\',monospace;font-size:11px">'+(p.codigo||'–')+'</td>'+
 '<td style="font-size:13px">'+p.nombre+'</td>'+
@@ -1363,7 +1372,10 @@ const codigo=el('new-extra-codigo').value.trim();
 const nombre=el('new-extra-nombre').value.trim();
 const marca=el('new-extra-marca').value.trim();
 if(!nombre) return notify('Ingresá al menos el nombre del producto extra','error');
-const {error}=await db.from('padron_extra').insert({codigo:codigo||null,nombre,marca:marca||null});
+let {error}=await db.from('padron_extra').insert({codigo:codigo||null,nombre,marca:marca||null});
+if(error && /column .*codigo|column .*marca/i.test(error.message||'')){
+({error}=await db.from('padron_extra').insert({nombre}));
+}
 if(error) return notify('No se pudo agregar: '+error.message,'error');
 el('new-extra-codigo').value='';
 el('new-extra-nombre').value='';
