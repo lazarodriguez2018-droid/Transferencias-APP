@@ -1745,27 +1745,30 @@ showConfirm(
 async()=>{
 showSpinner();
 try{
+const deletePedido = async()=>db
+.from('pedidos')
+.delete({count:'exact'})
+.eq('id',orderId);
+
+let {error:deleteError,count:deletedCount} = await deletePedido();
+
+// Si hay FK que bloquea, borrar hijos y reintentar.
+if(deleteError && deleteError.code==='23503'){
 const childDeletes = [
 db.from('pedido_productos').delete().eq('pedido_id',orderId),
 db.from('pedido_historial').delete().eq('pedido_id',orderId),
 db.from('chat_mensajes').delete().eq('pedido_id',orderId),
 db.from('notificaciones').delete().eq('pedido_id',orderId)
 ];
-// Limpieza de tablas relacionadas en "best effort":
-// si alguna falla por políticas propias, no bloquea el borrado principal del pedido.
-const childResults = await Promise.allSettled(childDeletes);
-const childErrors = childResults
-.filter(r=>r.status==='fulfilled' && r.value?.error)
-.map(r=>r.value.error.message);
-if(childErrors.length){
-console.warn('Errores al limpiar tablas relacionadas del pedido', orderId, childErrors);
+const childResults = await Promise.all(childDeletes);
+const childError = childResults.find(r=>r.error)?.error;
+if(childError) throw childError;
+({error:deleteError,count:deletedCount} = await deletePedido());
 }
-
-const {error:deleteError} = await db
-.from('pedidos')
-.delete()
-.eq('id',orderId);
 if(deleteError) throw deleteError;
+if(!deletedCount){
+throw new Error('El pedido no se eliminó (0 filas afectadas). Verificá políticas RLS para DELETE en pedidos.');
+}
 
 closeModal('modal-detalle');
 notify('Pedido eliminado','info');
