@@ -3,7 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
 <title>TransferApp</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<link rel="shortcut icon" href="logo.svg">
+<link rel="apple-touch-icon" href="logo.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -90,18 +94,17 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
       <div class="auth-error" id="empresa-error"></div>
       <div class="form-group">
         <label class="form-label">Clave de empresa</label>
-        <input class="form-input" type="password" id="empresa-clave" placeholder="••••••••••"
-          onkeydown="if(event.key==='Enter')verificarClaveEmpresa()">
+        <input class="form-input" type="password" id="empresa-clave" placeholder="••••••••••">
       </div>
-      <button class="btn btn-primary" onclick="verificarClaveEmpresa()">Acceder →</button>
+      <button class="btn btn-primary" id="btn-verificar-empresa">Acceder →</button>
     </div>
 
     <!-- FORMS AUTH (ocultos hasta verificar clave) -->
     <div id="auth-forms" style="display:none">
     <div id="empresa-nombre-display" style="text-align:center;font-size:12px;color:var(--accent);margin-bottom:12px;font-weight:600"></div>
     <div class="auth-tabs">
-      <div class="auth-tab active" onclick="switchAuthTab('login')">Iniciar Sesión</div>
-      <div class="auth-tab" onclick="switchAuthTab('register')">Registrarse</div>
+      <div class="auth-tab active" id="auth-tab-login">Iniciar Sesión</div>
+      <div class="auth-tab" id="auth-tab-register">Registrarse</div>
     </div>
     <!-- LOGIN -->
     <div id="login-form">
@@ -109,9 +112,8 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
       <div class="form-group"><label class="form-label">Email</label>
         <input class="form-input" type="email" id="login-email" placeholder="tu@email.com"></div>
       <div class="form-group"><label class="form-label">Contraseña</label>
-        <input class="form-input" type="password" id="login-password" placeholder="••••••••"
-          onkeydown="if(event.key==='Enter')doLogin()"></div>
-      <button class="btn btn-primary" onclick="doLogin()">Ingresar</button>
+        <input class="form-input" type="password" id="login-password" placeholder="••••••••"></div>
+      <button class="btn btn-primary" id="btn-do-login">Ingresar</button>
     </div>
     <!-- REGISTER -->
     <div id="register-form" style="display:none">
@@ -132,15 +134,15 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
           <input class="form-input" type="password" id="reg-pass" placeholder="Mínimo 6 caracteres"></div>
         <div class="form-group"><label class="form-label">Repetir contraseña</label>
           <input class="form-input" type="password" id="reg-pass2" placeholder="Repetir contraseña"></div>
-        <button class="btn btn-primary" onclick="doRegisterStep1()">Continuar →</button>
+        <button class="btn btn-primary" id="btn-reg-step1">Continuar →</button>
       </div>
       <div id="reg-step2" style="display:none">
         <p style="font-size:13px;color:var(--text2);margin-bottom:16px">Ingresá el código de verificación enviado a <strong id="reg-email-display"></strong></p>
         <div class="form-group"><label class="form-label">Código de verificación</label>
           <input class="form-input" type="text" id="reg-code" placeholder="12345678" maxlength="10"
             style="font-family:'DM Mono',monospace;font-size:20px;letter-spacing:4px;text-align:center"></div>
-        <button class="btn btn-primary" onclick="doRegisterStep2()" style="margin-bottom:10px">Verificar y crear cuenta</button>
-        <button class="btn btn-ghost" onclick="backToStep1()">← Volver</button>
+        <button class="btn btn-primary" id="btn-reg-step2" style="margin-bottom:10px">Verificar y crear cuenta</button>
+        <button class="btn btn-ghost" id="btn-reg-back">← Volver</button>
       </div>
     </div>
   </div>
@@ -151,7 +153,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
       <div style="font-size:52px;margin-bottom:14px">🎉</div>
       <h2 style="font-size:21px;font-weight:700;margin-bottom:10px;color:var(--accent3)">¡Cuenta creada con éxito!</h2>
       <p id="register-success-msg" style="font-size:14px;color:var(--text2);line-height:1.6;margin-bottom:22px"></p>
-      <button class="btn btn-primary" onclick="closeRegisterSuccess()">Ir al inicio de sesión →</button>
+      <button class="btn btn-primary" id="btn-register-success-close">Ir al inicio de sesión →</button>
     </div>
   </div>
 </div>
@@ -162,26 +164,26 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
     <div style="font-size:48px;margin-bottom:14px">⏳</div>
     <h2 style="font-size:20px;font-weight:700;margin-bottom:8px">Cuenta pendiente de aprobación</h2>
     <p style="color:var(--text2);font-size:14px;line-height:1.6">Tu cuenta fue creada correctamente. Un administrador debe aprobarla antes de que puedas ingresar.</p>
-    <button class="btn btn-ghost btn-sm" onclick="doLogout()" style="margin-top:22px;width:100%">Cerrar sesión</button>
+    <button class="btn btn-ghost btn-sm" id="btn-logout-pending" style="margin-top:22px;width:100%">Cerrar sesión</button>
   </div>
 </div>
 
 <!-- ══════════════════ MAIN APP ══════════════════ -->
 <div id="app-page" class="page" style="display:none">
   <div class="mobile-header">
-    <span class="hamburger" onclick="toggleSidebar()">☰</span>
+    <span class="hamburger" id="btn-hamburger">☰</span>
     <h2 id="mobile-title">Mis Pedidos</h2>
-    <div class="notif-bell" onclick="toggleNotifPanel()" id="notif-bell-mobile" style="margin-left:auto">
+    <div class="notif-bell" id="notif-bell-mobile" style="margin-left:auto">
       🔔<span class="notif-count" id="notif-count-mobile" style="display:none">0</span>
     </div>
   </div>
-  <div class="mobile-overlay" id="mobile-overlay" onclick="closeSidebar()"></div>
+  <div class="mobile-overlay" id="mobile-overlay"></div>
   <!-- NOTIFICATION PANEL -->
   <div id="notif-overlay" style="display:none;position:fixed;inset:0;z-index:149" onclick="cerrarNotifPanel()"></div>
   <div id="notif-panel" class="notif-panel" style="display:none">
     <div class="notif-panel-header">
       <span style="font-weight:600;font-size:14px">🔔 Notificaciones</span>
-      <span style="font-size:12px;color:var(--accent);cursor:pointer" onclick="marcarTodasLeidas()">Marcar todas leídas</span>
+      <span style="font-size:12px;color:var(--accent);cursor:pointer" id="btn-marcar-todas">Marcar todas leídas</span>
     </div>
     <div id="notif-list"><div style="padding:20px;text-align:center;color:var(--text3);font-size:13px">Sin notificaciones nuevas</div></div>
   </div>
@@ -192,7 +194,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
       <div class="logo-row"><div class="logo-icon">📦</div><h2>TransferApp</h2></div>
       <div class="local-badge" id="sidebar-local-badge">–</div>
     </div>
-    <div class="notif-bell-desktop" onclick="toggleNotifPanel()">
+    <div class="notif-bell-desktop" id="notif-bell-desktop">
       <span>🔔</span>
       <span style="font-size:12px">Notificaciones</span>
       <span class="notif-count-desktop" id="notif-count" style="display:none">0</span>
@@ -200,50 +202,50 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
     <nav class="sidebar-nav">
       <div class="nav-section">
         <div class="nav-label">Pedidos</div>
-        <div class="nav-item" id="nav-misPedidos" onclick="navigateTo('misPedidos')">
+        <div class="nav-item" id="nav-misPedidos" data-nav="misPedidos">
           <span class="icon">📤</span> Pedidos de mi local
           <span class="nav-badge" id="badge-misPedidos" style="display:none">0</span>
         </div>
-        <div class="nav-item" id="nav-paraEnviar" onclick="navigateTo('paraEnviar')">
+        <div class="nav-item" id="nav-paraEnviar" data-nav="paraEnviar">
           <span class="icon">🔧</span> Pedidos a despachar
           <span class="nav-badge" id="badge-paraEnviar" style="display:none">0</span>
         </div>
-        <div class="nav-item" id="nav-historial" onclick="navigateTo('historial')">
+        <div class="nav-item" id="nav-historial" data-nav="historial">
           <span class="icon">📋</span> Historial
         </div>
-        <div class="nav-item" id="nav-misConsultas" onclick="navigateTo('misConsultas')">
+        <div class="nav-item" id="nav-misConsultas" data-nav="misConsultas">
           <span class="icon">💡</span> Mis Consultas
           <span class="nav-badge" id="badge-misConsultas" style="display:none">0</span>
         </div>
-        <div class="nav-item" id="nav-chats" onclick="navigateTo('chats')">
+        <div class="nav-item" id="nav-chats" data-nav="chats">
           <span class="icon">💬</span> Chats
           <span class="nav-badge" id="badge-chats" style="display:none">0</span>
         </div>
-        <div class="nav-item" id="nav-perfil" onclick="navigateTo('perfil')">
+        <div class="nav-item" id="nav-perfil" data-nav="perfil">
           <span class="icon">👤</span> Mi Perfil
         </div>
       </div>
       <div class="nav-section" id="admin-nav" style="display:none">
         <div class="nav-label">Administración</div>
-        <div class="nav-item" id="nav-dashboard" onclick="navigateTo('dashboard')">
+        <div class="nav-item" id="nav-dashboard" data-nav="dashboard">
           <span class="icon">🏠</span> Dashboard
         </div>
-        <div class="nav-item" id="nav-usuarios" onclick="navigateTo('usuarios')">
+        <div class="nav-item" id="nav-usuarios" data-nav="usuarios">
           <span class="icon">👥</span> Usuarios
           <span class="nav-badge" id="badge-usuarios" style="display:none">0</span>
         </div>
-        <div class="nav-item" id="nav-sugerencias" onclick="navigateTo('sugerencias')">
+        <div class="nav-item" id="nav-sugerencias" data-nav="sugerencias">
           <span class="icon">💡</span> Sugerencias
           <span class="nav-badge" id="badge-sugerencias" style="display:none">0</span>
         </div>
-        <div class="nav-item" id="nav-config" onclick="navigateTo('config')">
+        <div class="nav-item" id="nav-config" data-nav="config">
           <span class="icon">⚙️</span> Configuración
         </div>
       </div>
     </nav>
     <!-- Suggestion button for all users -->
     <div class="sidebar-suggest">
-      <button class="suggest-btn" onclick="openModal('modal-sugerencia')">
+      <button class="suggest-btn" id="btn-suggest-sidebar">
         💡 Enviar sugerencia o consulta
       </button>
     </div>
@@ -304,7 +306,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         💡 Estos son los pedidos que <strong>tu local pidió</strong> a otros locales. Cuando la mercadería llegue, vos confirmás la recepción.
       </div>
       <div class="filters">
-        <select class="filter-select" id="filter-mis-estado" onchange="renderMisPedidos()">
+        <select class="filter-select" id="filter-mis-estado">
           <option value="">Todos los estados</option>
           <option value="pendiente">⏳ Pendiente</option>
           <option value="aceptado">✅ Aceptado</option>
@@ -312,14 +314,14 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
           <option value="listo">📦 Listo para enviar</option>
           <option value="transito">🚚 En viaje</option>
         </select>
-        <select class="filter-select" id="filter-mis-origen" onchange="renderMisPedidos()">
+        <select class="filter-select" id="filter-mis-origen">
           <option value="">Todos los orígenes</option>
         </select>
-        <select class="filter-select" id="filter-mis-destino" onchange="renderMisPedidos()" style="display:none">
+        <select class="filter-select" id="filter-mis-destino" style="display:none">
           <option value="">Todos los destinos</option>
         </select>
-        <input type="date" class="filter-select" id="filter-mis-desde" onchange="renderMisPedidos()" title="Desde">
-        <input type="date" class="filter-select" id="filter-mis-hasta" onchange="renderMisPedidos()" title="Hasta">
+        <input type="date" class="filter-select" id="filter-mis-desde" title="Desde">
+        <input type="date" class="filter-select" id="filter-mis-hasta" title="Hasta">
       </div>
       <div class="orders-list" id="list-misPedidos">
         <div class="empty-state"><div class="icon">📤</div><p>No tenés pedidos activos</p></div>
@@ -336,24 +338,24 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         💡 Estos son pedidos que <strong>otros locales te solicitaron</strong>. Vos los preparás y despachás hacia el local destino.
       </div>
       <div class="tabs">
-        <div class="tab active" id="tab-pendientes" onclick="switchDespachoTab('pendientes')">🔧 Pendientes a preparar</div>
-        <div class="tab" id="tab-completados" onclick="switchDespachoTab('completados')">✅ Completados y enviados</div>
+        <div class="tab active" id="tab-pendientes">🔧 Pendientes a preparar</div>
+        <div class="tab" id="tab-completados">✅ Completados y enviados</div>
       </div>
       <div class="filters">
-        <select class="filter-select" id="filter-env-estado" onchange="renderParaEnviar()">
+        <select class="filter-select" id="filter-env-estado">
           <option value="">Todos los estados</option>
           <option value="pendiente">⏳ Sin aceptar</option>
           <option value="aceptado">✅ Aceptado</option>
           <option value="listo">📦 Listo para enviar</option>
         </select>
-        <select class="filter-select" id="filter-para-origen" onchange="renderParaEnviar()" style="display:none">
+        <select class="filter-select" id="filter-para-origen" style="display:none">
           <option value="">Todos los orígenes</option>
         </select>
-        <select class="filter-select" id="filter-para-destino" onchange="renderParaEnviar()" style="display:none">
+        <select class="filter-select" id="filter-para-destino" style="display:none">
           <option value="">Todos los destinos</option>
         </select>
-        <input type="date" class="filter-select" id="filter-desde" onchange="renderParaEnviar()" placeholder="Desde" title="Desde">
-        <input type="date" class="filter-select" id="filter-hasta" onchange="renderParaEnviar()" placeholder="Hasta" title="Hasta">
+        <input type="date" class="filter-select" id="filter-desde" placeholder="Desde" title="Desde">
+        <input type="date" class="filter-select" id="filter-hasta" placeholder="Hasta" title="Hasta">
       </div>
       <div class="orders-list" id="list-paraEnviar">
         <div class="empty-state"><div class="icon">📭</div><p>No hay pedidos pendientes</p></div>
@@ -364,17 +366,19 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
     <div id="view-historial" style="display:none">
       <div class="page-header"><div><h1>Historial</h1><p>Pedidos finalizados</p></div></div>
       <div class="filters">
-        <select class="filter-select" id="filter-hist-tipo" onchange="renderHistorial()">
+        <select class="filter-select" id="filter-hist-tipo">
           <option value="">Todos</option>
           <option value="misPedidos">Mis pedidos</option>
           <option value="despachados">Que despachaste</option>
         </select>
-        <select class="filter-select" id="filter-hist-estado" onchange="renderHistorial()">
+        <select class="filter-select" id="filter-hist-estado">
           <option value="">Todos</option>
           <option value="completo">✅ Completo</option>
           <option value="incompleto">⚠️ Incompleto</option>
           <option value="denegado">❌ Denegado</option>
         </select>
+        <input type="date" class="filter-select" id="filter-hist-desde" title="Desde">
+        <input type="date" class="filter-select" id="filter-hist-hasta" title="Hasta">
       </div>
       <div class="orders-list" id="list-historial">
         <div class="empty-state"><div class="icon">📋</div><p>No hay historial</p></div>
@@ -405,7 +409,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         <h1>💬 Mis Consultas</h1>
         <p>Tus sugerencias y consultas enviadas al administrador</p>
       </div>
-      <button class="btn btn-primary btn-sm" onclick="openModal('modal-sugerencia')" style="white-space:nowrap">+ Nueva consulta</button>
+      <button class="btn btn-primary btn-sm" id="btn-new-consulta" style="white-space:nowrap">+ Nueva consulta</button>
       </div>
       <div class="orders-list" id="list-misConsultas">
         <div class="empty-state"><div class="icon">💬</div><p>No enviaste ninguna consulta aún</p></div>
@@ -543,11 +547,15 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         <div class="card-header"><h3>🏷️ Padrón de productos</h3></div>
         <div class="card-body">
           <p style="font-size:13px;color:var(--text2);margin-bottom:12px">
-            Subí un nuevo <strong>.xlsx</strong> para reemplazar el padrón actual para todos los usuarios.
+            Subí un nuevo <strong>.xlsx</strong> para reemplazar el padrón principal. El sistema también muestra productos desde <strong>padrón extra</strong>.
           </p>
           <input type="file" id="file-padron" accept=".xlsx" style="display:none" onchange="handlePadronUpload(event)">
           <button class="btn btn-primary btn-sm" onclick="document.getElementById('file-padron').click()">📁 Subir nuevo padrón (.xlsx)</button>
-          <p style="font-size:12px;color:var(--text3);margin-top:10px">Productos cargados: <strong id="products-count">0</strong></p>
+          <p style="font-size:12px;color:var(--text3);margin-top:10px">
+            Padrón principal: <strong id="products-count">0</strong> ·
+            Padrón extra: <strong id="products-extra-count">0</strong> ·
+            Total visible: <strong id="products-total-count">0</strong>
+          </p>
           <div style="margin-top:14px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
               <span style="font-size:13px;font-weight:600">Vista previa (primeros 100)</span>
@@ -556,10 +564,45 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
             </div>
             <div style="overflow-x:auto;max-height:300px">
               <table class="admin-table">
-                <thead><tr><th>Código</th><th>Nombre</th><th>Marca</th></tr></thead>
+                <thead><tr><th>Código</th><th>Nombre</th><th>Marca</th><th>Fuente</th></tr></thead>
                 <tbody id="admin-products-body"></tbody>
               </table>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="card-header"><h3>➕ Padrón extra (insumos manuales)</h3></div>
+        <div class="card-body">
+          <p style="font-size:13px;color:var(--text2);margin-bottom:12px">
+            Agregá productos fuera del Excel principal (ej: bolsas, rollos POS, insumos varios).
+          </p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">Código</label>
+              <input class="form-input" type="text" id="new-extra-codigo" placeholder="Opcional">
+            </div>
+            <div class="form-group" style="margin-bottom:0;min-width:260px;flex:1">
+              <label class="form-label">Nombre</label>
+              <input class="form-input" type="text" id="new-extra-nombre" placeholder="Ej: Bolsa grande">
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">Marca</label>
+              <input class="form-input" type="text" id="new-extra-marca" placeholder="Opcional">
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="agregarPadronExtra()" style="height:42px;white-space:nowrap">+ Agregar extra</button>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <span style="font-size:13px;font-weight:600">Listado padrón extra</span>
+            <input class="form-input" type="text" placeholder="Buscar en extra..." id="admin-search-extra"
+              oninput="renderPadronExtra()" style="width:220px;padding:7px 11px;font-size:12px">
+          </div>
+          <div style="overflow-x:auto;max-height:260px">
+            <table class="admin-table">
+              <thead><tr><th>Código</th><th>Nombre</th><th>Marca</th><th>Fuente</th><th>Acciones</th></tr></thead>
+              <tbody id="extra-products-body"></tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -723,7 +766,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   </div>
 </div>
 
-<button class="fab" id="fab-btn" onclick="openNuevoPedido()" style="display:none">+</button>
+<button class="fab" id="fab-btn" style="display:none">+</button>
 
 
 <!-- EDITAR LOCAL -->
