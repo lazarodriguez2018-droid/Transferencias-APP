@@ -42,12 +42,20 @@ function hideSpinner(){ const s=el('global-spinner'); if(s) s.style.display='non
 async function withSpinner(fn){ showSpinner(); try{ await fn(); }finally{ hideSpinner(); } }
 
 function safeSet(id, val){ const e=el(id); if(e) e.textContent=val; }
+function escHtml(v){
+return String(v??'').replace(/[&<>"']/g,ch=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[ch]));
+}
 
 function notify(msg, type='info'){
 const icons={success:'✅',error:'❌',info:'ℹ️'};
 const e=document.createElement('div');
 e.className='notification '+type;
-e.innerHTML='<span>'+icons[type]+'</span><span>'+msg+'</span>';
+const icon=document.createElement('span');
+icon.textContent=icons[type]||icons.info;
+const txt=document.createElement('span');
+txt.textContent=String(msg||'');
+e.appendChild(icon);
+e.appendChild(txt);
 document.body.appendChild(e);
 setTimeout(()=>e.remove(), 4000);
 }
@@ -421,7 +429,7 @@ return data||[];
 function orderCard(o){
 const [icon,label,cls]=estadoInfo(o.estado);
 const prods=o.pedido_productos||[];
-const pn=prods.slice(0,2).map(p=>p.nombre.substring(0,28)).join(', ')+(prods.length>2?' +'+(prods.length-2)+' más':'');
+const pn=prods.slice(0,2).map(p=>escHtml((p.nombre||'').substring(0,28))).join(', ')+(prods.length>2?' +'+(prods.length-2)+' más':'');
 const fecha=fmtDate(o.created_at);
 const urgente=o.urgente?' <span class="priority-badge">🔴 URGENTE</span>':'';
 const viejo=o._viejo?' <span class="priority-badge" style="color:#f7971e">⏰ +24hs</span>':'';
@@ -433,8 +441,8 @@ const rol=isMio
 return '<div class="order-card" onclick="openDetalle(\''+o.id+'\')">'+
 '<div class="order-top"><div>'+
 '<div class="order-id">'+rol+'  #'+o.id.slice(-8,-2).toUpperCase()+urgente+viejo+'</div>'+
-'<div class="order-title">'+(o.cliente||'Sin cliente')+(o.telefono?' · 📞 '+o.telefono:'')+'</div>'+
-(tieneEscala(o.destino_local)?'<div class="order-route">📤 '+o.origen_local+' → 🔄 '+getEscala(o.destino_local).escala+' → 📥 '+o.destino_local+(o.transporte?' · 🚛 '+o.transporte:'')+'</div>':'<div class="order-route">📤 '+o.origen_local+' ('+o.origen_almacen+') → 📥 '+o.destino_local+' ('+o.destino_almacen+')'+(o.transporte?' · 🚛 '+o.transporte:'')+'</div>')+
+'<div class="order-title">'+escHtml(o.cliente||'Sin cliente')+(o.telefono?' · 📞 '+escHtml(o.telefono):'')+'</div>'+
+(tieneEscala(o.destino_local)?'<div class="order-route">📤 '+escHtml(o.origen_local)+' → 🔄 '+escHtml(getEscala(o.destino_local).escala)+' → 📥 '+escHtml(o.destino_local)+(o.transporte?' · 🚛 '+escHtml(o.transporte):'')+'</div>':'<div class="order-route">📤 '+escHtml(o.origen_local)+' ('+escHtml(o.origen_almacen)+') → 📥 '+escHtml(o.destino_local)+' ('+escHtml(o.destino_almacen)+')'+(o.transporte?' · 🚛 '+escHtml(o.transporte):'')+'</div>')+
 '</div><span class="badge '+cls+'">'+icon+' '+label+'</span></div>'+
 '<div class="order-meta"><span class="order-date">📅 '+fecha+'</span><span class="order-products">🏷️ '+pn+'</span></div>'+
 '</div>';
@@ -630,7 +638,7 @@ const isDestino = o.destino_local===currentPerfil.local_nombre;
 el('modal-detalle-title').textContent='Pedido #'+o.id.slice(-8,-2).toUpperCase();
 
 const prods=(o.pedido_productos||[]).map(p=>
-'<div class="product-item"><div class="p-info"><div class="p-name">'+p.nombre+'</div><div class="p-code">'+p.codigo+'</div></div><div class="p-qty">x'+p.cantidad+'</div></div>'
+'<div class="product-item"><div class="p-info"><div class="p-name">'+escHtml(p.nombre)+'</div><div class="p-code">'+escHtml(p.codigo)+'</div></div><div class="p-qty">x'+p.cantidad+'</div></div>'
 ).join('');
 
 // Determinar si el pedido tiene escala
@@ -664,7 +672,7 @@ steps=[
 const ci=stateOrder.indexOf(o.estado);
 let timeline='';
 if(o.estado==='denegado'){
-timeline='<div style="color:var(--accent2);font-size:13px;padding:6px 0">❌ Pedido denegado<br><span style="color:var(--text2)">Motivo: '+(o.motivo_denegacion||'No especificado')+'</span></div>';
+timeline='<div style="color:var(--accent2);font-size:13px;padding:6px 0">❌ Pedido denegado<br><span style="color:var(--text2)">Motivo: '+escHtml(o.motivo_denegacion||'No especificado')+'</span></div>';
 } else {
 timeline=steps.map((s,i)=>{
 const idx=stateOrder.indexOf(s[0]);
@@ -679,13 +687,13 @@ return '<div class="timeline-item"><div class="timeline-line">'+
 }
 
 let extra='';
-if(o.transporte) extra+='<div class="detail-row"><span class="label">Transporte:</span><span class="value">🚛 '+o.transporte+'</span></div>';
-if(o.tracking)   extra+='<div class="detail-row"><span class="label">Tracking:</span><span class="value" style="font-family:\'DM Mono\',monospace">'+o.tracking+'</span></div>';
-if(o.remito)     extra+='<div class="detail-row"><span class="label">N° Remito:</span><span class="value" style="font-family:\'DM Mono\',monospace">'+o.remito+'</span></div>';
-if(o.foto_url)   extra+='<br><img src="'+o.foto_url+'" class="photo-preview" alt="Foto">';
-if(o.estado==='incompleto'&&o.faltantes) extra+='<div class="detail-row"><span class="label">Faltantes:</span><span class="value" style="color:var(--accent2)">'+o.faltantes+'</span></div>';
-if(o.notas) extra+='<div class="detail-row"><span class="label">Notas:</span><span class="value">'+o.notas+'</span></div>';
-if(o.faltantes_escala) extra+='<div class="detail-row"><span class="label">Faltó en escala:</span><span class="value" style="color:#a855f7">'+o.faltantes_escala+'</span></div>';
+if(o.transporte) extra+='<div class="detail-row"><span class="label">Transporte:</span><span class="value">🚛 '+escHtml(o.transporte)+'</span></div>';
+if(o.tracking)   extra+='<div class="detail-row"><span class="label">Tracking:</span><span class="value" style="font-family:\'DM Mono\',monospace">'+escHtml(o.tracking)+'</span></div>';
+if(o.remito)     extra+='<div class="detail-row"><span class="label">N° Remito:</span><span class="value" style="font-family:\'DM Mono\',monospace">'+escHtml(o.remito)+'</span></div>';
+if(o.foto_url)   extra+='<br><img src="'+encodeURI(o.foto_url)+'" class="photo-preview" alt="Foto">';
+if(o.estado==='incompleto'&&o.faltantes) extra+='<div class="detail-row"><span class="label">Faltantes:</span><span class="value" style="color:var(--accent2)">'+escHtml(o.faltantes)+'</span></div>';
+if(o.notas) extra+='<div class="detail-row"><span class="label">Notas:</span><span class="value">'+escHtml(o.notas)+'</span></div>';
+if(o.faltantes_escala) extra+='<div class="detail-row"><span class="label">Faltó en escala:</span><span class="value" style="color:#a855f7">'+escHtml(o.faltantes_escala)+'</span></div>';
 
 const canOrigen  = isOrigen  || currentPerfil.role==='admin';
 const canDestino = isDestino || currentPerfil.role==='admin';
@@ -730,8 +738,8 @@ actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick
 
 el('modal-detalle-body').innerHTML=
 '<div class="detail-section"><h4>Estado</h4><span class="badge '+cls+'" style="font-size:13px;padding:5px 12px">'+icon+' '+label+'</span>'+(o.urgente?' <span class="priority-badge">🔴 URGENTE</span>':'')+' </div>'+
-'<div class="detail-section"><h4>Ruta</h4><div class="route-box"><div class="route-local"><div class="rl-label">SALE DE</div><div class="rl-name">'+o.origen_local+'</div><div class="rl-code">'+o.origen_almacen+'</div></div><div class="arrow">→</div><div class="route-local"><div class="rl-label">LLEGA A</div><div class="rl-name">'+o.destino_local+'</div><div class="rl-code">'+o.destino_almacen+'</div></div></div></div>'+
-'<div class="detail-section"><h4>Cliente</h4><div class="detail-row"><span class="label">Nombre:</span><span class="value">'+(o.cliente||'–')+'</span></div><div class="detail-row"><span class="label">Teléfono:</span><span class="value">'+(o.telefono||'–')+'</span></div></div>'+
+'<div class="detail-section"><h4>Ruta</h4><div class="route-box"><div class="route-local"><div class="rl-label">SALE DE</div><div class="rl-name">'+escHtml(o.origen_local)+'</div><div class="rl-code">'+escHtml(o.origen_almacen)+'</div></div><div class="arrow">→</div><div class="route-local"><div class="rl-label">LLEGA A</div><div class="rl-name">'+escHtml(o.destino_local)+'</div><div class="rl-code">'+escHtml(o.destino_almacen)+'</div></div></div></div>'+
+'<div class="detail-section"><h4>Cliente</h4><div class="detail-row"><span class="label">Nombre:</span><span class="value">'+escHtml(o.cliente||'–')+'</span></div><div class="detail-row"><span class="label">Teléfono:</span><span class="value">'+escHtml(o.telefono||'–')+'</span></div></div>'+
 '<div class="detail-section"><h4>Info</h4><div class="detail-row"><span class="label">Creado:</span><span class="value">'+fmtDateTime(o.created_at)+'</span></div><div class="detail-row"><span class="label">Actualizado:</span><span class="value">'+fmtDateTime(o.updated_at)+'</span></div>'+extra+'</div>'+
 '<div class="detail-section"><h4>Productos ('+(o.pedido_productos||[]).length+')</h4><div class="product-items">'+prods+'</div></div>'+
 '<div class="detail-section"><h4>Seguimiento</h4><div class="timeline">'+timeline+'</div></div>'+
@@ -1029,11 +1037,11 @@ const e=el('chat-messages');
 if(!msgs||!msgs.length){e.innerHTML='<div style="text-align:center;color:var(--text3);font-size:13px;padding:20px">No hay mensajes aún</div>';return;}
 e.innerHTML=msgs.map(m=>{
 const isOwn=m.usuario_id===currentPerfil.id;
-const initials=m.usuario_nombre.split(' ').map(w=>w[0]).join('').slice(0,2);
+const initials=(m.usuario_nombre||'').split(' ').map(w=>w[0]||'').join('').slice(0,2);
 const hora=new Date(m.created_at).toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'});
 return '<div class="chat-msg '+(isOwn?'own':'other')+'">'+
-'<div class="chat-avatar" style="background:'+(isOwn?'var(--accent)':'var(--surface3)')+'">'+initials+'</div>'+
-'<div><div class="chat-bubble">'+m.texto+'</div><div class="chat-meta" style="text-align:'+(isOwn?'right':'left')+'">'+m.usuario_nombre+' · '+hora+'</div></div></div>';
+'<div class="chat-avatar" style="background:'+(isOwn?'var(--accent)':'var(--surface3)')+'">'+escHtml(initials)+'</div>'+
+'<div><div class="chat-bubble">'+escHtml(m.texto)+'</div><div class="chat-meta" style="text-align:'+(isOwn?'right':'left')+'">'+escHtml(m.usuario_nombre)+' · '+hora+'</div></div></div>';
 }).join('');
 e.scrollTop=e.scrollHeight;
 }
@@ -1073,8 +1081,8 @@ if(!notifs||!notifs.length){listEl.innerHTML='<div style="padding:24px;text-alig
 listEl.innerHTML=notifs.map(n=>{
 const time=fmtDateTime(n.created_at);
 return '<div class="notif-item '+(n.leida?'':'unread')+'" onclick="clickNotif(\''+n.id+'\',\''+(n.pedido_id||'')+'\')">'+
-'<div class="n-title">'+n.titulo+'</div>'+
-(n.cuerpo?'<div class="n-body">'+n.cuerpo+'</div>':'')+
+'<div class="n-title">'+escHtml(n.titulo)+'</div>'+
+(n.cuerpo?'<div class="n-body">'+escHtml(n.cuerpo)+'</div>':'')+
 '<div class="n-time">'+time+'</div></div>';
 }).join('');
 }
@@ -1105,9 +1113,9 @@ const fecha=fmtDate(s.created_at);
 const badge=s.respuesta?'<span class="badge badge-accepted" style="font-size:11px">✅ Respondida</span>':'<span class="badge badge-pending" style="font-size:11px">⏳ Pendiente</span>';
 return '<div class="consulta-card">'+
 '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+badge+'<span class="c-meta" style="margin-bottom:0">'+fecha+'</span></div>'+
-'<div class="c-asunto">'+s.asunto+'</div>'+
-'<div class="c-texto" style="margin-top:6px">'+s.texto+'</div>'+
-(s.respuesta?'<div class="consulta-respuesta"><div class="r-label">💬 Respuesta del administrador:</div>'+s.respuesta+'</div>':'<div class="consulta-pendiente">El administrador aún no respondió.</div>')+
+'<div class="c-asunto">'+escHtml(s.asunto)+'</div>'+
+'<div class="c-texto" style="margin-top:6px">'+escHtml(s.texto)+'</div>'+
+(s.respuesta?'<div class="consulta-respuesta"><div class="r-label">💬 Respuesta del administrador:</div>'+escHtml(s.respuesta)+'</div>':'<div class="consulta-pendiente">El administrador aún no respondió.</div>')+
 '</div>';
 }).join('');
 await updateBadges();
