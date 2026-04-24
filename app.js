@@ -30,6 +30,7 @@ let idleIntervalId = null;
 let idleWarned = false;
 let activityListenersBound = false;
 let lastActivityWriteMs = 0;
+let realtimeChannels = [];
 
 function normalizeExtraProduct(row){
 return {
@@ -140,14 +141,14 @@ idleWarned = false;
 
 async function forceIdleLogout(){
 stopIdleWatcher();
+teardownRealtime();
 try{ await db.auth.signOut(); }catch(_e){}
 clearLastActivityMs(currentUser?.id);
 currentUser=null;
 currentPerfil=null;
-sessionStorage.removeItem('empresa_validada');
-sessionStorage.removeItem('empresa_nombre');
 clearAuthMessages();
 showPage('auth-page');
+checkEmpresaClave();
 notify('Sesión cerrada por inactividad (más de 1 hora).','info');
 }
 
@@ -311,6 +312,7 @@ switchAuthTab('login');
 async function doLogout(){
 await db.auth.signOut();
 stopIdleWatcher();
+teardownRealtime();
 clearLastActivityMs(currentUser?.id);
 currentUser=null; currentPerfil=null;
 sessionStorage.removeItem('empresa_validada');
@@ -321,6 +323,7 @@ if(adminNav) adminNav.style.display='none';
 document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
 clearAuthMessages();
 showPage('auth-page');
+checkEmpresaClave();
 }
 
 async function afterLogin(user){
@@ -402,8 +405,9 @@ hideSpinner();
 }
 
 function setupRealtime(){
+teardownRealtime();
 // Listen for new notifications for current user
-db.channel('notifs-'+currentPerfil.id)
+const notifsChannel = db.channel('notifs-'+currentPerfil.id)
 .on('postgres_changes',{event:'INSERT',schema:'public',table:'notificaciones',filter:'usuario_id=eq.'+currentPerfil.id},
 payload=>{
 updateNotifBadge();
@@ -412,12 +416,19 @@ notify('🔔 '+n.titulo,'info');
 })
 .subscribe();
 // Listen for pedido changes in my locals
-db.channel('pedidos-changes')
+const pedidosChannel = db.channel('pedidos-changes-'+currentPerfil.id)
 .on('postgres_changes',{event:'UPDATE',schema:'public',table:'pedidos'},
 ()=>{ refreshView(); updateBadges(); })
 .on('postgres_changes',{event:'INSERT',schema:'public',table:'pedidos'},
 ()=>{ refreshView(); updateBadges(); })
 .subscribe();
+realtimeChannels=[notifsChannel,pedidosChannel];
+}
+
+function teardownRealtime(){
+if(!realtimeChannels.length) return;
+realtimeChannels.forEach(ch=>{ try{ db.removeChannel(ch); }catch(_e){} });
+realtimeChannels=[];
 }
 
 async function updateBadges(){
