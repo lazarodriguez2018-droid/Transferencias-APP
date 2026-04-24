@@ -1357,8 +1357,9 @@ const empresa = sessionStorage.getItem('empresa_nombre') || 'Sucan';
 const fecha   = new Date().toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit',year:'2-digit'});
 const pedidoId= o.id.slice(-8,-2).toUpperCase();
 const prods   = (o.pedido_productos||[]).map(p=>p.nombre+(p.cantidad>1?' x'+p.cantidad:'')).join(', ');
+const esc = (v)=>String(v??'').replace(/[&<>"']/g,ch=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[ch]));
 
-// Generar HTML para imprimir
+// Generar HTML para imprimir (A4, láser blanco y negro, sin emojis)
 const html = `<!DOCTYPE html>
 
 <html lang="es">
@@ -1366,87 +1367,93 @@ const html = `<!DOCTYPE html>
 <meta charset="UTF-8">
 <title>Etiqueta Pedido #${pedidoId}</title>
 <style>
-  @page { size:A4; margin:20mm; }
+  @page { size:A4; margin:12mm; }
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:'Arial',sans-serif; background:#fff; color:#111; }
+  body { font-family:Arial,Helvetica,sans-serif; background:#fff; color:#000; }
   .etiqueta {
-    width:100%; min-height:calc(297mm - 40mm);
-    border:3px solid #111; border-radius:8px;
-    padding:28px 32px; display:flex; flex-direction:column; gap:0;
+    width:100%; min-height:calc(297mm - 24mm);
+    border:3px solid #000;
+    padding:18mm 16mm;
+    display:flex;
+    flex-direction:column;
+    gap:7mm;
   }
-  .header {
-    text-align:center; border-bottom:2px solid #111;
-    padding-bottom:18px; margin-bottom:24px;
+  .header { text-align:center; border-bottom:2px solid #000; padding-bottom:5mm; }
+  .empresa { font-size:12pt; font-weight:700; letter-spacing:.6px; text-transform:uppercase; }
+  .titulo { margin-top:2mm; font-size:18pt; font-weight:800; letter-spacing:1px; text-transform:uppercase; }
+  .pedido { margin-top:2mm; font-size:12pt; font-weight:700; }
+  .urgente { margin-top:2mm; font-size:12pt; font-weight:800; text-transform:uppercase; }
+  .bloque { border:2px solid #000; padding:4mm; }
+  .bloque h3 { font-size:11pt; text-transform:uppercase; margin-bottom:3mm; }
+  .local-nombre { font-size:20pt; font-weight:800; line-height:1.2; margin-bottom:2mm; text-transform:uppercase; }
+  .dato { font-size:11pt; line-height:1.4; }
+  .dato strong { font-weight:800; }
+  .destino { border-width:3px; }
+  .destino .local-nombre { font-size:30pt; }
+  .contenido { border:2px solid #000; padding:4mm; }
+  .contenido h3 { font-size:11pt; text-transform:uppercase; margin-bottom:2mm; }
+  .contenido p { font-size:11pt; line-height:1.35; white-space:pre-wrap; word-break:break-word; }
+  .footer {
+    margin-top:auto;
+    border-top:2px solid #000;
+    padding-top:4mm;
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:3mm;
   }
-  .header .logo { font-size:28px; font-weight:900; letter-spacing:3px; text-transform:uppercase; }
-  .header .sub  { font-size:12px; color:#555; margin-top:4px; letter-spacing:1px; }
-  .header .pedido-id { font-size:13px; font-family:monospace; background:#f0f0f0; padding:4px 10px; border-radius:4px; margin-top:8px; display:inline-block; }
-  .bloque { margin-bottom:28px; }
-  .bloque-titulo {
-    font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:2px;
-    color:#fff; background:#111; padding:5px 12px; border-radius:4px;
-    display:inline-block; margin-bottom:14px;
-  }
-  .bloque-titulo.dest { background:#333; }
-  .local-nombre { font-size:22px; font-weight:800; margin-bottom:6px; }
-  .local-dato   { font-size:14px; color:#333; margin-bottom:4px; display:flex; gap:8px; align-items:flex-start; }
-  .local-dato span { min-width:90px; font-weight:600; color:#111; }
-  .divisor { border:none; border-top:1px dashed #bbb; margin:0 0 24px 0; }
-  .productos { background:#f8f8f8; border-radius:6px; padding:14px 16px; margin-bottom:24px; }
-  .productos .p-titulo { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:#555; margin-bottom:8px; }
-  .productos .p-lista  { font-size:13px; line-height:1.7; }
-  .footer { margin-top:auto; border-top:2px solid #111; padding-top:16px; display:flex; justify-content:space-between; align-items:flex-end; }
-  .footer .fecha { font-size:13px; }
-  .footer .fecha span { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#555; display:block; margin-bottom:2px; }
-  .footer .qr-placeholder { width:70px; height:70px; border:2px dashed #ccc; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:10px; color:#aaa; text-align:center; }
-  ${o.urgente ? '.etiqueta { border-color:#cc0000; } .header .logo { color:#cc0000; }' : ''}
-  @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
+  .meta { border:1px solid #000; padding:2.5mm; min-height:16mm; }
+  .meta .k { font-size:8pt; text-transform:uppercase; }
+  .meta .v { margin-top:1mm; font-size:11pt; font-weight:700; word-break:break-word; }
 </style>
 </head>
 <body>
 <div class="etiqueta">
 
   <div class="header">
-    <div class="logo">${empresa}</div>
-    <div class="sub">Sistema de transferencias entre locales</div>
-    <div class="pedido-id">Pedido #${pedidoId}</div>
-    ${o.urgente ? '<div style="color:#cc0000;font-weight:700;font-size:13px;margin-top:6px">⚠ PEDIDO URGENTE</div>' : ''}
+    <div class="empresa">${esc(empresa)}</div>
+    <div class="titulo">Etiqueta de envío interno</div>
+    <div class="pedido">Pedido ${esc(pedidoId)}</div>
+    ${o.urgente ? '<div class="urgente">Pedido urgente</div>' : ''}
   </div>
 
   <div class="bloque">
-    <div class="bloque-titulo">📤 Remitente</div>
-    <div class="local-nombre">${empresa} ${origen.nombre}</div>
-    <div class="local-dato"><span>Almacén:</span> ${origen.almacen}</div>
-    ${origen.direccion ? '<div class="local-dato"><span>Dirección:</span> '+origen.direccion+'</div>' : ''}
-    ${origen.telefono  ? '<div class="local-dato"><span>Teléfono:</span> '+origen.telefono+'</div>'  : ''}
+    <h3>Remitente</h3>
+    <div class="local-nombre">${esc(origen.nombre||empresa)}</div>
+    <div class="dato"><strong>Almacén:</strong> ${esc(origen.almacen||'-')}</div>
+    ${origen.direccion ? '<div class="dato"><strong>Dirección:</strong> '+esc(origen.direccion)+'</div>' : ''}
+    ${origen.telefono  ? '<div class="dato"><strong>Teléfono:</strong> '+esc(origen.telefono)+'</div>'  : ''}
   </div>
 
-  <hr class="divisor">
-
-  <div class="bloque">
-    <div class="bloque-titulo dest">📥 Destinatario</div>
-    <div class="local-nombre">${empresa} ${destino.nombre}</div>
-    <div class="local-dato"><span>Almacén:</span> ${destino.almacen}</div>
-    ${destino.direccion ? '<div class="local-dato"><span>Dirección:</span> '+destino.direccion+'</div>' : ''}
-    ${destino.telefono  ? '<div class="local-dato"><span>Teléfono:</span> '+destino.telefono+'</div>'  : ''}
+  <div class="bloque destino">
+    <h3>Destino</h3>
+    <div class="local-nombre">${esc(destino.nombre||'-')}</div>
+    <div class="dato"><strong>Almacén:</strong> ${esc(destino.almacen||'-')}</div>
+    ${destino.direccion ? '<div class="dato"><strong>Dirección:</strong> '+esc(destino.direccion)+'</div>' : ''}
+    ${destino.telefono  ? '<div class="dato"><strong>Teléfono:</strong> '+esc(destino.telefono)+'</div>'  : ''}
   </div>
 
-${o.cliente ? '<div class="bloque"><div class="bloque-titulo" style="background:#555">👤 Cliente</div><div class="local-nombre" style="font-size:17px">'+o.cliente+'</div>'+(o.telefono?'<div class="local-dato"><span>Teléfono:</span> '+o.telefono+'</div>':'')+'</div><hr class="divisor">' : ''}
+  ${o.cliente ? '<div class="bloque"><h3>Cliente final</h3><div class="local-nombre" style="font-size:15pt">'+esc(o.cliente)+'</div>'+(o.telefono?'<div class="dato"><strong>Teléfono:</strong> '+esc(o.telefono)+'</div>':'')+'</div>' : ''}
 
-  <div class="productos">
-    <div class="p-titulo">Contenido del envío</div>
-    <div class="p-lista">${prods||'Sin detalle de productos'}</div>
+  <div class="contenido">
+    <h3>Contenido</h3>
+    <p>${esc(prods||'Sin detalle de productos')}</p>
   </div>
 
-${o.notas ? '<div style="border:1px solid #ddd;border-radius:6px;padding:12px 14px;margin-bottom:20px;font-size:13px;color:#333"><strong>Notas:</strong> '+o.notas+'</div>' : ''}
+  ${o.notas ? '<div class="contenido"><h3>Notas</h3><p>'+esc(o.notas)+'</p></div>' : ''}
 
   <div class="footer">
-    <div class="fecha">
-      <span>Fecha</span>
-      ${fecha}
+    <div class="meta">
+      <div class="k">Fecha</div>
+      <div class="v">${esc(fecha)}</div>
     </div>
-    ${o.remito ? '<div class="fecha"><span>N° Remito</span>'+o.remito+'</div>' : ''}
-    ${o.tracking ? '<div class="fecha"><span>Tracking</span>'+o.tracking+'</div>' : ''}
+    <div class="meta">
+      <div class="k">Remito</div>
+      <div class="v">${esc(o.remito||'-')}</div>
+    </div>
+    <div class="meta">
+      <div class="k">Tracking</div>
+      <div class="v">${esc(o.tracking||'-')}</div>
+    </div>
   </div>
 
 </div>
