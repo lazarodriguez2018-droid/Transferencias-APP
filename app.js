@@ -20,6 +20,25 @@ let despachoTab = 'pendientes';
 let currentChatOrderId = null;
 let currentSugId = null;
 let productsCache = [];
+let agendaCache = [];
+let clienteDesdePedido = false;
+
+const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 1 hora
+const IDLE_WARNING_MS = 5 * 60 * 1000; // aviso 5 min antes
+const IDLE_CHECK_INTERVAL_MS = 30 * 1000;
+let idleIntervalId = null;
+let idleWarned = false;
+let activityListenersBound = false;
+let lastActivityWriteMs = 0;
+
+function normalizeExtraProduct(row){
+return {
+id: row?.id || null,
+codigo: row?.codigo ?? row?.cod ?? row?.sku ?? '',
+nombre: row?.nombre ?? row?.producto ?? row?.descripcion ?? '',
+marca: row?.marca ?? row?.categoria ?? row?.unidad ?? row?.descripcion ?? ''
+};
+}
 
 const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 1 hora
 const IDLE_WARNING_MS = 5 * 60 * 1000; // aviso 5 min antes
@@ -509,7 +528,7 @@ const ve=el('view-'+view); if(ve) ve.style.display='block';
 const ni=el('nav-'+view); if(ni) ni.classList.add('active');
 const titles={
 dashboard:'Dashboard',misPedidos:'Pedidos de mi local',paraEnviar:'Pedidos a despachar',
-historial:'Historial',misConsultas:'Mis Consultas',chats:'Chats',
+historial:'Historial',misConsultas:'Mis Consultas',chats:'Chats',agenda:'Agenda',
 perfil:'Mi Perfil',usuarios:'Usuarios',sugerencias:'Sugerencias',config:'Configuración'
 };
 safeSet('mobile-title', titles[view]||view);
@@ -517,7 +536,7 @@ el('fab-btn').style.display=['misPedidos','paraEnviar','historial','dashboard'].
 updateBadges();
 
 const _rm={dashboard:renderDashboard,misPedidos:renderMisPedidos,paraEnviar:renderParaEnviar,
-historial:renderHistorial,misConsultas:renderMisConsultas,chats:renderChats,
+historial:renderHistorial,misConsultas:renderMisConsultas,chats:renderChats,agenda:renderAgendaClientes,
 perfil:renderPerfil,usuarios:renderUsuarios,sugerencias:renderSugerencias,config:renderConfig};
 if(_rm[view]) withSpinner(()=>_rm[view]());
 closeSidebar();
@@ -1007,6 +1026,128 @@ if(v==='dashboard')   renderDashboard();
 if(v==='misPedidos')  renderMisPedidos();
 if(v==='paraEnviar')  renderParaEnviar();
 if(v==='historial')   renderHistorial();
+if(v==='agenda')      renderAgendaClientes();
+}
+
+// ═══════════════════════════════════════════
+//  AGENDA DE CLIENTES
+// ═══════════════════════════════════════════
+async function renderAgendaClientes(){
+const q=(el('agenda-search')?.value||'').trim();
+let query=db.from('clientes_agenda').select('*').order('created_at',{ascending:false}).limit(400);
+if(q){
+const qEsc=q.replace(/,/g,' ');
+query=query.or('nombre.ilike.%'+qEsc+'%,telefono.ilike.%'+qEsc+'%,direccion.ilike.%'+qEsc+'%');
+}
+const {data,error}=await query;
+const tbody=el('agenda-body');
+if(!tbody) return;
+if(error){
+tbody.innerHTML='<tr><td colspan="4" style="color:var(--danger)">No se pudo cargar agenda: '+escHtml(error.message)+'</td></tr>';
+return;
+}
+agendaCache=data||[];
+if(!agendaCache.length){
+tbody.innerHTML='<tr><td colspan="4" style="color:var(--text3)">Sin clientes en agenda</td></tr>';
+return;
+}
+tbody.innerHTML=agendaCache.map(c=>'<tr>'+
+'<td>'+escHtml(c.nombre||'')+'</td>'+
+'<td>'+escHtml(c.telefono||'')+'</td>'+
+'<td>'+escHtml(c.direccion||'')+'</td>'+
+'<td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="editarClienteAgenda(\''+c.id+'\')">✏️</button> '+
+'<button class="btn btn-danger btn-sm" onclick="eliminarClienteAgenda(\''+c.id+'\')">🗑️</button></td>'+
+'</tr>').join('');
+}
+
+function abrirModalNuevoClienteAgenda(desdePedido=false){
+clienteDesdePedido=!!desdePedido;
+el('cliente-agenda-id').value='';
+el('cliente-agenda-nombre').value=el('new-cliente')?.value||'';
+el('cliente-agenda-telefono').value=el('new-telefono')?.value||'';
+el('cliente-agenda-direccion').value='';
+safeSet('modal-cliente-title','➕ Nuevo cliente');
+openModal('modal-cliente-agenda');
+}
+
+function editarClienteAgenda(id){
+const c=agendaCache.find(x=>x.id===id);
+if(!c) return;
+clienteDesdePedido=false;
+el('cliente-agenda-id').value=c.id;
+el('cliente-agenda-nombre').value=c.nombre||'';
+el('cliente-agenda-telefono').value=c.telefono||'';
+el('cliente-agenda-direccion').value=c.direccion||'';
+safeSet('modal-cliente-title','✏️ Editar cliente');
+openModal('modal-cliente-agenda');
+}
+
+async function guardarClienteAgenda(){
+const id=el('cliente-agenda-id').value||null;
+const nombre=el('cliente-agenda-nombre').value.trim();
+const telefono=el('cliente-agenda-telefono').value.trim();
+const direccion=el('cliente-agenda-direccion').value.trim();
+if(!nombre||!telefono) return notify('Completá nombre y teléfono','error');
+const payload={nombre,telefono,direccion:direccion||null};
+const req=id
+?db.from('clientes_agenda').update(payload).eq('id',id).select().single()
+:db.from('clientes_agenda').insert(payload).select().single();
+const {data,error}=await req;
+if(error) return notify('No se pudo guardar cliente: '+error.message,'error');
+closeModal('modal-cliente-agenda');
+notify(id?'Cliente actualizado':'Cliente agregado','success');
+if(clienteDesdePedido){
+seleccionarClienteAgendaPedido(data);
+clienteDesdePedido=false;
+}
+if(el('view-agenda')?.style.display!=='none') await renderAgendaClientes();
+}
+
+async function eliminarClienteAgenda(id){
+if(!confirm('¿Eliminar este cliente de la agenda?')) return;
+const {error}=await db.from('clientes_agenda').delete().eq('id',id);
+if(error) return notify('No se pudo eliminar: '+error.message,'error');
+notify('Cliente eliminado','info');
+await renderAgendaClientes();
+}
+
+let _agendaPedidoTimeout=null;
+function buscarClienteAgendaPedido(){
+const q=el('cliente-search-input').value.trim();
+const res=el('cliente-search-results');
+if(q.length<2){ res.classList.remove('show'); return; }
+clearTimeout(_agendaPedidoTimeout);
+_agendaPedidoTimeout=setTimeout(async()=>{
+const qEsc=q.replace(/,/g,' ');
+const {data,error}=await db.from('clientes_agenda').select('*')
+.or('nombre.ilike.%'+qEsc+'%,telefono.ilike.%'+qEsc+'%')
+.order('nombre').limit(20);
+if(error) return;
+if(!data||!data.length){
+res.innerHTML='<div class="product-result"><div class="p-name" style="color:var(--text2)">Sin clientes para "'+escHtml(q)+'"</div></div>';
+res.classList.add('show');
+return;
+}
+window._agenda_sr=data;
+res.innerHTML=data.map((c,i)=>'<div class="product-result" onclick="selClienteAgenda('+i+')">'+
+'<div class="p-name">'+escHtml(c.nombre||'')+'</div>'+
+'<div class="p-code">'+escHtml(c.telefono||'')+(c.direccion?' · '+escHtml(c.direccion):'')+'</div>'+
+'</div>').join('');
+res.classList.add('show');
+},250);
+}
+
+function selClienteAgenda(idx){
+const c=window._agenda_sr&&window._agenda_sr[idx];
+if(!c) return;
+seleccionarClienteAgendaPedido(c);
+}
+
+function seleccionarClienteAgendaPedido(c){
+el('new-cliente').value=c.nombre||'';
+el('new-telefono').value=c.telefono||'';
+el('cliente-search-input').value=(c.nombre||'')+(c.telefono?' · '+c.telefono:'');
+el('cliente-search-results').classList.remove('show');
 }
 
 // ═══════════════════════════════════════════
@@ -1015,6 +1156,8 @@ if(v==='historial')   renderHistorial();
 async function openNuevoPedido(){
 newOrderProducts=[]; fotoBase64=null; selectedProductTemp=null;
 el('new-cliente').value=''; el('new-telefono').value='';
+el('cliente-search-input').value='';
+el('cliente-search-results').classList.remove('show');
 el('new-notas').value=''; el('new-urgente').checked=false;
 el('product-search-input').value=''; el('product-qty').value='1';
 renderSelectedProducts();
@@ -1742,6 +1885,9 @@ o.addEventListener('click', e=>{ if(e.target===o) closeModal(o.id); });
 document.addEventListener('click',e=>{
 if(!e.target.closest('.product-search-wrap')){
 const r=el('product-search-results'); if(r) r.classList.remove('show');
+}
+if(!e.target.closest('#cliente-search-input')&&!e.target.closest('#cliente-search-results')){
+const rc=el('cliente-search-results'); if(rc) rc.classList.remove('show');
 }
 });
 

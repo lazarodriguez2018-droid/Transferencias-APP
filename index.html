@@ -221,6 +221,9 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
           <span class="icon">💬</span> Chats
           <span class="nav-badge" id="badge-chats" style="display:none">0</span>
         </div>
+        <div class="nav-item" id="nav-agenda" data-nav="agenda">
+          <span class="icon">📒</span> Agenda
+        </div>
         <div class="nav-item" id="nav-perfil" data-nav="perfil">
           <span class="icon">👤</span> Mi Perfil
         </div>
@@ -398,6 +401,27 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
           <table class="admin-table">
             <thead><tr><th>Nombre</th><th>Email</th><th>Local</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead>
             <tbody id="users-all-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- AGENDA (todos los roles) -->
+    <div id="view-agenda" style="display:none">
+      <div class="page-header"><div>
+        <h1>📒 Agenda de clientes</h1>
+        <p>Buscá y gestioná clientes por nombre o teléfono</p>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="abrirModalNuevoClienteAgenda()" style="white-space:nowrap">+ Nuevo cliente</button>
+      </div>
+      <div class="filters">
+        <input class="filter-select" id="agenda-search" type="text" placeholder="Buscar por nombre, teléfono o dirección..." oninput="renderAgendaClientes()">
+      </div>
+      <div class="card">
+        <div class="card-body" style="overflow-x:auto">
+          <table class="admin-table">
+            <thead><tr><th>Nombre</th><th>Teléfono</th><th>Dirección</th><th>Acciones</th></tr></thead>
+            <tbody id="agenda-body"></tbody>
           </table>
         </div>
       </div>
@@ -653,6 +677,16 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
           <input class="form-input" type="tel" id="new-telefono" placeholder="Ej: 099 123 456">
         </div>
       </div>
+      <div class="form-group" style="margin-top:6px">
+        <label class="form-label">Buscar en agenda</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div style="flex:1;position:relative">
+            <input class="form-input" type="text" id="cliente-search-input" placeholder="Nombre o teléfono..." oninput="buscarClienteAgendaPedido()">
+            <div class="product-search-results" id="cliente-search-results"></div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="abrirModalNuevoClienteAgenda(true)" style="white-space:nowrap">+ Nuevo cliente</button>
+        </div>
+      </div>
       <hr class="divider">
       <h4 style="font-size:13px;font-weight:600;margin-bottom:10px">Productos solicitados</h4>
       <div class="product-items" id="selected-products"></div>
@@ -681,6 +715,35 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
     <div class="modal-footer">
       <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-nuevo-pedido')">Cancelar</button>
       <button class="btn btn-primary btn-sm" onclick="crearPedido()">Crear Pedido</button>
+    </div>
+  </div>
+</div>
+
+<!-- NUEVO CLIENTE AGENDA -->
+<div class="modal-overlay" id="modal-cliente-agenda">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <h2 id="modal-cliente-title">➕ Nuevo cliente</h2>
+      <div class="modal-close" onclick="closeModal('modal-cliente-agenda')">✕</div>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="cliente-agenda-id">
+      <div class="form-group">
+        <label class="form-label">Nombre</label>
+        <input class="form-input" type="text" id="cliente-agenda-nombre" placeholder="Ej: Juan Pérez">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Teléfono</label>
+        <input class="form-input" type="tel" id="cliente-agenda-telefono" placeholder="Ej: 099 123 456">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Dirección (opcional)</label>
+        <input class="form-input" type="text" id="cliente-agenda-direccion" placeholder="Ej: Calle 123">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-cliente-agenda')">Cancelar</button>
+      <button class="btn btn-primary btn-sm" onclick="guardarClienteAgenda()">Guardar</button>
     </div>
   </div>
 </div>
