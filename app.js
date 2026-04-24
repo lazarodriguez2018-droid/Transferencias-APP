@@ -54,6 +54,9 @@ function safeSet(id, val){ const e=el(id); if(e) e.textContent=val; }
 function escHtml(v){
 return String(v??'').replace(/[&<>"']/g,ch=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[ch]));
 }
+function escJsStr(v){
+return String(v??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\r?\n/g,' ');
+}
 
 function notify(msg, type='info'){
 const icons={success:'✅',error:'❌',info:'ℹ️'};
@@ -198,6 +201,8 @@ switchAuthTab('login');
 async function doLogout(){
 await db.auth.signOut();
 currentUser=null; currentPerfil=null;
+sessionStorage.removeItem('empresa_validada');
+sessionStorage.removeItem('empresa_nombre');
 // Reset UI completamente para evitar que persistan opciones de admin
 const adminNav = el('admin-nav');
 if(adminNav) adminNav.style.display='none';
@@ -755,7 +760,7 @@ el('modal-detalle-body').innerHTML=
 actions+
 '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">'+
 '<button class="btn btn-ghost btn-sm" onclick="openChat(\''+o.id+'\')">💬 Chat del pedido</button>'+
-(o.telefono?'<button class="btn btn-success btn-sm" onclick="abrirWhatsApp(\''+o.telefono+'\',\''+( o.cliente||'')+'\')" style="background:#25d366;border-color:#25d366;color:#fff">💬 WhatsApp cliente</button>':'')+
+(o.telefono?'<button class="btn btn-success btn-sm" onclick="abrirWhatsApp(\''+escJsStr(o.telefono)+'\',\''+escJsStr(o.cliente||'')+'\')" style="background:#25d366;border-color:#25d366;color:#fff">💬 WhatsApp cliente</button>':'')+
 '<button class="btn btn-ghost btn-sm" onclick="generarEtiqueta(\''+o.id+'\')">🖨️ Etiqueta de envío</button>'+
 (currentPerfil.role==='admin'?
 '<button class="btn btn-warning btn-sm" onclick="retrocederEstado(\''+o.id+'\')">↩️ Retroceder estado</button>'+
@@ -961,11 +966,11 @@ if(!map.has(k)) map.set(k,p);
 });
 const results=Array.from(map.values()).slice(0,30);
 if(!results||!results.length){
-res.innerHTML='<div class="product-result"><div class="p-name" style="color:var(--text2)">Sin resultados para "'+q+'"</div></div>';
+res.innerHTML='<div class="product-result"><div class="p-name" style="color:var(--text2)">Sin resultados para "'+escHtml(q)+'"</div></div>';
 res.classList.add('show'); return;
 }
 window._sr=results;
-res.innerHTML=results.map((p,i)=>'<div class="product-result" onclick="selProd('+i+')"><div class="p-name">'+p.nombre+'</div><div class="p-code">'+p.codigo+(p.marca?' · '+p.marca:'')+'</div></div>').join('');
+res.innerHTML=results.map((p,i)=>'<div class="product-result" onclick="selProd('+i+')"><div class="p-name">'+escHtml(p.nombre)+'</div><div class="p-code">'+escHtml(p.codigo)+(p.marca?' · '+escHtml(p.marca):'')+'</div></div>').join('');
 res.classList.add('show');
 },300);
 }
@@ -1153,10 +1158,10 @@ await db.from('sugerencias').update({leida:true}).eq('leida',false);
 const e=el('list-sugerencias');
 if(!sugs||!sugs.length){e.innerHTML='<div class="empty-state"><div class="icon">💡</div><p>No hay sugerencias aún</p></div>';return;}
 e.innerHTML=sugs.map(s=>'<div class="suggestion-item">'+
-'<div class="s-meta">'+s.usuario_nombre+' · '+s.local_nombre+' · '+fmtDate(s.created_at)+'</div>'+
-'<div style="font-weight:600;margin-bottom:4px">'+s.asunto+'</div>'+
-'<div class="s-text">'+s.texto+'</div>'+
-(s.respuesta?'<div class="suggestion-reply">💬 Tu respuesta: '+s.respuesta+'</div>':'')+
+'<div class="s-meta">'+escHtml(s.usuario_nombre)+' · '+escHtml(s.local_nombre)+' · '+fmtDate(s.created_at)+'</div>'+
+'<div style="font-weight:600;margin-bottom:4px">'+escHtml(s.asunto)+'</div>'+
+'<div class="s-text">'+escHtml(s.texto)+'</div>'+
+(s.respuesta?'<div class="suggestion-reply">💬 Tu respuesta: '+escHtml(s.respuesta)+'</div>':'')+
 '<div style="margin-top:10px"><button class="btn btn-ghost btn-sm" onclick="abrirRespuestaSug(\''+s.id+'\')">'+
 (s.respuesta?'✏️ Editar respuesta':'💬 Responder')+'</button></div></div>').join('');
 await updateBadges();
@@ -1167,8 +1172,8 @@ currentSugId=sugId;
 const {data:sug}=await db.from('sugerencias').select('*').eq('id',sugId).single();
 if(!sug) return;
 el('modal-resp-sug-body').innerHTML=
-'<div class="suggestion-item" style="margin-bottom:14px"><div class="s-meta">'+sug.usuario_nombre+' · '+sug.asunto+'</div><div class="s-text">'+sug.texto+'</div></div>'+
-'<div class="form-group"><label class="form-label">Tu respuesta</label><textarea class="form-input" id="resp-texto" rows="3" placeholder="Escribí tu respuesta...">'+(sug.respuesta||'')+'</textarea></div>';
+'<div class="suggestion-item" style="margin-bottom:14px"><div class="s-meta">'+escHtml(sug.usuario_nombre)+' · '+escHtml(sug.asunto)+'</div><div class="s-text">'+escHtml(sug.texto)+'</div></div>'+
+'<div class="form-group"><label class="form-label">Tu respuesta</label><textarea class="form-input" id="resp-texto" rows="3" placeholder="Escribí tu respuesta...">'+escHtml(sug.respuesta||'')+'</textarea></div>';
 openModal('modal-resp-sug');
 }
 
@@ -1603,7 +1608,7 @@ if(!clave) return showErr('empresa-error','Ingresá la clave de acceso.');
 const {data,error} = await db.from('empresa_config').select('*').eq('clave',clave).single();
 if(error||!data) return showErr('empresa-error','Clave incorrecta. Contactá al administrador.');
 // Guardar en session storage para esta sesión
-sessionStorage.setItem('empresa_clave', clave);
+sessionStorage.setItem('empresa_validada', '1');
 sessionStorage.setItem('empresa_nombre', data.nombre);
 el('empresa-nombre-display').textContent = data.nombre;
 el('empresa-screen').style.display='none';
@@ -1612,8 +1617,8 @@ await populateRegisterLocales();
 }
 
 function checkEmpresaClave(){
-const saved = sessionStorage.getItem('empresa_clave');
-if(saved){
+const validada = sessionStorage.getItem('empresa_validada');
+if(validada==='1'){
 el('empresa-nombre-display').textContent = sessionStorage.getItem('empresa_nombre')||'';
 el('empresa-screen').style.display='none';
 el('auth-forms').style.display='block';
@@ -1666,8 +1671,8 @@ const hora = lastMsg ? new Date(lastMsg.created_at).toLocaleTimeString('es-UY',{
 e.innerHTML += '<div class="conv-item'+(currentConvId===conv.id?' active':'')+'" onclick="openConversacion(\''+conv.id+'\')">'+
 '<div class="conv-avatar">'+(conv.es_grupo?'👥':'👤')+'</div>'+
 '<div class="conv-info">'+
-'<div class="conv-nombre">'+nombre+'</div>'+
-'<div class="conv-last">'+(lastMsg?(lastMsg.usuario_nombre.split(' ')[0]+': '+lastMsg.texto.substring(0,35)):'Sin mensajes')+'</div>'+
+'<div class="conv-nombre">'+escHtml(nombre)+'</div>'+
+'<div class="conv-last">'+(lastMsg?(escHtml((lastMsg.usuario_nombre||'').split(' ')[0])+': '+escHtml((lastMsg.texto||'').substring(0,35))):'Sin mensajes')+'</div>'+
 '</div>'+
 '<div class="conv-time">'+hora+'</div>'+
 '</div>';
@@ -1710,12 +1715,12 @@ e.innerHTML='<div style="text-align:center;color:var(--text3);font-size:13px;pad
 }
 e.innerHTML = msgs.map(m=>{
 const isOwn = m.usuario_id===currentPerfil.id;
-const initials = m.usuario_nombre.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+const initials = (m.usuario_nombre||'').split(' ').map(w=>w[0]||'').join('').slice(0,2).toUpperCase();
 const hora = new Date(m.created_at).toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'});
 return '<div class="chat-msg '+(isOwn?'own':'other')+'">'+
-'<div class="chat-avatar" style="background:'+(isOwn?'var(--accent)':'var(--surface3)')+'">'+initials+'</div>'+
-'<div><div class="chat-bubble">'+m.texto+'</div>'+
-'<div class="chat-meta" style="text-align:'+(isOwn?'right':'left')+'">'+m.usuario_nombre+' · '+hora+'</div></div></div>';
+'<div class="chat-avatar" style="background:'+(isOwn?'var(--accent)':'var(--surface3)')+'">'+escHtml(initials)+'</div>'+
+'<div><div class="chat-bubble">'+escHtml(m.texto)+'</div>'+
+'<div class="chat-meta" style="text-align:'+(isOwn?'right':'left')+'">'+escHtml(m.usuario_nombre)+' · '+hora+'</div></div></div>';
 }).join('');
 e.scrollTop=e.scrollHeight;
 }
@@ -1743,8 +1748,8 @@ el('nueva-conv-body').innerHTML=
 '<div style="max-height:280px;overflow-y:auto;background:var(--surface2);border-radius:var(--radius-sm);padding:8px">'+
 (users||[]).map(u=>'<label style="display:flex;align-items:center;gap:10px;padding:8px;cursor:pointer;border-radius:6px" onmouseover="this.style.background=\'var(--surface3)\'" onmouseout="this.style.background=\'\'">'+
 '<input type="checkbox" value="'+u.id+'" style="width:16px;height:16px">'+
-'<div><div style="font-size:13px;font-weight:500">'+(u.nombre_display||(u.nombre+' '+u.apellido))+'</div>'+
-'<div style="font-size:11px;color:var(--text2)">'+u.local_nombre+' ('+u.almacen+')</div></div>'+
+'<div><div style="font-size:13px;font-weight:500">'+escHtml(u.nombre_display||(u.nombre+' '+u.apellido))+'</div>'+
+'<div style="font-size:11px;color:var(--text2)">'+escHtml(u.local_nombre)+' ('+escHtml(u.almacen)+')</div></div>'+
 '</label>').join('')+
 '</div></div>';
 openModal('modal-nueva-conv');
