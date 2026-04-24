@@ -21,6 +21,14 @@ let currentChatOrderId = null;
 let currentSugId = null;
 let productsCache = [];
 
+const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 1 hora
+const IDLE_WARNING_MS = 5 * 60 * 1000; // aviso 5 min antes
+const IDLE_CHECK_INTERVAL_MS = 30 * 1000;
+let idleIntervalId = null;
+let idleWarned = false;
+let activityListenersBound = false;
+let lastActivityWriteMs = 0;
+
 function normalizeExtraProduct(row){
 return {
 id: row?.id || null,
@@ -87,6 +95,104 @@ return new Date(iso).toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit',y
 function fmtDateTime(iso){
 if(!iso) return '–';
 return new Date(iso).toLocaleString('es-UY',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+}
+
+
+function getActivityStorageKey(userId){
+return 'last_activity_' + String(userId || 'anon');
+}
+
+function getLastActivityMs(userId){
+const raw = localStorage.getItem(getActivityStorageKey(userId));
+const n = parseInt(raw || '0', 10);
+return Number.isFinite(n) ? n : 0;
+}
+
+function setLastActivityMs(userId, ms){
+if(!userId) return;
+localStorage.setItem(getActivityStorageKey(userId), String(ms || Date.now()));
+}
+
+function clearLastActivityMs(userId){
+if(!userId) return;
+localStorage.removeItem(getActivityStorageKey(userId));
+}
+
+function recordActivity(force=false){
+if(!currentUser?.id) return;
+if(isExpiredByInactivity(currentUser.id)){
+forceIdleLogout();
+return;
+}
+const now = Date.now();
+if(!force && now - lastActivityWriteMs < 15000) return;
+lastActivityWriteMs = now;
+setLastActivityMs(currentUser.id, now);
+idleWarned = false;
+}
+
+function stopIdleWatcher(){
+if(idleIntervalId){ clearInterval(idleIntervalId); idleIntervalId = null; }
+idleWarned = false;
+}
+
+async function forceIdleLogout(){
+stopIdleWatcher();
+try{ await db.auth.signOut(); }catch(_e){}
+clearLastActivityMs(currentUser?.id);
+currentUser=null;
+currentPerfil=null;
+sessionStorage.removeItem('empresa_validada');
+sessionStorage.removeItem('empresa_nombre');
+clearAuthMessages();
+showPage('auth-page');
+notify('Sesión cerrada por inactividad (más de 1 hora).','info');
+}
+
+function bindActivityListeners(){
+if(activityListenersBound) return;
+activityListenersBound = true;
+['click','keydown','touchstart','scroll','mousemove'].forEach(evt=>{
+window.addEventListener(evt, ()=>recordActivity(false), {passive:true});
+});
+document.addEventListener('visibilitychange', ()=>{
+if(document.visibilityState!=='visible') return;
+if(currentUser?.id && isExpiredByInactivity(currentUser.id)){
+forceIdleLogout();
+return;
+}
+recordActivity(true);
+});
+}
+
+function startIdleWatcher(){
+if(!currentUser?.id) return;
+bindActivityListeners();
+recordActivity(true);
+if(idleIntervalId) clearInterval(idleIntervalId);
+idleIntervalId = setInterval(async ()=>{
+if(!currentUser?.id) return;
+const last = getLastActivityMs(currentUser.id);
+if(!last) return;
+const now = Date.now();
+const idleMs = now - last;
+const remainingMs = IDLE_TIMEOUT_MS - idleMs;
+if(remainingMs <= 0){
+await forceIdleLogout();
+return;
+}
+if(remainingMs <= IDLE_WARNING_MS && !idleWarned){
+idleWarned = true;
+const mins = Math.max(1, Math.ceil(remainingMs / 60000));
+notify('⚠️ Tu sesión se cerrará en '+mins+' min por inactividad.','info');
+}
+}, IDLE_CHECK_INTERVAL_MS);
+}
+
+function isExpiredByInactivity(userId){
+const last = getLastActivityMs(userId);
+if(!last) return false;
+return (Date.now() - last) > IDLE_TIMEOUT_MS;
 }
 
 // ═══════════════════════════════════════════
@@ -200,6 +306,8 @@ switchAuthTab('login');
 
 async function doLogout(){
 await db.auth.signOut();
+stopIdleWatcher();
+clearLastActivityMs(currentUser?.id);
 currentUser=null; currentPerfil=null;
 sessionStorage.removeItem('empresa_validada');
 sessionStorage.removeItem('empresa_nombre');
@@ -217,7 +325,9 @@ const {data:perfil}=await db.from('perfiles').select('*').eq('id',user.id).singl
 if(!perfil){ showErr('login-error','No se encontró tu perfil. Contactá al administrador.'); return; }
 currentPerfil=perfil;
 if(!perfil.approved){ showPage('pending-page'); return; }
+setLastActivityMs(user.id, Date.now());
 await loadApp();
+startIdleWatcher();
 }
 
 async function checkSession(){
@@ -229,6 +339,11 @@ clearAuthMessages();
 showPage('auth-page');
 return;
 }
+if(isExpiredByInactivity(session.user.id)){
+await forceIdleLogout();
+return;
+}
+if(!getLastActivityMs(session.user.id)) setLastActivityMs(session.user.id, Date.now());
 // Hay sesión — ir directo a la app sin pasar por auth
 await afterLogin(session.user);
 }
