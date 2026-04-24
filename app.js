@@ -1901,6 +1901,9 @@ if(validada==='1'){
 el('empresa-nombre-display').textContent = sessionStorage.getItem('empresa_nombre')||'';
 el('empresa-screen').style.display='none';
 el('auth-forms').style.display='block';
+populateRegisterLocales().catch(err=>{
+console.error('No se pudieron cargar locales para registro:', err);
+});
 return true;
 }
 return false;
