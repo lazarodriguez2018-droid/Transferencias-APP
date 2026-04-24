@@ -375,6 +375,8 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
           <option value="incompleto">⚠️ Incompleto</option>
           <option value="denegado">❌ Denegado</option>
         </select>
+        <input type="date" class="filter-select" id="filter-hist-desde" onchange="renderHistorial()" title="Desde">
+        <input type="date" class="filter-select" id="filter-hist-hasta" onchange="renderHistorial()" title="Hasta">
       </div>
       <div class="orders-list" id="list-historial">
         <div class="empty-state"><div class="icon">📋</div><p>No hay historial</p></div>
@@ -543,11 +545,15 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         <div class="card-header"><h3>🏷️ Padrón de productos</h3></div>
         <div class="card-body">
           <p style="font-size:13px;color:var(--text2);margin-bottom:12px">
-            Subí un nuevo <strong>.xlsx</strong> para reemplazar el padrón actual para todos los usuarios.
+            Subí un nuevo <strong>.xlsx</strong> para reemplazar el padrón principal. El sistema también muestra productos desde <strong>padrón extra</strong>.
           </p>
           <input type="file" id="file-padron" accept=".xlsx" style="display:none" onchange="handlePadronUpload(event)">
           <button class="btn btn-primary btn-sm" onclick="document.getElementById('file-padron').click()">📁 Subir nuevo padrón (.xlsx)</button>
-          <p style="font-size:12px;color:var(--text3);margin-top:10px">Productos cargados: <strong id="products-count">0</strong></p>
+          <p style="font-size:12px;color:var(--text3);margin-top:10px">
+            Padrón principal: <strong id="products-count">0</strong> ·
+            Padrón extra: <strong id="products-extra-count">0</strong> ·
+            Total visible: <strong id="products-total-count">0</strong>
+          </p>
           <div style="margin-top:14px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
               <span style="font-size:13px;font-weight:600">Vista previa (primeros 100)</span>
@@ -556,10 +562,45 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
             </div>
             <div style="overflow-x:auto;max-height:300px">
               <table class="admin-table">
-                <thead><tr><th>Código</th><th>Nombre</th><th>Marca</th></tr></thead>
+                <thead><tr><th>Código</th><th>Nombre</th><th>Marca</th><th>Fuente</th></tr></thead>
                 <tbody id="admin-products-body"></tbody>
               </table>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="card-header"><h3>➕ Padrón extra (insumos manuales)</h3></div>
+        <div class="card-body">
+          <p style="font-size:13px;color:var(--text2);margin-bottom:12px">
+            Agregá productos fuera del Excel principal (ej: bolsas, rollos POS, insumos varios).
+          </p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">Código</label>
+              <input class="form-input" type="text" id="new-extra-codigo" placeholder="Opcional">
+            </div>
+            <div class="form-group" style="margin-bottom:0;min-width:260px;flex:1">
+              <label class="form-label">Nombre</label>
+              <input class="form-input" type="text" id="new-extra-nombre" placeholder="Ej: Bolsa grande">
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">Marca</label>
+              <input class="form-input" type="text" id="new-extra-marca" placeholder="Opcional">
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="agregarPadronExtra()" style="height:42px;white-space:nowrap">+ Agregar extra</button>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <span style="font-size:13px;font-weight:600">Listado padrón extra</span>
+            <input class="form-input" type="text" placeholder="Buscar en extra..." id="admin-search-extra"
+              oninput="renderPadronExtra()" style="width:220px;padding:7px 11px;font-size:12px">
+          </div>
+          <div style="overflow-x:auto;max-height:260px">
+            <table class="admin-table">
+              <thead><tr><th>Código</th><th>Nombre</th><th>Marca</th><th>Fuente</th><th>Acciones</th></tr></thead>
+              <tbody id="extra-products-body"></tbody>
+            </table>
           </div>
         </div>
       </div>
