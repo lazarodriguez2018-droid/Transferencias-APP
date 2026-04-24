@@ -610,6 +610,10 @@ if(tipo==='misPedidos')  q=q.eq('destino_local',local);
 else if(tipo==='despachados') q=q.eq('origen_local',local);
 else q=q.or('origen_local.eq.'+local+',destino_local.eq.'+local);
 if(estado) q=q.eq('estado',estado);
+const desde=el('filter-hist-desde')?.value;
+const hasta=el('filter-hist-hasta')?.value;
+if(desde) q=q.gte('updated_at',desde+'T00:00:00');
+if(hasta) q=q.lte('updated_at',hasta+'T23:59:59');
 const {data}=await q;
 renderList('list-historial', data||[], '📋','No hay historial');
 }
@@ -1212,7 +1216,7 @@ await renderUsuarios(); notify('Rol actualizado','success');
 //  ADMIN — CONFIG
 // ═══════════════════════════════════════════
 async function renderConfig(){
-await Promise.all([renderAdminLocales(),renderTransportes(),renderAdminProducts()]);
+await Promise.all([renderAdminLocales(),renderTransportes(),renderAdminProducts(),renderPadronExtra()]);
 }
 
 async function renderAdminLocales(){
@@ -1327,6 +1331,48 @@ el('admin-products-body').innerHTML=(merged||[]).map(p=>
 '<td style="font-size:12px;color:var(--text3)">'+p._fuente+'</td></tr>').join('');
 }
 
+async function renderPadronExtra(){
+const q=(el('admin-search-extra')&&el('admin-search-extra').value.trim())||'';
+let query=db.from('padron_extra').select('id,codigo,nombre,marca').order('nombre').limit(200);
+if(q) query=query.or('nombre.ilike.%'+q+'%,codigo.ilike.%'+q+'%,marca.ilike.%'+q+'%');
+const {data,error}=await query;
+if(error){
+el('extra-products-body').innerHTML='<tr><td colspan="5" style="color:var(--text3);font-size:12px">No se pudo cargar padrón extra</td></tr>';
+return;
+}
+el('extra-products-body').innerHTML=(data||[]).map(p=>
+'<tr>'+
+'<td style="font-family:\'DM Mono\',monospace;font-size:11px">'+(p.codigo||'–')+'</td>'+
+'<td style="font-size:13px">'+p.nombre+'</td>'+
+'<td style="font-size:12px;color:var(--text2)">'+(p.marca||'–')+'</td>'+
+'<td style="font-size:11px;color:var(--text3)">Extra</td>'+
+'<td><button class="btn btn-danger btn-sm" onclick="eliminarPadronExtra(\''+p.id+'\')">🗑️</button></td>'+
+'</tr>').join('') || '<tr><td colspan="5" style="color:var(--text3);font-size:12px">Sin productos extra cargados</td></tr>';
+}
+
+async function agregarPadronExtra(){
+const codigo=el('new-extra-codigo').value.trim();
+const nombre=el('new-extra-nombre').value.trim();
+const marca=el('new-extra-marca').value.trim();
+if(!nombre) return notify('Ingresá al menos el nombre del producto extra','error');
+const {error}=await db.from('padron_extra').insert({codigo:codigo||null,nombre,marca:marca||null});
+if(error) return notify('No se pudo agregar: '+error.message,'error');
+el('new-extra-codigo').value='';
+el('new-extra-nombre').value='';
+el('new-extra-marca').value='';
+productsCache=[];
+await Promise.all([renderPadronExtra(),renderAdminProducts()]);
+notify('Producto agregado al padrón extra','success');
+}
+
+async function eliminarPadronExtra(id){
+const {error}=await db.from('padron_extra').delete().eq('id',id);
+if(error) return notify('No se pudo eliminar: '+error.message,'error');
+productsCache=[];
+await Promise.all([renderPadronExtra(),renderAdminProducts()]);
+notify('Producto extra eliminado','info');
+}
+
 async function handlePadronUpload(e){
 const f=e.target.files[0]; if(!f) return;
 if(typeof XLSX==='undefined') return notify('XLSX no cargado','error');
@@ -1354,14 +1400,14 @@ products.push({codigo:String(row[iC]||''),nombre:String(row[iN]||''),marca:Strin
 }
 if(!products.length) return notify('Sin productos válidos','error');
 // Delete all and re-insert in chunks
-await db.from('productos').delete().neq('id','00000000-0000-0000-0000-000000000000');
+await db.from('productos').delete().not('id','is',null);
 const chunkSize=500;
 for(let i=0;i<products.length;i+=chunkSize){
 await db.from('productos').insert(products.slice(i,i+chunkSize));
 }
-productsCache=products;
+productsCache=[];
 notify('Padrón actualizado: '+products.length+' productos','success');
-await renderAdminProducts();
+await Promise.all([renderAdminProducts(),renderPadronExtra()]);
 }catch(err){notify('Error: '+err.message,'error');}
 };
 r.readAsBinaryString(f); e.target.value='';
