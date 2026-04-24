@@ -1744,15 +1744,36 @@ showConfirm(
 '¿Eliminar este pedido permanentemente? Esta acción no se puede deshacer.',
 async()=>{
 showSpinner();
-await db.from('pedido_productos').delete().eq('pedido_id',orderId);
-await db.from('pedido_historial').delete().eq('pedido_id',orderId);
-await db.from('chat_mensajes').delete().eq('pedido_id',orderId);
-await db.from('notificaciones').delete().eq('pedido_id',orderId);
-await db.from('pedidos').delete().eq('id',orderId);
-hideSpinner();
+try{
+const childDeletes = [
+db.from('pedido_productos').delete().eq('pedido_id',orderId),
+db.from('pedido_historial').delete().eq('pedido_id',orderId),
+db.from('chat_mensajes').delete().eq('pedido_id',orderId),
+db.from('notificaciones').delete().eq('pedido_id',orderId)
+];
+const childResults = await Promise.all(childDeletes);
+const childError = childResults.find(r=>r.error)?.error;
+if(childError) throw childError;
+
+const {data:deleted,error:deleteError} = await db
+.from('pedidos')
+.delete()
+.eq('id',orderId)
+.select('id');
+if(deleteError) throw deleteError;
+if(!deleted || deleted.length===0){
+throw new Error('No se pudo eliminar el pedido. Verificá permisos o reglas de seguridad (RLS).');
+}
+
 closeModal('modal-detalle');
 notify('Pedido eliminado','info');
-await updateBadges(); refreshView();
+await updateBadges();
+await refreshView();
+}catch(err){
+notify('Error al eliminar pedido: '+(err.message||err),'error');
+}finally{
+hideSpinner();
+}
 },
 {title:'Eliminar pedido', btnLabel:'Sí, eliminar'}
 );
@@ -1764,9 +1785,16 @@ if(!o) return;
 const flujoNormal=['pendiente','aceptado','listo','transito','llegado','completo','incompleto'];
 const flujoEscala=['pendiente','aceptado','listo','transito_escala','en_escala','listo_escala','transito','llegado','completo','incompleto'];
 const flujo=tieneEscala(o.destino_local)?flujoEscala:flujoNormal;
+let estadoAnterior='';
+if(o.estado==='denegado'){
+// Permitir recuperar pedidos denegados por error
+estadoAnterior='pendiente';
+}else{
 const idx=flujo.indexOf(o.estado);
-if(idx<=0) return notify('Este pedido ya está en el estado inicial','info');
-const estadoAnterior=flujo[idx-1];
+if(idx<0) return notify('No se puede retroceder desde el estado actual','info');
+if(idx===0) return notify('Este pedido ya está en el estado inicial','info');
+estadoAnterior=flujo[idx-1];
+}
 showConfirm(
 '¿Volver el pedido al estado "'+estadoAnterior+'"? Solo hacé esto si fue un error.',
 async()=>{
