@@ -1593,6 +1593,28 @@ el('btn-reg-step2')?.addEventListener('click', doRegisterStep2);
 el('btn-reg-back')?.addEventListener('click', backToStep1);
 el('btn-register-success-close')?.addEventListener('click', closeRegisterSuccess);
 el('btn-logout-pending')?.addEventListener('click', doLogout);
+el('btn-hamburger')?.addEventListener('click', toggleSidebar);
+el('mobile-overlay')?.addEventListener('click', closeSidebar);
+el('notif-bell-mobile')?.addEventListener('click', toggleNotifPanel);
+el('notif-bell-desktop')?.addEventListener('click', toggleNotifPanel);
+el('btn-marcar-todas')?.addEventListener('click', marcarTodasLeidas);
+el('btn-suggest-sidebar')?.addEventListener('click', ()=>openModal('modal-sugerencia'));
+el('btn-new-consulta')?.addEventListener('click', ()=>openModal('modal-sugerencia'));
+el('fab-btn')?.addEventListener('click', openNuevoPedido);
+
+document.querySelectorAll('[data-nav]').forEach(item=>{
+item.addEventListener('click', ()=>navigateTo(item.getAttribute('data-nav')));
+});
+
+['filter-mis-estado','filter-mis-origen','filter-mis-destino','filter-mis-desde','filter-mis-hasta']
+.forEach(id=>el(id)?.addEventListener('change', renderMisPedidos));
+
+el('tab-pendientes')?.addEventListener('click', ()=>switchDespachoTab('pendientes'));
+el('tab-completados')?.addEventListener('click', ()=>switchDespachoTab('completados'));
+['filter-env-estado','filter-para-origen','filter-para-destino','filter-desde','filter-hasta']
+.forEach(id=>el(id)?.addEventListener('change', renderParaEnviar));
+['filter-hist-tipo','filter-hist-estado','filter-hist-desde','filter-hist-hasta']
+.forEach(id=>el(id)?.addEventListener('change', renderHistorial));
 
 // Verificar clave empresa (session storage)
 checkEmpresaClave();

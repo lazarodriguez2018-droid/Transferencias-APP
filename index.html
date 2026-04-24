@@ -171,19 +171,19 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
 <!-- ══════════════════ MAIN APP ══════════════════ -->
 <div id="app-page" class="page" style="display:none">
   <div class="mobile-header">
-    <span class="hamburger" onclick="toggleSidebar()">☰</span>
+    <span class="hamburger" id="btn-hamburger">☰</span>
     <h2 id="mobile-title">Mis Pedidos</h2>
-    <div class="notif-bell" onclick="toggleNotifPanel()" id="notif-bell-mobile" style="margin-left:auto">
+    <div class="notif-bell" id="notif-bell-mobile" style="margin-left:auto">
       🔔<span class="notif-count" id="notif-count-mobile" style="display:none">0</span>
     </div>
   </div>
-  <div class="mobile-overlay" id="mobile-overlay" onclick="closeSidebar()"></div>
+  <div class="mobile-overlay" id="mobile-overlay"></div>
   <!-- NOTIFICATION PANEL -->
   <div id="notif-overlay" style="display:none;position:fixed;inset:0;z-index:149" onclick="cerrarNotifPanel()"></div>
   <div id="notif-panel" class="notif-panel" style="display:none">
     <div class="notif-panel-header">
       <span style="font-weight:600;font-size:14px">🔔 Notificaciones</span>
-      <span style="font-size:12px;color:var(--accent);cursor:pointer" onclick="marcarTodasLeidas()">Marcar todas leídas</span>
+      <span style="font-size:12px;color:var(--accent);cursor:pointer" id="btn-marcar-todas">Marcar todas leídas</span>
     </div>
     <div id="notif-list"><div style="padding:20px;text-align:center;color:var(--text3);font-size:13px">Sin notificaciones nuevas</div></div>
   </div>
@@ -194,7 +194,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
       <div class="logo-row"><div class="logo-icon">📦</div><h2>TransferApp</h2></div>
       <div class="local-badge" id="sidebar-local-badge">–</div>
     </div>
-    <div class="notif-bell-desktop" onclick="toggleNotifPanel()">
+    <div class="notif-bell-desktop" id="notif-bell-desktop">
       <span>🔔</span>
       <span style="font-size:12px">Notificaciones</span>
       <span class="notif-count-desktop" id="notif-count" style="display:none">0</span>
@@ -202,50 +202,50 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
     <nav class="sidebar-nav">
       <div class="nav-section">
         <div class="nav-label">Pedidos</div>
-        <div class="nav-item" id="nav-misPedidos" onclick="navigateTo('misPedidos')">
+        <div class="nav-item" id="nav-misPedidos" data-nav="misPedidos">
           <span class="icon">📤</span> Pedidos de mi local
           <span class="nav-badge" id="badge-misPedidos" style="display:none">0</span>
         </div>
-        <div class="nav-item" id="nav-paraEnviar" onclick="navigateTo('paraEnviar')">
+        <div class="nav-item" id="nav-paraEnviar" data-nav="paraEnviar">
           <span class="icon">🔧</span> Pedidos a despachar
           <span class="nav-badge" id="badge-paraEnviar" style="display:none">0</span>
         </div>
-        <div class="nav-item" id="nav-historial" onclick="navigateTo('historial')">
+        <div class="nav-item" id="nav-historial" data-nav="historial">
           <span class="icon">📋</span> Historial
         </div>
-        <div class="nav-item" id="nav-misConsultas" onclick="navigateTo('misConsultas')">
+        <div class="nav-item" id="nav-misConsultas" data-nav="misConsultas">
           <span class="icon">💡</span> Mis Consultas
           <span class="nav-badge" id="badge-misConsultas" style="display:none">0</span>
         </div>
-        <div class="nav-item" id="nav-chats" onclick="navigateTo('chats')">
+        <div class="nav-item" id="nav-chats" data-nav="chats">
           <span class="icon">💬</span> Chats
           <span class="nav-badge" id="badge-chats" style="display:none">0</span>
         </div>
-        <div class="nav-item" id="nav-perfil" onclick="navigateTo('perfil')">
+        <div class="nav-item" id="nav-perfil" data-nav="perfil">
           <span class="icon">👤</span> Mi Perfil
         </div>
       </div>
       <div class="nav-section" id="admin-nav" style="display:none">
         <div class="nav-label">Administración</div>
-        <div class="nav-item" id="nav-dashboard" onclick="navigateTo('dashboard')">
+        <div class="nav-item" id="nav-dashboard" data-nav="dashboard">
           <span class="icon">🏠</span> Dashboard
         </div>
-        <div class="nav-item" id="nav-usuarios" onclick="navigateTo('usuarios')">
+        <div class="nav-item" id="nav-usuarios" data-nav="usuarios">
           <span class="icon">👥</span> Usuarios
           <span class="nav-badge" id="badge-usuarios" style="display:none">0</span>
         </div>
-        <div class="nav-item" id="nav-sugerencias" onclick="navigateTo('sugerencias')">
+        <div class="nav-item" id="nav-sugerencias" data-nav="sugerencias">
           <span class="icon">💡</span> Sugerencias
           <span class="nav-badge" id="badge-sugerencias" style="display:none">0</span>
         </div>
-        <div class="nav-item" id="nav-config" onclick="navigateTo('config')">
+        <div class="nav-item" id="nav-config" data-nav="config">
           <span class="icon">⚙️</span> Configuración
         </div>
       </div>
     </nav>
     <!-- Suggestion button for all users -->
     <div class="sidebar-suggest">
-      <button class="suggest-btn" onclick="openModal('modal-sugerencia')">
+      <button class="suggest-btn" id="btn-suggest-sidebar">
         💡 Enviar sugerencia o consulta
       </button>
     </div>
@@ -306,7 +306,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         💡 Estos son los pedidos que <strong>tu local pidió</strong> a otros locales. Cuando la mercadería llegue, vos confirmás la recepción.
       </div>
       <div class="filters">
-        <select class="filter-select" id="filter-mis-estado" onchange="renderMisPedidos()">
+        <select class="filter-select" id="filter-mis-estado">
           <option value="">Todos los estados</option>
           <option value="pendiente">⏳ Pendiente</option>
           <option value="aceptado">✅ Aceptado</option>
@@ -314,14 +314,14 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
           <option value="listo">📦 Listo para enviar</option>
           <option value="transito">🚚 En viaje</option>
         </select>
-        <select class="filter-select" id="filter-mis-origen" onchange="renderMisPedidos()">
+        <select class="filter-select" id="filter-mis-origen">
           <option value="">Todos los orígenes</option>
         </select>
-        <select class="filter-select" id="filter-mis-destino" onchange="renderMisPedidos()" style="display:none">
+        <select class="filter-select" id="filter-mis-destino" style="display:none">
           <option value="">Todos los destinos</option>
         </select>
-        <input type="date" class="filter-select" id="filter-mis-desde" onchange="renderMisPedidos()" title="Desde">
-        <input type="date" class="filter-select" id="filter-mis-hasta" onchange="renderMisPedidos()" title="Hasta">
+        <input type="date" class="filter-select" id="filter-mis-desde" title="Desde">
+        <input type="date" class="filter-select" id="filter-mis-hasta" title="Hasta">
       </div>
       <div class="orders-list" id="list-misPedidos">
         <div class="empty-state"><div class="icon">📤</div><p>No tenés pedidos activos</p></div>
@@ -338,24 +338,24 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         💡 Estos son pedidos que <strong>otros locales te solicitaron</strong>. Vos los preparás y despachás hacia el local destino.
       </div>
       <div class="tabs">
-        <div class="tab active" id="tab-pendientes" onclick="switchDespachoTab('pendientes')">🔧 Pendientes a preparar</div>
-        <div class="tab" id="tab-completados" onclick="switchDespachoTab('completados')">✅ Completados y enviados</div>
+        <div class="tab active" id="tab-pendientes">🔧 Pendientes a preparar</div>
+        <div class="tab" id="tab-completados">✅ Completados y enviados</div>
       </div>
       <div class="filters">
-        <select class="filter-select" id="filter-env-estado" onchange="renderParaEnviar()">
+        <select class="filter-select" id="filter-env-estado">
           <option value="">Todos los estados</option>
           <option value="pendiente">⏳ Sin aceptar</option>
           <option value="aceptado">✅ Aceptado</option>
           <option value="listo">📦 Listo para enviar</option>
         </select>
-        <select class="filter-select" id="filter-para-origen" onchange="renderParaEnviar()" style="display:none">
+        <select class="filter-select" id="filter-para-origen" style="display:none">
           <option value="">Todos los orígenes</option>
         </select>
-        <select class="filter-select" id="filter-para-destino" onchange="renderParaEnviar()" style="display:none">
+        <select class="filter-select" id="filter-para-destino" style="display:none">
           <option value="">Todos los destinos</option>
         </select>
-        <input type="date" class="filter-select" id="filter-desde" onchange="renderParaEnviar()" placeholder="Desde" title="Desde">
-        <input type="date" class="filter-select" id="filter-hasta" onchange="renderParaEnviar()" placeholder="Hasta" title="Hasta">
+        <input type="date" class="filter-select" id="filter-desde" placeholder="Desde" title="Desde">
+        <input type="date" class="filter-select" id="filter-hasta" placeholder="Hasta" title="Hasta">
       </div>
       <div class="orders-list" id="list-paraEnviar">
         <div class="empty-state"><div class="icon">📭</div><p>No hay pedidos pendientes</p></div>
@@ -366,19 +366,19 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
     <div id="view-historial" style="display:none">
       <div class="page-header"><div><h1>Historial</h1><p>Pedidos finalizados</p></div></div>
       <div class="filters">
-        <select class="filter-select" id="filter-hist-tipo" onchange="renderHistorial()">
+        <select class="filter-select" id="filter-hist-tipo">
           <option value="">Todos</option>
           <option value="misPedidos">Mis pedidos</option>
           <option value="despachados">Que despachaste</option>
         </select>
-        <select class="filter-select" id="filter-hist-estado" onchange="renderHistorial()">
+        <select class="filter-select" id="filter-hist-estado">
           <option value="">Todos</option>
           <option value="completo">✅ Completo</option>
           <option value="incompleto">⚠️ Incompleto</option>
           <option value="denegado">❌ Denegado</option>
         </select>
-        <input type="date" class="filter-select" id="filter-hist-desde" onchange="renderHistorial()" title="Desde">
-        <input type="date" class="filter-select" id="filter-hist-hasta" onchange="renderHistorial()" title="Hasta">
+        <input type="date" class="filter-select" id="filter-hist-desde" title="Desde">
+        <input type="date" class="filter-select" id="filter-hist-hasta" title="Hasta">
       </div>
       <div class="orders-list" id="list-historial">
         <div class="empty-state"><div class="icon">📋</div><p>No hay historial</p></div>
@@ -409,7 +409,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         <h1>💬 Mis Consultas</h1>
         <p>Tus sugerencias y consultas enviadas al administrador</p>
       </div>
-      <button class="btn btn-primary btn-sm" onclick="openModal('modal-sugerencia')" style="white-space:nowrap">+ Nueva consulta</button>
+      <button class="btn btn-primary btn-sm" id="btn-new-consulta" style="white-space:nowrap">+ Nueva consulta</button>
       </div>
       <div class="orders-list" id="list-misConsultas">
         <div class="empty-state"><div class="icon">💬</div><p>No enviaste ninguna consulta aún</p></div>
@@ -766,7 +766,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   </div>
 </div>
 
-<button class="fab" id="fab-btn" onclick="openNuevoPedido()" style="display:none">+</button>
+<button class="fab" id="fab-btn" style="display:none">+</button>
 
 
 <!-- EDITAR LOCAL -->
