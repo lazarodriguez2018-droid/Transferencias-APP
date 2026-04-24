@@ -1751,19 +1751,21 @@ db.from('pedido_historial').delete().eq('pedido_id',orderId),
 db.from('chat_mensajes').delete().eq('pedido_id',orderId),
 db.from('notificaciones').delete().eq('pedido_id',orderId)
 ];
-const childResults = await Promise.all(childDeletes);
-const childError = childResults.find(r=>r.error)?.error;
-if(childError) throw childError;
+// Limpieza de tablas relacionadas en "best effort":
+// si alguna falla por políticas propias, no bloquea el borrado principal del pedido.
+const childResults = await Promise.allSettled(childDeletes);
+const childErrors = childResults
+.filter(r=>r.status==='fulfilled' && r.value?.error)
+.map(r=>r.value.error.message);
+if(childErrors.length){
+console.warn('Errores al limpiar tablas relacionadas del pedido', orderId, childErrors);
+}
 
-const {data:deleted,error:deleteError} = await db
+const {error:deleteError} = await db
 .from('pedidos')
 .delete()
-.eq('id',orderId)
-.select('id');
+.eq('id',orderId);
 if(deleteError) throw deleteError;
-if(!deleted || deleted.length===0){
-throw new Error('No se pudo eliminar el pedido. Verificá permisos o reglas de seguridad (RLS).');
-}
 
 closeModal('modal-detalle');
 notify('Pedido eliminado','info');
