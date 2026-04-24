@@ -275,19 +275,18 @@ async function doRegisterStep2(){
 const token=el('reg-code').value.trim();
 if(!token||token.length<6) return showErr('reg-error','Ingresá el código de 6 dígitos.');
 showSpinner();
+try{
 // Verify OTP
 const {data,error}=await db.auth.verifyOtp({email:regData.email,token,type:'signup'});
-if(error){ hideSpinner(); return showErr('reg-error','Código incorrecto o expirado. '+error.message); }
-// Check if first user → admin
-const {count}=await db.from('perfiles').select('*',{count:'exact',head:true});
-const isFirst=(count||0)===0;
+if(error) return showErr('reg-error','Código incorrecto o expirado. '+error.message);
+// Seguridad: evitar auto-admin por conteos afectados por RLS.
+const isFirst=false;
 // Create perfil
 const {error:pe}=await db.from('perfiles').insert({
 id:data.user.id, nombre:regData.nombre, apellido:regData.apellido,
 local_nombre:regData.localNombre, almacen:regData.almacen,
-role:isFirst?'admin':'empleado', approved:isFirst
+role:'empleado', approved:false
 });
-hideSpinner();
 if(pe) return showErr('reg-error','Error al crear perfil: '+pe.message);
 el('reg-step2').style.display='none';
 el('reg-step1').style.display='block';
@@ -295,6 +294,9 @@ el('reg-code').value='';
 showRegisterSuccess(isFirst
 ?'¡Cuenta creada! Sos el primer administrador. Ya podés iniciar sesión.'
 :'¡Cuenta creada con éxito! Un administrador debe aprobarla antes de que puedas ingresar.');
+} finally {
+hideSpinner();
+}
 }
 
 function showRegisterSuccess(msg){
@@ -323,13 +325,23 @@ showPage('auth-page');
 
 async function afterLogin(user){
 currentUser=user;
-const {data:perfil}=await db.from('perfiles').select('*').eq('id',user.id).single();
+try{
+const {data:perfil,error}=await db.from('perfiles').select('*').eq('id',user.id).single();
+if(error) throw error;
 if(!perfil){ showErr('login-error','No se encontró tu perfil. Contactá al administrador.'); return; }
 currentPerfil=perfil;
 if(!perfil.approved){ showPage('pending-page'); return; }
 setLastActivityMs(user.id, Date.now());
 await loadApp();
 startIdleWatcher();
+}catch(err){
+console.error('Error durante login:', err);
+await db.auth.signOut();
+currentUser=null;
+currentPerfil=null;
+showErr('login-error','No se pudo iniciar sesión. Reintentá en unos segundos.');
+showPage('auth-page');
+}
 }
 
 async function checkSession(){
@@ -355,6 +367,7 @@ await afterLogin(session.user);
 // ═══════════════════════════════════════════
 async function loadApp(){
 showSpinner();
+try{
 showPage('app-page');
 // Siempre resetear nav antes de aplicar rol
 el('admin-nav').style.display='none';
@@ -381,10 +394,11 @@ db.from('transportes').select('*').order('nombre'),
 ]);
 localesCache     = locs||[];
 transportesCache = trans||[];
-await updateBadges();
-hideSpinner();
 navigateTo('misPedidos');
 setupRealtime();
+} finally {
+hideSpinner();
+}
 }
 
 function setupRealtime(){
@@ -410,12 +424,17 @@ async function updateBadges(){
 if(!currentPerfil) return;
 const local   = currentPerfil.local_nombre;
 const isAdmin = currentPerfil.role==='admin';
+const countOrZero = async (q)=>{
+const {count,error}=await q;
+if(error){ console.error('Badge query error:', error.message); return 0; }
+return count||0;
+};
 
 // Badges siempre filtran por local propio (empleados Y supervisores)
-const qMis  = db.from('pedidos').select('id').not('estado','in','("completo","incompleto","denegado")').eq('destino_local',local);
+const qMis  = db.from('pedidos').select('id',{count:'exact',head:true}).not('estado','in','("completo","incompleto","denegado")').eq('destino_local',local);
 // Para enviar: incluir pedidos de escala donde este local es la escala
 const escalasDe = Object.entries(ESCALAS).filter(([d,e])=>e.escala===local).map(([d])=>d);
-let qPara = db.from('pedidos').select('id').in('estado',['pendiente','aceptado','listo','transito_escala','en_escala','listo_escala']);
+let qPara = db.from('pedidos').select('id',{count:'exact',head:true}).in('estado',['pendiente','aceptado','listo','transito_escala','en_escala','listo_escala']);
 if(escalasDe.length>0){
 // Soy local de escala O soy origen
 qPara = qPara.or('origen_local.eq.'+local+',destino_local.in.('+escalasDe.map(d=>'"'+d+'"').join(',')+')');
@@ -423,40 +442,40 @@ qPara = qPara.or('origen_local.eq.'+local+',destino_local.in.('+escalasDe.map(d=
 qPara = qPara.eq('origen_local',local);
 }
 
-const [{data:misPed},{data:paraEnv},{data:notifs}]=await Promise.all([
-qMis, qPara,
-db.from('notificaciones').select('id').eq('usuario_id',currentPerfil.id).eq('leida',false),
+const [mp,pe,no]=await Promise.all([
+countOrZero(qMis),
+countOrZero(qPara),
+countOrZero(db.from('notificaciones').select('id',{count:'exact',head:true}).eq('usuario_id',currentPerfil.id).eq('leida',false)),
 ]);
-
-const mp=misPed?.length||0, pe=paraEnv?.length||0, no=notifs?.length||0;
 
 el('badge-misPedidos').textContent=mp; el('badge-misPedidos').style.display=mp>0?'flex':'none';
 el('badge-paraEnviar').textContent=pe; el('badge-paraEnviar').style.display=pe>0?'flex':'none';
 updateNotifBadgeCount(no);
 
 if(currentPerfil.role==='admin'){
-const [{data:pendUsers},{data:sugNoLeidas}]=await Promise.all([
-db.from('perfiles').select('id').eq('approved',false),
-db.from('sugerencias').select('id').eq('leida',false),
+const [pu,su]=await Promise.all([
+countOrZero(db.from('perfiles').select('id',{count:'exact',head:true}).eq('approved',false)),
+countOrZero(db.from('sugerencias').select('id',{count:'exact',head:true}).eq('leida',false)),
 ]);
-const pu=pendUsers?.length||0, su=sugNoLeidas?.length||0;
 el('badge-usuarios').textContent=pu; el('badge-usuarios').style.display=pu>0?'flex':'none';
 el('badge-sugerencias').textContent=su; el('badge-sugerencias').style.display=su>0?'flex':'none';
 }
 
 // Dashboard stats
-const [{data:listos},{data:completados}]=await Promise.all([
-db.from('pedidos').select('id').eq('origen_local',local).eq('estado','listo'),
-db.from('pedidos').select('id').or('origen_local.eq.'+local+',destino_local.eq.'+local).in('estado',['completo','incompleto']),
+let listosCount=0, completadosCount=0;
+if(isAdmin){
+[listosCount,completadosCount]=await Promise.all([
+countOrZero(db.from('pedidos').select('id',{count:'exact',head:true}).eq('origen_local',local).eq('estado','listo')),
+countOrZero(db.from('pedidos').select('id',{count:'exact',head:true}).or('origen_local.eq.'+local+',destino_local.eq.'+local).in('estado',['completo','incompleto'])),
 ]);
+}
 safeSet('stat-pendientes', pe);
 safeSet('stat-activos', mp);
-safeSet('stat-listos', listos?.length||0);
-safeSet('stat-completados', completados?.length||0);
+safeSet('stat-listos', listosCount);
+safeSet('stat-completados', completadosCount);
 
 // Mis consultas badge
-const {data:misRespuestas}=await db.from('sugerencias').select('id').eq('usuario_id',currentPerfil.id).eq('respuesta_leida',false).not('respuesta','is',null);
-const mr=misRespuestas?.length||0;
+const mr=await countOrZero(db.from('sugerencias').select('id',{count:'exact',head:true}).eq('usuario_id',currentPerfil.id).eq('respuesta_leida',false).not('respuesta','is',null));
 el('badge-misConsultas').textContent=mr; el('badge-misConsultas').style.display=mr>0?'flex':'none';
 }
 
