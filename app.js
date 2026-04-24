@@ -1581,6 +1581,19 @@ document.addEventListener('DOMContentLoaded', async function(){
 clearAuthMessages();
 showPage('auth-page');
 
+// Auth bindings (sin inline handlers)
+el('empresa-clave')?.addEventListener('keydown', e=>{ if(e.key==='Enter') verificarClaveEmpresa(); });
+el('btn-verificar-empresa')?.addEventListener('click', verificarClaveEmpresa);
+el('auth-tab-login')?.addEventListener('click', ()=>switchAuthTab('login'));
+el('auth-tab-register')?.addEventListener('click', ()=>switchAuthTab('register'));
+el('login-password')?.addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+el('btn-do-login')?.addEventListener('click', doLogin);
+el('btn-reg-step1')?.addEventListener('click', doRegisterStep1);
+el('btn-reg-step2')?.addEventListener('click', doRegisterStep2);
+el('btn-reg-back')?.addEventListener('click', backToStep1);
+el('btn-register-success-close')?.addEventListener('click', closeRegisterSuccess);
+el('btn-logout-pending')?.addEventListener('click', doLogout);
+
 // Verificar clave empresa (session storage)
 checkEmpresaClave();
 

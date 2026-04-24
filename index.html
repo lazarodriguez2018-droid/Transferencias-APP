@@ -94,18 +94,17 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
       <div class="auth-error" id="empresa-error"></div>
       <div class="form-group">
         <label class="form-label">Clave de empresa</label>
-        <input class="form-input" type="password" id="empresa-clave" placeholder="••••••••••"
-          onkeydown="if(event.key==='Enter')verificarClaveEmpresa()">
+        <input class="form-input" type="password" id="empresa-clave" placeholder="••••••••••">
       </div>
-      <button class="btn btn-primary" onclick="verificarClaveEmpresa()">Acceder →</button>
+      <button class="btn btn-primary" id="btn-verificar-empresa">Acceder →</button>
     </div>
 
     <!-- FORMS AUTH (ocultos hasta verificar clave) -->
     <div id="auth-forms" style="display:none">
     <div id="empresa-nombre-display" style="text-align:center;font-size:12px;color:var(--accent);margin-bottom:12px;font-weight:600"></div>
     <div class="auth-tabs">
-      <div class="auth-tab active" onclick="switchAuthTab('login')">Iniciar Sesión</div>
-      <div class="auth-tab" onclick="switchAuthTab('register')">Registrarse</div>
+      <div class="auth-tab active" id="auth-tab-login">Iniciar Sesión</div>
+      <div class="auth-tab" id="auth-tab-register">Registrarse</div>
     </div>
     <!-- LOGIN -->
     <div id="login-form">
@@ -113,9 +112,8 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
       <div class="form-group"><label class="form-label">Email</label>
         <input class="form-input" type="email" id="login-email" placeholder="tu@email.com"></div>
       <div class="form-group"><label class="form-label">Contraseña</label>
-        <input class="form-input" type="password" id="login-password" placeholder="••••••••"
-          onkeydown="if(event.key==='Enter')doLogin()"></div>
-      <button class="btn btn-primary" onclick="doLogin()">Ingresar</button>
+        <input class="form-input" type="password" id="login-password" placeholder="••••••••"></div>
+      <button class="btn btn-primary" id="btn-do-login">Ingresar</button>
     </div>
     <!-- REGISTER -->
     <div id="register-form" style="display:none">
@@ -136,15 +134,15 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
           <input class="form-input" type="password" id="reg-pass" placeholder="Mínimo 6 caracteres"></div>
         <div class="form-group"><label class="form-label">Repetir contraseña</label>
           <input class="form-input" type="password" id="reg-pass2" placeholder="Repetir contraseña"></div>
-        <button class="btn btn-primary" onclick="doRegisterStep1()">Continuar →</button>
+        <button class="btn btn-primary" id="btn-reg-step1">Continuar →</button>
       </div>
       <div id="reg-step2" style="display:none">
         <p style="font-size:13px;color:var(--text2);margin-bottom:16px">Ingresá el código de verificación enviado a <strong id="reg-email-display"></strong></p>
         <div class="form-group"><label class="form-label">Código de verificación</label>
           <input class="form-input" type="text" id="reg-code" placeholder="12345678" maxlength="10"
             style="font-family:'DM Mono',monospace;font-size:20px;letter-spacing:4px;text-align:center"></div>
-        <button class="btn btn-primary" onclick="doRegisterStep2()" style="margin-bottom:10px">Verificar y crear cuenta</button>
-        <button class="btn btn-ghost" onclick="backToStep1()">← Volver</button>
+        <button class="btn btn-primary" id="btn-reg-step2" style="margin-bottom:10px">Verificar y crear cuenta</button>
+        <button class="btn btn-ghost" id="btn-reg-back">← Volver</button>
       </div>
     </div>
   </div>
@@ -155,7 +153,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
       <div style="font-size:52px;margin-bottom:14px">🎉</div>
       <h2 style="font-size:21px;font-weight:700;margin-bottom:10px;color:var(--accent3)">¡Cuenta creada con éxito!</h2>
       <p id="register-success-msg" style="font-size:14px;color:var(--text2);line-height:1.6;margin-bottom:22px"></p>
-      <button class="btn btn-primary" onclick="closeRegisterSuccess()">Ir al inicio de sesión →</button>
+      <button class="btn btn-primary" id="btn-register-success-close">Ir al inicio de sesión →</button>
     </div>
   </div>
 </div>
@@ -166,7 +164,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
     <div style="font-size:48px;margin-bottom:14px">⏳</div>
     <h2 style="font-size:20px;font-weight:700;margin-bottom:8px">Cuenta pendiente de aprobación</h2>
     <p style="color:var(--text2);font-size:14px;line-height:1.6">Tu cuenta fue creada correctamente. Un administrador debe aprobarla antes de que puedas ingresar.</p>
-    <button class="btn btn-ghost btn-sm" onclick="doLogout()" style="margin-top:22px;width:100%">Cerrar sesión</button>
+    <button class="btn btn-ghost btn-sm" id="btn-logout-pending" style="margin-top:22px;width:100%">Cerrar sesión</button>
   </div>
 </div>
 
