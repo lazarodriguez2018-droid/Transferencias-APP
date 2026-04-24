@@ -887,8 +887,13 @@ for(let i=0;i<orig.options.length;i++){ if(!orig.options[i].value.startsWith(cur
 updateRoutePreview();
 // Load products if not cached
 if(!productsCache.length){
-const {data}=await db.from('productos').select('codigo,nombre,marca').order('nombre').limit(6000);
-productsCache=data||[];
+const [baseRes,extraRes]=await Promise.all([
+db.from('productos').select('codigo,nombre,marca').order('nombre').limit(6000),
+db.from('padron_extra').select('codigo,nombre,marca').order('nombre').limit(6000)
+]);
+const base=baseRes.data||[];
+const extra=extraRes.error?[]:(extraRes.data||[]);
+productsCache=[...base,...extra];
 }
 openModal('modal-nuevo-pedido');
 }
@@ -920,11 +925,20 @@ if(q.length<2){res.classList.remove('show');return;}
 // Debounce 300ms para no spamear queries
 clearTimeout(_searchTimeout);
 _searchTimeout=setTimeout(async()=>{
-// Buscar siempre directo en Supabase para evitar problemas de cache incompleto
-let query=db.from('productos').select('codigo,nombre,marca').order('nombre').limit(30);
-// Intentar búsqueda por nombre Y código
-query=query.or('nombre.ilike.%'+q+'%,codigo.ilike.%'+q+'%');
-const {data:results}=await query;
+// Buscar en padrón principal + padrón extra
+const [baseRes,extraRes]=await Promise.all([
+db.from('productos').select('codigo,nombre,marca').or('nombre.ilike.%'+q+'%,codigo.ilike.%'+q+'%').order('nombre').limit(30),
+db.from('padron_extra').select('codigo,nombre,marca').or('nombre.ilike.%'+q+'%,codigo.ilike.%'+q+'%').order('nombre').limit(30)
+]);
+const base=baseRes.data||[];
+const extra=extraRes.error?[]:(extraRes.data||[]);
+const merged=[...base,...extra];
+const map=new Map();
+merged.forEach(p=>{
+const k=(p.codigo||'')+'|'+(p.nombre||'');
+if(!map.has(k)) map.set(k,p);
+});
+const results=Array.from(map.values()).slice(0,30);
 if(!results||!results.length){
 res.innerHTML='<div class="product-result"><div class="p-name" style="color:var(--text2)">Sin resultados para "'+q+'"</div></div>';
 res.classList.add('show'); return;
@@ -1286,16 +1300,31 @@ await renderTransportes(); notify('Eliminado','info');
 }
 
 async function renderAdminProducts(){
-const {count}=await db.from('productos').select('*',{count:'exact',head:true});
-safeSet('products-count', count||0);
+const [baseCountRes,extraCountRes]=await Promise.all([
+db.from('productos').select('*',{count:'exact',head:true}),
+db.from('padron_extra').select('*',{count:'exact',head:true})
+]);
+const baseCount=baseCountRes.count||0;
+const extraCount=extraCountRes.error?0:(extraCountRes.count||0);
+safeSet('products-count', baseCount);
+safeSet('products-extra-count', extraCount);
+safeSet('products-total-count', baseCount+extraCount);
 const q=(el('admin-search-prod')&&el('admin-search-prod').value.trim())||'';
-let query=db.from('productos').select('codigo,nombre,marca').order('nombre').limit(100);
-if(q) query=query.ilike('nombre','%'+q+'%');
-const {data}=await query;
-el('admin-products-body').innerHTML=(data||[]).map(p=>
+let qBase=db.from('productos').select('codigo,nombre,marca').order('nombre').limit(100);
+let qExtra=db.from('padron_extra').select('codigo,nombre,marca').order('nombre').limit(100);
+if(q){
+qBase=qBase.or('nombre.ilike.%'+q+'%,codigo.ilike.%'+q+'%');
+qExtra=qExtra.or('nombre.ilike.%'+q+'%,codigo.ilike.%'+q+'%');
+}
+const [baseRes,extraRes]=await Promise.all([qBase,qExtra]);
+const base=(baseRes.data||[]).map(p=>Object.assign({},p,{_fuente:'Principal'}));
+const extra=(extraRes.error?[]:(extraRes.data||[])).map(p=>Object.assign({},p,{_fuente:'Extra'}));
+const merged=[...base,...extra].sort((a,b)=>String(a.nombre||'').localeCompare(String(b.nombre||''))).slice(0,100);
+el('admin-products-body').innerHTML=(merged||[]).map(p=>
 '<tr><td style="font-family:\'DM Mono\',monospace;font-size:11px">'+p.codigo+'</td>'+
 '<td style="font-size:13px">'+p.nombre+'</td>'+
-'<td style="font-size:12px;color:var(--text2)">'+(p.marca||'–')+'</td></tr>').join('');
+'<td style="font-size:12px;color:var(--text2)">'+(p.marca||'–')+'</td>'+
+'<td style="font-size:12px;color:var(--text3)">'+p._fuente+'</td></tr>').join('');
 }
 
 async function handlePadronUpload(e){
