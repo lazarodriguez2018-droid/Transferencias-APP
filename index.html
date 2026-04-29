@@ -126,6 +126,11 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
           <div class="form-group"><label class="form-label">Apellido</label>
             <input class="form-input" type="text" id="reg-apellido" placeholder="García"></div>
         </div>
+        <div class="form-group"><label class="form-label">Tipo de cuenta</label>
+          <select class="form-input" id="reg-tipo-cuenta">
+            <option value="local">Local</option>
+            <option value="personal">Personal (Supervisor)</option>
+          </select></div>
         <div class="form-group"><label class="form-label">Local donde trabajás</label>
           <select class="form-input" id="reg-local"><option value="">Seleccionar local...</option></select></div>
         <div class="form-group"><label class="form-label">Email</label>
@@ -184,6 +189,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
     <div class="notif-panel-header">
       <span style="font-weight:600;font-size:14px">🔔 Notificaciones</span>
       <span style="font-size:12px;color:var(--accent);cursor:pointer" id="btn-marcar-todas">Marcar todas leídas</span>
+      <span style="font-size:12px;color:var(--danger);cursor:pointer" id="btn-limpiar-notifs">Eliminar viejas</span>
     </div>
     <div id="notif-list"><div style="padding:20px;text-align:center;color:var(--text3);font-size:13px">Sin notificaciones nuevas</div></div>
   </div>
@@ -323,6 +329,9 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         <select class="filter-select" id="filter-mis-destino" style="display:none">
           <option value="">Todos los destinos</option>
         </select>
+        <select class="filter-select" id="filter-mis-creador" style="display:none">
+          <option value="">Realizado por: todos</option>
+        </select>
         <input type="date" class="filter-select" id="filter-mis-desde" title="Desde">
         <input type="date" class="filter-select" id="filter-mis-hasta" title="Hasta">
       </div>
@@ -356,6 +365,9 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         </select>
         <select class="filter-select" id="filter-para-destino" style="display:none">
           <option value="">Todos los destinos</option>
+        </select>
+        <select class="filter-select" id="filter-para-creador" style="display:none">
+          <option value="">Realizado por: todos</option>
         </select>
         <input type="date" class="filter-select" id="filter-desde" placeholder="Desde" title="Desde">
         <input type="date" class="filter-select" id="filter-hasta" placeholder="Hasta" title="Hasta">
@@ -434,6 +446,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         <p>Tus sugerencias y consultas enviadas al administrador</p>
       </div>
       <button class="btn btn-primary btn-sm" id="btn-new-consulta" style="white-space:nowrap">+ Nueva consulta</button>
+      <button class="btn btn-ghost btn-sm" id="btn-limpiar-consultas" style="white-space:nowrap">Limpiar respondidas</button>
       </div>
       <div class="orders-list" id="list-misConsultas">
         <div class="empty-state"><div class="icon">💬</div><p>No enviaste ninguna consulta aún</p></div>

@@ -209,6 +209,17 @@ el('login-form').style.display    = tab==='login'    ?'block':'none';
 el('register-form').style.display = tab==='register' ?'block':'none';
 }
 
+function onTipoCuentaChange(){
+const tipo=el('reg-tipo-cuenta')?.value||'local';
+const grp=el('reg-local')?.closest('.form-group');
+if(!grp) return;
+if(tipo==='personal'){
+grp.style.opacity='0.7';
+} else {
+grp.style.opacity='1';
+}
+}
+
 function clearMessage(id){
 const e=el(id);
 if(!e) return;
@@ -249,15 +260,22 @@ async function doRegisterStep1(){
 const nombre   = el('reg-nombre').value.trim();
 const apellido = el('reg-apellido').value.trim();
 const localVal = el('reg-local').value;
+const tipoCuenta = el('reg-tipo-cuenta')?.value || 'local';
 const email    = el('reg-email').value.trim();
 const pass     = el('reg-pass').value;
 const pass2    = el('reg-pass2').value;
-if(!nombre||!apellido||!localVal||!email||!pass) return showErr('reg-error','Completá todos los campos.');
+if(!nombre||!apellido||!email||!pass) return showErr('reg-error','Completá todos los campos.');
+if(tipoCuenta==='local' && !localVal) return showErr('reg-error','Seleccioná un local para cuentas tipo local.');
 if(pass!==pass2)   return showErr('reg-error','Las contraseñas no coinciden.');
 if(pass.length<6)  return showErr('reg-error','Mínimo 6 caracteres.');
 if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showErr('reg-error','Email inválido.');
-const [localNombre,almacen]=localVal.split('|');
-regData={nombre,apellido,localNombre,almacen,email,pass};
+let localNombre='General', almacen='SUP';
+if(localVal){
+  const parts=localVal.split('|');
+  localNombre=parts[0]||'General';
+  almacen=parts[1]||'SUP';
+}
+regData={nombre,apellido,localNombre,almacen,email,pass,tipoCuenta};
 // Sign up with Supabase — sends verification email automatically
 const {error}=await db.auth.signUp({email,password:pass,options:{emailRedirectTo:window.location.href}});
 if(error) return showErr('reg-error',error.message);
@@ -286,7 +304,7 @@ const isFirst=false;
 const {error:pe}=await db.from('perfiles').insert({
 id:data.user.id, nombre:regData.nombre, apellido:regData.apellido,
 local_nombre:regData.localNombre, almacen:regData.almacen,
-role:'empleado', approved:false
+role:regData.tipoCuenta==='personal'?'admin':'empleado', approved:false
 });
 if(pe) return showErr('reg-error','Error al crear perfil: '+pe.message);
 el('reg-step2').style.display='none';
@@ -653,6 +671,7 @@ localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvOrigen===l.nombre?' select
 
 // Filtro destino — visible para admins
 const selDestino = el('filter-mis-destino');
+const selCreador = el('filter-mis-creador');
 if(isAdmin){
 selDestino.style.display='';
 const cvDest=selDestino.value;
@@ -660,6 +679,16 @@ selDestino.innerHTML='<option value="">Todos los destinos</option>'+
 localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvDest===l.nombre?' selected':'')+'>'+l.nombre+'</option>').join('');
 } else {
 selDestino.style.display='none';
+if(selCreador) selCreador.style.display='none';
+}
+if(isAdmin && selCreador){
+selCreador.style.display='';
+const cvC=selCreador.value;
+const {data:creadores}=await db.from('perfiles').select('id,nombre,apellido,local_nombre').eq('approved',true).order('nombre');
+selCreador.innerHTML='<option value="">Realizado por: todos</option>'+(creadores||[]).map(c=>{
+const lbl=(c.nombre||'')+' '+(c.apellido||'')+' · '+(c.local_nombre||'');
+return '<option value="'+c.id+'"'+(cvC===c.id?' selected':'')+'>'+escHtml(lbl)+'</option>';
+}).join('');
 }
 
 let q=db.from('pedidos').select('*,pedido_productos(*)')
@@ -671,9 +700,11 @@ if(!isAdmin) q=q.eq('destino_local',local);
 const estado  = el('filter-mis-estado').value;
 const origen  = selOrigen.value;
 const destino = isAdmin ? selDestino.value : '';
+const creador = isAdmin && selCreador ? selCreador.value : '';
 if(estado)  q=q.eq('estado',estado);
 if(origen)  q=q.eq('origen_local',origen);
 if(destino) q=q.eq('destino_local',destino);
+if(creador) q=q.eq('creado_por',creador);
 
 q=q.order('created_at',{ascending:true});
 
@@ -716,6 +747,7 @@ const local   = currentPerfil.local_nombre;
 // Filtros de local — visibles para admins
 const selOrigen  = el('filter-para-origen');
 const selDestino = el('filter-para-destino');
+const selCreador = el('filter-para-creador');
 if(isAdmin){
 selOrigen.style.display='';
 selDestino.style.display='';
@@ -727,6 +759,16 @@ localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvD===l.nombre?' selected':'
 } else {
 selOrigen.style.display='none';
 selDestino.style.display='none';
+if(selCreador) selCreador.style.display='none';
+}
+if(isAdmin && selCreador){
+selCreador.style.display='';
+const cvC=selCreador.value;
+const {data:creadores}=await db.from('perfiles').select('id,nombre,apellido,local_nombre').eq('approved',true).order('nombre');
+selCreador.innerHTML='<option value="">Realizado por: todos</option>'+(creadores||[]).map(c=>{
+const lbl=(c.nombre||'')+' '+(c.apellido||'')+' · '+(c.local_nombre||'');
+return '<option value="'+c.id+'"'+(cvC===c.id?' selected':'')+'>'+escHtml(lbl)+'</option>';
+}).join('');
 }
 
 // Locales para los cuales soy escala
@@ -743,6 +785,7 @@ q=q.eq('origen_local',local);
 } else {
 if(selOrigen.value)  q=q.eq('origen_local',selOrigen.value);
 if(selDestino.value) q=q.eq('destino_local',selDestino.value);
+if(selCreador?.value) q=q.eq('creado_por',selCreador.value);
 }
 
 if(despachoTab==='pendientes'){
@@ -1386,6 +1429,14 @@ await db.from('notificaciones').update({leida:true}).eq('usuario_id',currentPerf
 await updateNotifBadge(); await renderNotifPanel();
 }
 
+async function limpiarNotificacionesViejas(){
+const {error}=await db.from('notificaciones').delete().eq('usuario_id',currentPerfil.id).eq('leida',true);
+if(error) return notify('No se pudieron limpiar notificaciones: '+error.message,'error');
+notify('Notificaciones leídas eliminadas','info');
+await renderNotifPanel();
+await updateNotifBadge();
+}
+
 // ═══════════════════════════════════════════
 //  MIS CONSULTAS
 // ═══════════════════════════════════════════
@@ -1408,6 +1459,13 @@ return '<div class="consulta-card">'+
 '</div>';
 }).join('');
 await updateBadges();
+}
+
+async function limpiarConsultasRespondidas(){
+const {error}=await db.from('sugerencias').delete().eq('usuario_id',currentPerfil.id).not('respuesta','is',null);
+if(error) return notify('No se pudieron limpiar consultas: '+error.message,'error');
+notify('Consultas respondidas eliminadas','info');
+await renderMisConsultas();
 }
 
 async function enviarSugerencia(){
@@ -1864,6 +1922,7 @@ el('auth-tab-register')?.addEventListener('click', ()=>switchAuthTab('register')
 el('login-password')?.addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
 el('btn-do-login')?.addEventListener('click', doLogin);
 el('btn-reg-step1')?.addEventListener('click', doRegisterStep1);
+el('reg-tipo-cuenta')?.addEventListener('change', onTipoCuentaChange);
 el('btn-reg-step2')?.addEventListener('click', doRegisterStep2);
 el('btn-reg-back')?.addEventListener('click', backToStep1);
 el('btn-register-success-close')?.addEventListener('click', closeRegisterSuccess);
@@ -1873,26 +1932,29 @@ el('mobile-overlay')?.addEventListener('click', closeSidebar);
 el('notif-bell-mobile')?.addEventListener('click', toggleNotifPanel);
 el('notif-bell-desktop')?.addEventListener('click', toggleNotifPanel);
 el('btn-marcar-todas')?.addEventListener('click', marcarTodasLeidas);
+el('btn-limpiar-notifs')?.addEventListener('click', limpiarNotificacionesViejas);
 el('btn-suggest-sidebar')?.addEventListener('click', ()=>openModal('modal-sugerencia'));
 el('btn-new-consulta')?.addEventListener('click', ()=>openModal('modal-sugerencia'));
+el('btn-limpiar-consultas')?.addEventListener('click', limpiarConsultasRespondidas);
 el('fab-btn')?.addEventListener('click', openNuevoPedido);
 
 document.querySelectorAll('[data-nav]').forEach(item=>{
 item.addEventListener('click', ()=>navigateTo(item.getAttribute('data-nav')));
 });
 
-['filter-mis-estado','filter-mis-origen','filter-mis-destino','filter-mis-desde','filter-mis-hasta']
+['filter-mis-estado','filter-mis-origen','filter-mis-destino','filter-mis-creador','filter-mis-desde','filter-mis-hasta']
 .forEach(id=>el(id)?.addEventListener('change', renderMisPedidos));
 
 el('tab-pendientes')?.addEventListener('click', ()=>switchDespachoTab('pendientes'));
 el('tab-completados')?.addEventListener('click', ()=>switchDespachoTab('completados'));
-['filter-env-estado','filter-para-origen','filter-para-destino','filter-desde','filter-hasta']
+['filter-env-estado','filter-para-origen','filter-para-destino','filter-para-creador','filter-desde','filter-hasta']
 .forEach(id=>el(id)?.addEventListener('change', renderParaEnviar));
 ['filter-hist-tipo','filter-hist-estado','filter-hist-desde','filter-hist-hasta']
 .forEach(id=>el(id)?.addEventListener('change', renderHistorial));
 
 // Verificar clave empresa (session storage)
 checkEmpresaClave();
+onTipoCuentaChange();
 
 // Close modals on overlay click
 document.querySelectorAll('.modal-overlay').forEach(o=>{
