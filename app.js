@@ -376,7 +376,7 @@ showPage('app-page');
 el('admin-nav').style.display='none';
 const isAdmin = currentPerfil.role==='admin';
 safeSet('sidebar-name', currentPerfil.nombre_display||(currentPerfil.nombre+' '+currentPerfil.apellido));
-safeSet('sidebar-role', isAdmin?'Supervisor':'Local');
+safeSet('sidebar-role', roleLabel(currentPerfil.role));
 // Avatar: foto o iniciales
 const avatarEl = el('sidebar-avatar');
 if(currentPerfil.foto_url){
@@ -573,6 +573,10 @@ completo:         ['✅','Completo','badge-complete'],
 incompleto:       ['⚠️','Incompleto','badge-incomplete'],
 };
 return m[estado]||['❓',estado,'badge-pending'];
+}
+
+function roleLabel(role){
+return (role==='admin' || role==='supervisor_general') ? 'Supervisor' : 'Local';
 }
 
 async function fetchPedidos(filters={}){
@@ -1478,7 +1482,7 @@ pe.innerHTML=pending.length
 el('users-all-body').innerHTML=(users||[]).map(u=>
 '<tr><td>'+u.nombre+' '+u.apellido+'</td>'+
 '<td>'+u.local_nombre+' ('+u.almacen+')</td>'+
-'<td><span class="badge '+(u.role==='admin'?'badge-admin':'badge-empleado')+'">'+(u.role==='admin'?'Supervisor':'Local')+'</span></td>'+
+'<td><span class="badge '+(u.role==='admin'?'badge-admin':'badge-empleado')+'">'+roleLabel(u.role)+'</span></td>'+
 '<td><span class="badge '+(u.approved?'badge-complete':'badge-pending')+'">'+(u.approved?'Activo':'Pendiente')+'</span></td>'+
 '<td style="display:flex;gap:6px;flex-wrap:wrap">'+
 (u.id!==currentPerfil.id
