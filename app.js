@@ -716,10 +716,14 @@ if(misHasta) q=q.lte('created_at',misHasta+'T23:59:59');
 
 const {data}=await q;
 const list=data||[];
-// Actualizar subtítulo según rol
-safeSet('mis-pedidos-subtitle', isAdmin
-?'Todos los pedidos solicitados — usá los filtros para buscar'
-:'Pedidos que tu local solicitó. Seguí el estado acá.');
+// Actualizar título/subtítulo según rol
+if(isAdmin){
+safeSet('mis-pedidos-title','📤 Pedidos realizados');
+safeSet('mis-pedidos-subtitle','Todos los pedidos de todos los locales. Usá filtros por local y realizado por.');
+} else {
+safeSet('mis-pedidos-title','📤 Pedidos de mi local');
+safeSet('mis-pedidos-subtitle','Pedidos que tu local solicitó a otros. Seguí el estado acá.');
+}
 const ahora=Date.now();
 list.forEach(o=>{
 if(['pendiente','aceptado'].includes(o.estado)){
@@ -1541,6 +1545,7 @@ el('users-all-body').innerHTML=(users||[]).map(u=>
 '<tr><td>'+u.nombre+' '+u.apellido+'</td>'+
 '<td>'+u.local_nombre+' ('+u.almacen+')</td>'+
 '<td><span class="badge '+(u.role==='admin'?'badge-admin':'badge-empleado')+'">'+roleLabel(u.role)+'</span></td>'+
+'<td><span class="badge '+(u.role==='admin'?'badge-admin':'badge-pending')+'">'+(u.role==='admin'?'Personal':'Local')+'</span></td>'+
 '<td><span class="badge '+(u.approved?'badge-complete':'badge-pending')+'">'+(u.approved?'Activo':'Pendiente')+'</span></td>'+
 '<td style="display:flex;gap:6px;flex-wrap:wrap">'+
 (u.id!==currentPerfil.id

@@ -308,8 +308,8 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
     <!-- MIS PEDIDOS -->
     <div id="view-misPedidos" style="display:none">
       <div class="page-header"><div>
-        <h1>📤 Pedidos de mi local</h1>
-        <p>Pedidos que tu local solicitó a otros. Seguí su estado acá.</p>
+        <h1 id="mis-pedidos-title">📤 Pedidos de mi local</h1>
+        <p id="mis-pedidos-subtitle">Pedidos que tu local solicitó a otros. Seguí su estado acá.</p>
       </div></div>
       <div class="info-banner">
         💡 Estos son los pedidos que <strong>tu local pidió</strong> a otros locales. Cuando la mercadería llegue, vos confirmás la recepción.
@@ -411,7 +411,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         <div class="card-header"><h3>👥 Todos los usuarios</h3></div>
         <div class="card-body" style="overflow-x:auto">
           <table class="admin-table">
-            <thead><tr><th>Nombre</th><th>Email</th><th>Local</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <thead><tr><th>Nombre</th><th>Email</th><th>Local</th><th>Rol</th><th>Tipo de cuenta</th><th>Estado</th><th>Acciones</th></tr></thead>
             <tbody id="users-all-body"></tbody>
           </table>
         </div>
