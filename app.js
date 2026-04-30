@@ -943,7 +943,7 @@ let actions='';
 if(esEscala){
 // ── FLUJO CON ESCALA ──
 if(canOrigen && o.estado==='pendiente'){
-actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'aceptar\',\''+o.id+'\')">✅ Aceptar pedido</button><button class="btn btn-danger btn-sm" onclick="accion(\'denegar\',\''+o.id+'\')">❌ Denegar pedido</button></div>';
+actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'aceptar\',\''+o.id+'\')">✅ Aceptar completo</button><button class="btn btn-warning btn-sm" onclick="accion(\'aceptar_incompleto\',\''+o.id+'\')">⚠️ Aceptar incompleto</button><button class="btn btn-danger btn-sm" onclick="accion(\'denegar\',\''+o.id+'\')">❌ Denegar pedido</button></div>';
 } else if(canOrigen && o.estado==='aceptado'){
 actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'listo\',\''+o.id+'\')">📦 Marcar listo para enviar a '+escalaInfo.escala+'</button></div>';
 } else if(canOrigen && o.estado==='listo'){
@@ -962,7 +962,7 @@ actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick
 } else {
 // ── FLUJO NORMAL ──
 if(canOrigen && o.estado==='pendiente'){
-actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'aceptar\',\''+o.id+'\')">✅ Aceptar pedido</button><button class="btn btn-danger btn-sm" onclick="accion(\'denegar\',\''+o.id+'\')">❌ Denegar pedido</button></div>';
+actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'aceptar\',\''+o.id+'\')">✅ Aceptar completo</button><button class="btn btn-warning btn-sm" onclick="accion(\'aceptar_incompleto\',\''+o.id+'\')">⚠️ Aceptar incompleto</button><button class="btn btn-danger btn-sm" onclick="accion(\'denegar\',\''+o.id+'\')">❌ Denegar pedido</button></div>';
 } else if(canOrigen && o.estado==='aceptado'){
 actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'listo\',\''+o.id+'\')">📦 Marcar listo para enviar</button></div>';
 } else if(canOrigen && o.estado==='listo'){
@@ -996,7 +996,7 @@ openModal('modal-detalle');
 // ═══════════════════════════════════════════
 //  ACCIONES
 // ═══════════════════════════════════════════
-function accion(tipo, orderId){
+async function accion(tipo, orderId){
 const labels={aceptar:'Aceptar el pedido',transito:'Marcar en viaje',transito_escala:'Marcar en viaje a escala',en_escala_completo:'Llegó completo a escala',en_escala_incompleto:'Llegó incompleto a escala',listo_escala:'Listo para enviar a destino',llegado:'Confirmar llegada final',completo:'Marcar como completo'};
 if(tipo==='denegar'){
 el('modal-accion-title').textContent='❌ Denegar pedido';
@@ -1020,10 +1020,13 @@ setTimeout(()=>{ const s=el('accion-transporte'); if(s) s.onchange=function(){el
 el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-primary btn-sm" onclick="confirmarAccion(\'listo\',\''+orderId+'\')">Confirmar</button>';
 openModal('modal-accion'); return;
 }
-if(tipo==='incompleto' || tipo==='en_escala_incompleto'){
-const label = tipo==='en_escala_incompleto' ? 'Llegó incompleto a escala' : 'Llegó incompleto';
+if(tipo==='incompleto' || tipo==='en_escala_incompleto' || tipo==='aceptar_incompleto'){
+const label = tipo==='en_escala_incompleto' ? 'Llegó incompleto a escala' : (tipo==='aceptar_incompleto'?'Aceptado incompleto':'Llegó incompleto');
+const {data:o}=await db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single();
+const items=(o?.pedido_productos||[]);
+const itemsHtml=items.map((p,i)=>'<label style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><input type="checkbox" class="incomp-item" data-idx="'+i+'" checked> <span>'+escHtml(p.nombre||'')+' x'+(p.cantidad||1)+'</span></label>').join('');
 el('modal-accion-title').textContent='⚠️ '+label;
-el('modal-accion-body').innerHTML='<div class="warning-box">⚠️ Esta acción es <strong>irreversible</strong>.</div><div class="form-group" style="margin-top:14px"><label class="form-label">¿Qué faltó? (obligatorio)</label><textarea class="form-input" id="faltantes-det" rows="3" placeholder="Ej: Faltó 1 unidad de..."></textarea></div>';
+el('modal-accion-body').innerHTML='<div class="warning-box">Seleccioná qué ítems llegaron correctamente.</div><div class="form-group" style="margin-top:10px">'+itemsHtml+'</div><div class="form-group" style="margin-top:14px"><label class="form-label">Observación (opcional)</label><textarea class="form-input" id="faltantes-det" rows="3" placeholder="Ej: Faltó 1 unidad de..."></textarea></div>';
 el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-warning btn-sm" onclick="confirmarAccion(\''+tipo+'\',\''+orderId+'\')">Confirmar</button>';
 openModal('modal-accion'); return;
 }
@@ -1060,16 +1063,30 @@ updates.remito=(el('num-remito')&&el('num-remito').value.trim())||null;
 updates.tracking=(el('num-tracking')&&el('num-tracking').value.trim())||null;
 if(fotoBase64) updates.foto_url=fotoBase64;
 fotoBase64=null;
-} else if(tipo==='incompleto'){
-const f=el('faltantes-det')&&el('faltantes-det').value.trim();
-if(!f) return notify('Indicá qué faltó','error');
-updates.estado='incompleto'; updates.faltantes=f;
-} else if(tipo==='en_escala_incompleto'){
-const f=el('faltantes-det')&&el('faltantes-det').value.trim();
-if(!f) return notify('Indicá qué faltó','error');
-// Llegó incompleto a la escala pero igual sigue el proceso
+} else if(tipo==='incompleto' || tipo==='en_escala_incompleto' || tipo==='aceptar_incompleto'){
+const {data:o}=await db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single();
+const items=(o?.pedido_productos||[]);
+const checks=Array.from(document.querySelectorAll('.incomp-item'));
+const recibidos=[], faltantesItems=[];
+checks.forEach(ch=>{
+const idx=parseInt(ch.getAttribute('data-idx'),10);
+const it=items[idx]; if(!it) return;
+if(ch.checked) recibidos.push((it.nombre||'')+' x'+(it.cantidad||1));
+else faltantesItems.push((it.nombre||'')+' x'+(it.cantidad||1));
+});
+if(!faltantesItems.length) return notify('Marcá al menos 1 ítem faltante para incompleto','error');
+const obs=(el('faltantes-det')&&el('faltantes-det').value.trim())||'';
+const resumen='Recibidos: '+recibidos.join(', ')+' | Faltantes: '+faltantesItems.join(', ')+(obs?(' | Obs: '+obs):'');
+if(tipo==='en_escala_incompleto'){
 updates.estado='en_escala';
-updates.faltantes_escala=f;
+updates.faltantes_escala=resumen;
+} else if(tipo==='aceptar_incompleto'){
+updates.estado='aceptado';
+updates.faltantes='Aceptado incompleto - '+resumen;
+} else {
+updates.estado='incompleto';
+updates.faltantes=resumen;
+}
 } else {
 updates.estado=sm[tipo]||tipo;
 }
@@ -1082,6 +1099,9 @@ await db.from('pedido_historial').insert({pedido_id:orderId,estado:updates.estad
 
 // Notificar a los otros participantes
 await notificarCambioEstado(orderId, updates.estado);
+if(tipo==='aceptar_incompleto'){
+await notificarCambioEstado(orderId, 'incompleto');
+}
 
 closeModal('modal-accion'); closeModal('modal-detalle');
 notify('Estado actualizado correctamente','success');
