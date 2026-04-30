@@ -597,6 +597,24 @@ function roleLabel(role){
 return (role==='admin' || role==='supervisor_general') ? 'Supervisor' : 'Local';
 }
 
+function normalizeText(v){
+return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,' ').replace(/\s+/g,' ').trim();
+}
+function tokenizeSearch(v){
+return normalizeText(v).split(' ').filter(Boolean);
+}
+function orderMatchesTokens(order, tokens){
+if(!tokens.length) return true;
+const products=(order.pedido_productos||[]).map(p=>[p.nombre,p.codigo,p.marca].filter(Boolean).join(' ')).join(' ');
+const haystack=normalizeText([order.cliente,order.telefono,order.notas,products,order.origen_local,order.destino_local].filter(Boolean).join(' '));
+return tokens.every(t=>haystack.includes(t));
+}
+function productMatchesTokens(product, tokens){
+if(!tokens.length) return true;
+const haystack=normalizeText([product.nombre,product.codigo,product.marca].filter(Boolean).join(' '));
+return tokens.every(t=>haystack.includes(t));
+}
+
 async function fetchPedidos(filters={}){
 let q=db.from('pedidos').select('*, pedido_productos(*)').order('created_at',{ascending:false});
 if(filters.destinoLocal) q=q.eq('destino_local',filters.destinoLocal);
@@ -715,7 +733,10 @@ if(misDesde) q=q.gte('created_at',misDesde+'T00:00:00');
 if(misHasta) q=q.lte('created_at',misHasta+'T23:59:59');
 
 const {data}=await q;
-const list=data||[];
+let list=data||[];
+const qText=el('filter-mis-busqueda')?.value||'';
+const tokens=tokenizeSearch(qText);
+if(tokens.length) list=list.filter(o=>orderMatchesTokens(o,tokens));
 // Actualizar título/subtítulo según rol
 if(isAdmin){
 safeSet('mis-pedidos-title','📤 Pedidos realizados');
@@ -811,7 +832,10 @@ if(desde) q=q.gte('created_at',desde+'T00:00:00');
 if(hasta) q=q.lte('created_at',hasta+'T23:59:59');
 
 const {data}=await q;
-const list=data||[];
+let list=data||[];
+const qText=el('filter-para-busqueda')?.value||'';
+const tokens=tokenizeSearch(qText);
+if(tokens.length) list=list.filter(o=>orderMatchesTokens(o,tokens));
 list.forEach(o=>{
 if(['pendiente','aceptado'].includes(o.estado))
 o._viejo=(Date.now()-new Date(o.created_at).getTime())/3600000>24;
@@ -1275,14 +1299,17 @@ if(q.length<2){res.classList.remove('show');return;}
 // Debounce 300ms para no spamear queries
 clearTimeout(_searchTimeout);
 _searchTimeout=setTimeout(async()=>{
-// Buscar en padrón principal + padrón extra
+if(!productsCache.length){
 const [baseRes,extraRes]=await Promise.all([
-db.from('productos').select('codigo,nombre,marca').or('nombre.ilike.%'+q+'%,codigo.ilike.%'+q+'%').order('nombre').limit(30),
-db.from('padron_extra').select('*').ilike('nombre','%'+q+'%').order('nombre').limit(30)
+db.from('productos').select('codigo,nombre,marca').order('nombre').limit(6000),
+db.from('padron_extra').select('*').order('nombre').limit(6000)
 ]);
 const base=baseRes.data||[];
 const extra=extraRes.error?[]:(extraRes.data||[]).map(normalizeExtraProduct);
-const merged=[...base,...extra];
+productsCache=[...base,...extra];
+}
+const tokens=tokenizeSearch(q);
+const merged=productsCache.filter(p=>productMatchesTokens(p,tokens)).slice(0,120);
 const map=new Map();
 merged.forEach(p=>{
 const k=(p.codigo||'')+'|'+(p.nombre||'');
@@ -1951,11 +1978,13 @@ item.addEventListener('click', ()=>navigateTo(item.getAttribute('data-nav')));
 
 ['filter-mis-estado','filter-mis-origen','filter-mis-destino','filter-mis-creador','filter-mis-desde','filter-mis-hasta']
 .forEach(id=>el(id)?.addEventListener('change', renderMisPedidos));
+el('filter-mis-busqueda')?.addEventListener('input', renderMisPedidos);
 
 el('tab-pendientes')?.addEventListener('click', ()=>switchDespachoTab('pendientes'));
 el('tab-completados')?.addEventListener('click', ()=>switchDespachoTab('completados'));
 ['filter-env-estado','filter-para-origen','filter-para-destino','filter-para-creador','filter-desde','filter-hasta']
 .forEach(id=>el(id)?.addEventListener('change', renderParaEnviar));
+el('filter-para-busqueda')?.addEventListener('input', renderParaEnviar);
 ['filter-hist-tipo','filter-hist-estado','filter-hist-desde','filter-hist-hasta']
 .forEach(id=>el(id)?.addEventListener('change', renderHistorial));
 
