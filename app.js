@@ -720,9 +720,11 @@ const list=data||[];
 if(isAdmin){
 safeSet('mis-pedidos-title','📤 Pedidos realizados');
 safeSet('mis-pedidos-subtitle','Todos los pedidos de todos los locales. Usá filtros por local y realizado por.');
+safeSet('nav-misPedidos-label','Pedidos realizados');
 } else {
 safeSet('mis-pedidos-title','📤 Pedidos de mi local');
 safeSet('mis-pedidos-subtitle','Pedidos que tu local solicitó a otros. Seguí el estado acá.');
+safeSet('nav-misPedidos-label','Pedidos de mi local');
 }
 const ahora=Date.now();
 list.forEach(o=>{
