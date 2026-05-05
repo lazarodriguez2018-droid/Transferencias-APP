@@ -849,19 +849,45 @@ despachoTab==='pendientes'?'No hay pedidos pendientes':'No hay pedidos completad
 // ═══════════════════════════════════════════
 async function renderHistorial(){
 const local=currentPerfil.local_nombre;
+const isAdmin=currentPerfil.role==='admin';
 const tipo=el('filter-hist-tipo').value;
 const estado=el('filter-hist-estado').value;
+const selOrigen=el('filter-hist-origen');
+const selDestino=el('filter-hist-destino');
+const selCreador=el('filter-hist-creador');
+const cvO=selOrigen?.value||'', cvD=selDestino?.value||'', cvC=selCreador?.value||'';
+if(selOrigen){
+selOrigen.innerHTML='<option value="">Todos los orígenes</option>'+localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvO===l.nombre?' selected':'')+'>'+escHtml(l.nombre)+'</option>').join('');
+}
+if(isAdmin && selDestino){
+selDestino.style.display='';
+selDestino.innerHTML='<option value="">Todos los destinos</option>'+localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvD===l.nombre?' selected':'')+'>'+escHtml(l.nombre)+'</option>').join('');
+} else if(selDestino) selDestino.style.display='none';
+if(isAdmin && selCreador){
+selCreador.style.display='';
+const {data:creadores}=await db.from('perfiles').select('id,nombre,apellido,local_nombre').eq('approved',true).order('nombre');
+selCreador.innerHTML='<option value="">Realizado por: todos</option>'+(creadores||[]).map(c=>{
+const lbl=(c.nombre||'')+' '+(c.apellido||'')+' · '+(c.local_nombre||'');
+return '<option value="'+c.id+'"'+(cvC===c.id?' selected':'')+'>'+escHtml(lbl)+'</option>';
+}).join('');
+} else if(selCreador) selCreador.style.display='none';
 let q=db.from('pedidos').select('*,pedido_productos(*)').in('estado',['completo','incompleto','denegado']).order('updated_at',{ascending:false});
 if(tipo==='misPedidos')  q=q.eq('destino_local',local);
 else if(tipo==='despachados') q=q.eq('origen_local',local);
-else q=q.or('origen_local.eq.'+local+',destino_local.eq.'+local);
+else if(!isAdmin) q=q.or('origen_local.eq.'+local+',destino_local.eq.'+local);
 if(estado) q=q.eq('estado',estado);
+if(selOrigen?.value) q=q.eq('origen_local',selOrigen.value);
+if(isAdmin && selDestino?.value) q=q.eq('destino_local',selDestino.value);
+if(isAdmin && selCreador?.value) q=q.eq('creado_por',selCreador.value);
 const desde=el('filter-hist-desde')?.value;
 const hasta=el('filter-hist-hasta')?.value;
 if(desde) q=q.gte('updated_at',desde+'T00:00:00');
 if(hasta) q=q.lte('updated_at',hasta+'T23:59:59');
 const {data}=await q;
-renderList('list-historial', data||[], '📋','No hay historial');
+let list=data||[];
+const tokens=tokenizeSearch(el('filter-hist-busqueda')?.value||'');
+if(tokens.length) list=list.filter(o=>orderMatchesTokens(o,tokens));
+renderList('list-historial', list, '📋','No hay historial');
 }
 
 // ═══════════════════════════════════════════
@@ -1258,6 +1284,21 @@ el('new-cliente').value=c.nombre||'';
 el('new-telefono').value=c.telefono||'';
 el('cliente-search-input').value=(c.nombre||'')+(c.telefono?' · '+c.telefono:'');
 el('cliente-search-results').classList.remove('show');
+updatePedidoClienteDisplay();
+}
+
+function clearPedidoCliente(){
+el('new-cliente').value='';
+el('new-telefono').value='';
+el('cliente-search-input').value='';
+el('cliente-search-results').classList.remove('show');
+updatePedidoClienteDisplay();
+}
+
+function updatePedidoClienteDisplay(){
+const n=el('new-cliente')?.value||'';
+const t=el('new-telefono')?.value||'';
+safeSet('cliente-selected-display', n ? ('Cliente seleccionado: '+n+(t?' · '+t:'')) : 'Sin cliente asignado');
 }
 
 // ═══════════════════════════════════════════
@@ -1268,6 +1309,7 @@ newOrderProducts=[]; fotoBase64=null; selectedProductTemp=null;
 el('new-cliente').value=''; el('new-telefono').value='';
 el('cliente-search-input').value='';
 el('cliente-search-results').classList.remove('show');
+updatePedidoClienteDisplay();
 el('new-notas').value=''; el('new-urgente').checked=false;
 el('product-search-input').value=''; el('product-qty').value='1';
 renderSelectedProducts();
@@ -1991,6 +2033,11 @@ el('btn-suggest-sidebar')?.addEventListener('click', ()=>openModal('modal-sugere
 el('btn-new-consulta')?.addEventListener('click', ()=>openModal('modal-sugerencia'));
 el('btn-limpiar-consultas')?.addEventListener('click', limpiarConsultasRespondidas);
 el('fab-btn')?.addEventListener('click', openNuevoPedido);
+el('btn-conv-photo')?.addEventListener('click', ()=>el('conv-photo-input')?.click());
+el('btn-conv-audio')?.addEventListener('click', ()=>el('conv-audio-input')?.click());
+el('btn-conv-plus')?.addEventListener('click', abrirMenuAdjuntosChat);
+el('conv-photo-input')?.addEventListener('change', e=>{ sendChatFile(e.target.files?.[0],'image'); e.target.value=''; });
+el('conv-audio-input')?.addEventListener('change', e=>{ sendChatFile(e.target.files?.[0],'audio'); e.target.value=''; });
 
 document.querySelectorAll('[data-nav]').forEach(item=>{
 item.addEventListener('click', ()=>navigateTo(item.getAttribute('data-nav')));
@@ -2005,8 +2052,9 @@ el('tab-completados')?.addEventListener('click', ()=>switchDespachoTab('completa
 ['filter-env-estado','filter-para-origen','filter-para-destino','filter-para-creador','filter-desde','filter-hasta']
 .forEach(id=>el(id)?.addEventListener('change', renderParaEnviar));
 el('filter-para-busqueda')?.addEventListener('input', renderParaEnviar);
-['filter-hist-tipo','filter-hist-estado','filter-hist-desde','filter-hist-hasta']
+['filter-hist-tipo','filter-hist-estado','filter-hist-origen','filter-hist-destino','filter-hist-creador','filter-hist-desde','filter-hist-hasta']
 .forEach(id=>el(id)?.addEventListener('change', renderHistorial));
+el('filter-hist-busqueda')?.addEventListener('input', renderHistorial);
 
 // Verificar clave empresa (session storage)
 checkEmpresaClave();
@@ -2153,10 +2201,74 @@ const initials = (m.usuario_nombre||'').split(' ').map(w=>w[0]||'').join('').sli
 const hora = new Date(m.created_at).toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'});
 return '<div class="chat-msg '+(isOwn?'own':'other')+'">'+
 '<div class="chat-avatar" style="background:'+(isOwn?'var(--accent)':'var(--surface3)')+'">'+escHtml(initials)+'</div>'+
-'<div><div class="chat-bubble">'+escHtml(m.texto)+'</div>'+
+'<div><div class="chat-bubble">'+renderMessageContent(m.texto)+'</div>'+
 '<div class="chat-meta" style="text-align:'+(isOwn?'right':'left')+'">'+escHtml(m.usuario_nombre)+' · '+hora+'</div></div></div>';
 }).join('');
 e.scrollTop=e.scrollHeight;
+}
+
+function tryParseMsgPayload(text){
+try{ const p=JSON.parse(text||''); return p&&p.__transfer_msg ? p : null; }catch(_e){ return null; }
+}
+
+function renderMessageContent(text){
+const payload=tryParseMsgPayload(text);
+if(payload){
+if(payload.type==='pedido') return '<div>📦 '+escHtml(payload.text||'Pedido compartido')+'</div><button class="btn btn-ghost btn-sm" onclick="openDetalle(\''+escJsStr(payload.orderId)+'\')">Abrir pedido</button>';
+if(payload.type==='contact') return '<div>👤 <strong>'+escHtml(payload.nombre||'Contacto')+'</strong><br>📞 '+escHtml(payload.telefono||'')+(payload.direccion?'<br>📍 '+escHtml(payload.direccion):'')+'</div>';
+if(payload.type==='image') return '<img src="'+escHtml(payload.data||'')+'" alt="Foto" style="max-width:220px;border-radius:10px;display:block">'+(payload.name?'<div style="font-size:11px;color:var(--text2);margin-top:4px">'+escHtml(payload.name)+'</div>':'');
+if(payload.type==='audio') return '<audio controls src="'+escHtml(payload.data||'')+'" style="max-width:260px"></audio>'+(payload.name?'<div style="font-size:11px;color:var(--text2);margin-top:4px">'+escHtml(payload.name)+'</div>':'');
+}
+return escHtml(text);
+}
+
+async function sendConvPayload(payload){
+if(!currentConvId) return notify('Seleccioná una conversación','error');
+await db.from('mensajes').insert({
+conversacion_id:currentConvId, usuario_id:currentPerfil.id,
+usuario_nombre: currentPerfil.nombre_display||(currentPerfil.nombre+' '+currentPerfil.apellido),
+texto:JSON.stringify(Object.assign({__transfer_msg:true},payload))
+});
+await db.from('conversaciones').update({updated_at:new Date().toISOString()}).eq('id',currentConvId);
+await renderConvMessages();
+}
+
+async function compartirPedidoEnChat(){
+if(!currentConvId) return notify('Seleccioná una conversación','error');
+const ref=prompt('Ingresá el ID completo o los últimos caracteres del pedido');
+if(!ref) return;
+const {data:pedidos}=await db.from('pedidos').select('id,cliente,origen_local,destino_local').order('created_at',{ascending:false}).limit(200);
+const q=ref.trim().toLowerCase();
+const p=(pedidos||[]).find(o=>String(o.id).toLowerCase()===q || String(o.id).toLowerCase().includes(q));
+if(!p) return notify('No encontré un pedido visible con esa referencia','error');
+await sendConvPayload({type:'pedido',orderId:p.id,text:'Pedido #'+p.id.slice(-8,-2).toUpperCase()+' · '+(p.cliente||'Sin cliente')+' · '+p.origen_local+' → '+p.destino_local});
+}
+
+async function compartirContactoEnChat(){
+if(!currentConvId) return notify('Seleccioná una conversación','error');
+const ref=prompt('Buscá contacto por nombre o teléfono');
+if(!ref) return;
+const q=ref.trim().replace(/,/g,' ');
+const {data}=await db.from('clientes_agenda').select('*').or('nombre.ilike.%'+q+'%,telefono.ilike.%'+q+'%').order('nombre').limit(1);
+const c=data&&data[0];
+if(!c) return notify('No encontré contactos con esa búsqueda','error');
+await sendConvPayload({type:'contact',nombre:c.nombre,telefono:c.telefono,direccion:c.direccion});
+}
+
+function abrirMenuAdjuntosChat(){
+const op=prompt('¿Qué querés enviar? Escribí: pedido o contacto');
+if(!op) return;
+if(normalizeText(op).startsWith('ped')) compartirPedidoEnChat();
+else if(normalizeText(op).startsWith('cont')) compartirContactoEnChat();
+else notify('Opción no reconocida','error');
+}
+
+function sendChatFile(file,type){
+if(!file) return;
+if(file.size>1500000) return notify('Archivo muy grande. Máximo 1.5MB','error');
+const r=new FileReader();
+r.onload=()=>sendConvPayload({type,name:file.name,data:r.result});
+r.readAsDataURL(file);
 }
 
 async function sendConvMsg(){

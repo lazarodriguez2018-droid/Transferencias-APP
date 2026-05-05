@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; base-uri 'self'; form-action 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; base-uri 'self'; form-action 'self';">
 <title>TransferApp</title>
 <link rel="icon" type="image/svg+xml" href="logo.svg">
 <link rel="shortcut icon" href="logo.svg">
@@ -394,6 +394,16 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
           <option value="incompleto">⚠️ Incompleto</option>
           <option value="denegado">❌ Denegado</option>
         </select>
+        <select class="filter-select" id="filter-hist-origen">
+          <option value="">Todos los orígenes</option>
+        </select>
+        <select class="filter-select" id="filter-hist-destino" style="display:none">
+          <option value="">Todos los destinos</option>
+        </select>
+        <select class="filter-select" id="filter-hist-creador" style="display:none">
+          <option value="">Realizado por: todos</option>
+        </select>
+        <input class="filter-select" id="filter-hist-busqueda" type="text" placeholder="Buscar producto, cliente o teléfono...">
         <input type="date" class="filter-select" id="filter-hist-desde" title="Desde">
         <input type="date" class="filter-select" id="filter-hist-hasta" title="Hasta">
       </div>
@@ -480,7 +490,12 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         <div id="chat-panel" style="flex:1;display:none;flex-direction:column">
           <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-weight:600;font-size:15px" id="chat-conv-title">–</div>
           <div class="chat-messages" id="conv-messages" style="flex:1;max-height:none;border-radius:0"></div>
-          <div style="padding:12px;border-top:1px solid var(--border);display:flex;gap:8px">
+          <div style="padding:12px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center">
+            <input type="file" id="conv-photo-input" accept="image/*" capture="environment" style="display:none">
+            <input type="file" id="conv-audio-input" accept="audio/*" style="display:none">
+            <button class="btn btn-ghost btn-sm" id="btn-conv-photo" title="Enviar foto" style="height:42px;padding:0 12px">📷</button>
+            <button class="btn btn-ghost btn-sm" id="btn-conv-plus" title="Enviar pedido/contacto" style="height:42px;padding:0 12px">+</button>
+            <button class="btn btn-ghost btn-sm" id="btn-conv-audio" title="Enviar audio" style="height:42px;padding:0 12px">🎙️</button>
             <input class="form-input" type="text" id="conv-input" placeholder="Escribí un mensaje..."
               onkeydown="if(event.key==='Enter')sendConvMsg()" style="flex:1">
             <button class="btn btn-primary btn-sm" onclick="sendConvMsg()" style="height:42px;padding:0 16px">Enviar</button>
@@ -682,14 +697,18 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
       </div>
       <div id="escala-aviso" style="display:none;background:rgba(168,85,247,0.1);border:1px solid rgba(168,85,247,0.3);border-radius:8px;padding:10px 14px;font-size:13px;color:#a855f7;margin-top:8px;line-height:1.5"></div>
       <hr class="divider">
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Nombre del cliente (opcional)</label>
-          <input class="form-input" type="text" id="new-cliente" placeholder="Nombre del cliente">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Teléfono del cliente (opcional)</label>
-          <input class="form-input" type="tel" id="new-telefono" placeholder="Ej: 099 123 456">
+      <input type="hidden" id="new-cliente">
+      <input type="hidden" id="new-telefono">
+      <div class="form-group" style="margin-top:6px">
+        <label class="form-label">Cliente</label>
+        <div id="cliente-selected-display" style="font-size:12px;color:var(--text2);margin-bottom:8px">Sin cliente asignado</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div style="flex:1;position:relative">
+            <input class="form-input" type="text" id="cliente-search-input" placeholder="Nombre o teléfono..." oninput="buscarClienteAgendaPedido()">
+            <div class="product-search-results" id="cliente-search-results"></div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="abrirModalNuevoClienteAgenda(true)" style="white-space:nowrap">+ Nuevo cliente</button>
+          <button class="btn btn-ghost btn-sm" onclick="clearPedidoCliente()" style="white-space:nowrap">No asignar cliente</button>
         </div>
       </div>
       <div class="form-group" style="margin-top:6px">
