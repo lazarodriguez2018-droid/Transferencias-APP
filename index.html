@@ -711,6 +711,16 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
           <button class="btn btn-ghost btn-sm" onclick="clearPedidoCliente()" style="white-space:nowrap">No asignar cliente</button>
         </div>
       </div>
+      <div class="form-group" style="margin-top:6px">
+        <label class="form-label">Buscar en agenda</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div style="flex:1;position:relative">
+            <input class="form-input" type="text" id="cliente-search-input" placeholder="Nombre o teléfono..." oninput="buscarClienteAgendaPedido()">
+            <div class="product-search-results" id="cliente-search-results"></div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="abrirModalNuevoClienteAgenda(true)" style="white-space:nowrap">+ Nuevo cliente</button>
+        </div>
+      </div>
       <hr class="divider">
       <h4 style="font-size:13px;font-weight:600;margin-bottom:10px">Productos solicitados</h4>
       <div class="product-items" id="selected-products"></div>
