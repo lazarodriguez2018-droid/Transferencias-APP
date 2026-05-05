@@ -2235,33 +2235,98 @@ await renderConvMessages();
 
 async function compartirPedidoEnChat(){
 if(!currentConvId) return notify('Seleccioná una conversación','error');
-const ref=prompt('Ingresá el ID completo o los últimos caracteres del pedido');
-if(!ref) return;
-const {data:pedidos}=await db.from('pedidos').select('id,cliente,origen_local,destino_local').order('created_at',{ascending:false}).limit(200);
-const q=ref.trim().toLowerCase();
-const p=(pedidos||[]).find(o=>String(o.id).toLowerCase()===q || String(o.id).toLowerCase().includes(q));
-if(!p) return notify('No encontré un pedido visible con esa referencia','error');
+el('modal-accion-title').textContent='📦 Enviar pedido al chat';
+el('modal-accion-body').innerHTML='<div class="form-group"><label class="form-label">Buscar pedido</label><input class="form-input" id="chat-share-pedido-search" placeholder="Cliente, teléfono, producto, local o ID..."></div>'+ 
+'<div class="filters" style="margin-bottom:12px"><select class="filter-select" id="chat-share-pedido-estado"><option value="">Todos los estados</option><option value="pendiente">Pendiente</option><option value="aceptado">Aceptado</option><option value="listo">Listo</option><option value="transito">En viaje</option><option value="completo">Completo</option><option value="incompleto">Incompleto</option><option value="denegado">Denegado</option></select><select class="filter-select" id="chat-share-pedido-origen"><option value="">Todos los orígenes</option></select><select class="filter-select" id="chat-share-pedido-destino"><option value="">Todos los destinos</option></select></div>'+ 
+'<div id="chat-share-pedido-list" style="max-height:360px;overflow:auto"></div>';
+el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="abrirMenuAdjuntosChat()">Volver</button><button class="btn btn-primary btn-sm" onclick="enviarPedidoSeleccionadoChat()">Enviar pedido</button>';
+openModal('modal-accion');
+const {data}=await db.from('pedidos').select('*,pedido_productos(*)').order('created_at',{ascending:false}).limit(300);
+window._chatSharePedidos=data||[];
+const opts=localesCache.map(l=>'<option value="'+escHtml(l.nombre)+'">'+escHtml(l.nombre)+'</option>').join('');
+el('chat-share-pedido-origen').innerHTML+=opts;
+el('chat-share-pedido-destino').innerHTML+=opts;
+['chat-share-pedido-search','chat-share-pedido-estado','chat-share-pedido-origen','chat-share-pedido-destino'].forEach(id=>{
+const node=el(id); if(node) node.oninput=node.onchange=renderChatPedidoPickerList;
+});
+renderChatPedidoPickerList();
+}
+
+function renderChatPedidoPickerList(){
+const listEl=el('chat-share-pedido-list'); if(!listEl) return;
+const tokens=tokenizeSearch(el('chat-share-pedido-search')?.value||'');
+const estado=el('chat-share-pedido-estado')?.value||'';
+const origen=el('chat-share-pedido-origen')?.value||'';
+const destino=el('chat-share-pedido-destino')?.value||'';
+let rows=(window._chatSharePedidos||[]).filter(o=>{
+if(estado&&o.estado!==estado) return false;
+if(origen&&o.origen_local!==origen) return false;
+if(destino&&o.destino_local!==destino) return false;
+if(tokens.length){
+const withId=Object.assign({},o,{notas:[o.notas,o.id,o.id?.slice(-8,-2)].filter(Boolean).join(' ')});
+if(!orderMatchesTokens(withId,tokens)) return false;
+}
+return true;
+}).slice(0,80);
+if(!rows.length){ listEl.innerHTML='<div style="padding:18px;color:var(--text3);font-size:13px;text-align:center">No hay pedidos para esos filtros</div>'; return; }
+listEl.innerHTML=rows.map(o=>{
+const prods=(o.pedido_productos||[]).slice(0,2).map(p=>p.nombre).join(', ');
+return '<label style="display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--surface2);cursor:pointer">'+
+'<input type="checkbox" class="chat-share-pedido-check" value="'+o.id+'" onchange="document.querySelectorAll(\'.chat-share-pedido-check\').forEach(c=>{if(c!==this)c.checked=false})">'+
+'<span style="font-size:13px;line-height:1.4"><strong>#'+escHtml(o.id.slice(-8,-2).toUpperCase())+'</strong> · '+escHtml(o.cliente||'Sin cliente')+'<br><span style="color:var(--text2)">'+escHtml(o.origen_local)+' → '+escHtml(o.destino_local)+' · '+escHtml(o.estado)+'</span>'+(prods?'<br><span style="color:var(--text3)">'+escHtml(prods)+'</span>':'')+'</span></label>';
+}).join('');
+}
+
+async function enviarPedidoSeleccionadoChat(){
+const checked=document.querySelector('.chat-share-pedido-check:checked');
+if(!checked) return notify('Seleccioná un pedido','error');
+const p=(window._chatSharePedidos||[]).find(o=>o.id===checked.value);
+if(!p) return notify('No se encontró el pedido seleccionado','error');
 await sendConvPayload({type:'pedido',orderId:p.id,text:'Pedido #'+p.id.slice(-8,-2).toUpperCase()+' · '+(p.cliente||'Sin cliente')+' · '+p.origen_local+' → '+p.destino_local});
+closeModal('modal-accion');
 }
 
 async function compartirContactoEnChat(){
 if(!currentConvId) return notify('Seleccioná una conversación','error');
-const ref=prompt('Buscá contacto por nombre o teléfono');
-if(!ref) return;
-const q=ref.trim().replace(/,/g,' ');
-const {data}=await db.from('clientes_agenda').select('*').or('nombre.ilike.%'+q+'%,telefono.ilike.%'+q+'%').order('nombre').limit(1);
-const c=data&&data[0];
-if(!c) return notify('No encontré contactos con esa búsqueda','error');
+el('modal-accion-title').textContent='👤 Enviar contacto al chat';
+el('modal-accion-body').innerHTML='<div class="form-group"><label class="form-label">Buscar contacto</label><input class="form-input" id="chat-share-contact-search" placeholder="Nombre, teléfono o dirección..."></div><div id="chat-share-contact-list" style="max-height:360px;overflow:auto"></div>';
+el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="abrirMenuAdjuntosChat()">Volver</button><button class="btn btn-primary btn-sm" onclick="enviarContactoSeleccionadoChat()">Enviar contacto</button>';
+openModal('modal-accion');
+const {data}=await db.from('clientes_agenda').select('*').order('nombre').limit(400);
+window._chatShareContacts=data||[];
+el('chat-share-contact-search').oninput=renderChatContactPickerList;
+renderChatContactPickerList();
+}
+
+function renderChatContactPickerList(){
+const listEl=el('chat-share-contact-list'); if(!listEl) return;
+const tokens=tokenizeSearch(el('chat-share-contact-search')?.value||'');
+let rows=(window._chatShareContacts||[]).filter(c=>{
+if(!tokens.length) return true;
+const hay=normalizeText([c.nombre,c.telefono,c.direccion].filter(Boolean).join(' '));
+return tokens.every(t=>hay.includes(t));
+}).slice(0,100);
+if(!rows.length){ listEl.innerHTML='<div style="padding:18px;color:var(--text3);font-size:13px;text-align:center">No hay contactos para esa búsqueda</div>'; return; }
+listEl.innerHTML=rows.map(c=>'<label style="display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--surface2);cursor:pointer"><input type="checkbox" class="chat-share-contact-check" value="'+c.id+'" onchange="document.querySelectorAll(\'.chat-share-contact-check\').forEach(x=>{if(x!==this)x.checked=false})"><span style="font-size:13px;line-height:1.4"><strong>'+escHtml(c.nombre||'Sin nombre')+'</strong><br><span style="color:var(--text2)">'+escHtml(c.telefono||'Sin teléfono')+'</span>'+(c.direccion?'<br><span style="color:var(--text3)">'+escHtml(c.direccion)+'</span>':'')+'</span></label>').join('');
+}
+
+async function enviarContactoSeleccionadoChat(){
+const checked=document.querySelector('.chat-share-contact-check:checked');
+if(!checked) return notify('Seleccioná un contacto','error');
+const c=(window._chatShareContacts||[]).find(x=>x.id===checked.value);
+if(!c) return notify('No se encontró el contacto seleccionado','error');
 await sendConvPayload({type:'contact',nombre:c.nombre,telefono:c.telefono,direccion:c.direccion});
+closeModal('modal-accion');
 }
 
 function abrirMenuAdjuntosChat(){
-const op=prompt('¿Qué querés enviar? Escribí: pedido o contacto');
-if(!op) return;
-if(normalizeText(op).startsWith('ped')) compartirPedidoEnChat();
-else if(normalizeText(op).startsWith('cont')) compartirContactoEnChat();
-else notify('Opción no reconocida','error');
+if(!currentConvId) return notify('Seleccioná una conversación','error');
+el('modal-accion-title').textContent='➕ Enviar al chat';
+el('modal-accion-body').innerHTML='<div style="display:grid;gap:10px"><button class="btn btn-ghost" onclick="compartirPedidoEnChat()">📦 Enviar acceso a pedido</button><button class="btn btn-ghost" onclick="compartirContactoEnChat()">👤 Enviar contacto</button></div>';
+el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button>';
+openModal('modal-accion');
 }
+
 
 function sendChatFile(file,type){
 if(!file) return;
