@@ -477,7 +477,14 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
     <div id="view-chats" style="display:none">
       <div class="page-header">
         <div><h1>💬 Chats</h1><p>Conversaciones con el equipo</p></div>
-        <button class="btn btn-primary btn-sm" onclick="abrirNuevaConv()" style="white-space:nowrap">+ Nueva conversación</button>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+          <select class="filter-select" id="chat-actions" style="min-width:130px">
+            <option value="">Acciones</option>
+            <option value="delete">Eliminar</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" onclick="aplicarAccionChats()" style="white-space:nowrap">Aplicar</button>
+          <button class="btn btn-primary btn-sm" onclick="abrirNuevaConv()" style="white-space:nowrap">+ Nueva conversación</button>
+        </div>
       </div>
       <div style="display:flex;gap:0;height:calc(100vh - 120px);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
         <!-- Lista de conversaciones -->

@@ -2151,6 +2151,7 @@ const {data:lastMsg} = await db.from('mensajes')
 const nombre = conv.es_grupo ? (conv.nombre||'Grupo') : await getConvNombre(conv.id);
 const hora = lastMsg ? new Date(lastMsg.created_at).toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'}) : '';
 e.innerHTML += '<div class="conv-item'+(currentConvId===conv.id?' active':'')+'" onclick="openConversacion(\''+conv.id+'\')">'+
+'<input type="checkbox" class="chat-select" value="'+escHtml(conv.id)+'" onclick="event.stopPropagation()" style="width:16px;height:16px;flex-shrink:0">'+
 '<div class="conv-avatar">'+(conv.es_grupo?'👥':'👤')+'</div>'+
 '<div class="conv-info">'+
 '<div class="conv-nombre">'+escHtml(nombre)+'</div>'+
@@ -2160,6 +2161,32 @@ e.innerHTML += '<div class="conv-item'+(currentConvId===conv.id?' active':'')+'"
 '</div>';
 }
 e.innerHTML += '</div>';
+}
+
+async function aplicarAccionChats(){
+const action=el('chat-actions')?.value||'';
+if(action==='delete') return borrarChatsSeleccionados();
+notify('Elegí una acción','info');
+}
+
+async function borrarChatsSeleccionados(){
+const ids=[...document.querySelectorAll('.chat-select:checked')].map(c=>c.value);
+if(!ids.length) return notify('Seleccioná al menos un chat','error');
+if(!confirm('¿Eliminar los chats seleccionados?')) return;
+const {error:msgError}=await db.from('mensajes').delete().in('conversacion_id',ids);
+if(msgError) return notify('No se pudieron eliminar los mensajes del chat: '+msgError.message,'error');
+const {error:membersError}=await db.from('conversacion_miembros').delete().in('conversacion_id',ids);
+if(membersError) return notify('No se pudieron eliminar los miembros del chat: '+membersError.message,'error');
+const {error:convError}=await db.from('conversaciones').delete().in('id',ids);
+if(convError) return notify('No se pudieron eliminar los chats: '+convError.message,'error');
+if(ids.includes(currentConvId)){
+currentConvId=null;
+el('chat-panel').style.display='none';
+el('chat-placeholder').style.display='flex';
+}
+if(el('chat-actions')) el('chat-actions').value='';
+notify('Chats eliminados','success');
+await renderChats();
 }
 
 async function getConvNombre(convId){
