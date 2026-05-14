@@ -2072,6 +2072,7 @@ const r=el('product-search-results'); if(r) r.classList.remove('show');
 if(!e.target.closest('#cliente-search-input')&&!e.target.closest('#cliente-search-results')){
 const rc=el('cliente-search-results'); if(rc) rc.classList.remove('show');
 }
+if(!e.target.closest('.conv-row-menu')&&!e.target.closest('.conv-action-btn')) closeChatMenus();
 });
 
 // Si hay sesión activa, cargar directo sin pasar por auth
@@ -2150,42 +2151,62 @@ const {data:lastMsg} = await db.from('mensajes')
 .order('created_at',{ascending:false}).limit(1).single();
 const nombre = conv.es_grupo ? (conv.nombre||'Grupo') : await getConvNombre(conv.id);
 const hora = lastMsg ? new Date(lastMsg.created_at).toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'}) : '';
-e.innerHTML += '<div class="conv-item'+(currentConvId===conv.id?' active':'')+'" onclick="openConversacion(\''+conv.id+'\')">'+
-'<input type="checkbox" class="chat-select" value="'+escHtml(conv.id)+'" onclick="event.stopPropagation()" style="width:16px;height:16px;flex-shrink:0">'+
+e.innerHTML += '<div class="conv-item'+(currentConvId===conv.id?' active':'')+'" onclick="openConversacion(\''+escJsStr(conv.id)+'\')">'+
 '<div class="conv-avatar">'+(conv.es_grupo?'👥':'👤')+'</div>'+
 '<div class="conv-info">'+
 '<div class="conv-nombre">'+escHtml(nombre)+'</div>'+
 '<div class="conv-last">'+(lastMsg?(escHtml((lastMsg.usuario_nombre||'').split(' ')[0])+': '+escHtml((lastMsg.texto||'').substring(0,35))):'Sin mensajes')+'</div>'+
 '</div>'+
 '<div class="conv-time">'+hora+'</div>'+
+'<button class="conv-action-btn" onclick="toggleChatMenu(event,\''+escJsStr(conv.id)+'\')" title="Opciones">⌄</button>'+
+'<div class="conv-row-menu" id="chat-menu-'+escHtml(conv.id)+'" onclick="event.stopPropagation()"><button onclick="confirmarEliminarChat(event,\''+escJsStr(conv.id)+'\',\''+escJsStr(nombre)+'\')">Eliminar</button></div>'+
 '</div>';
 }
 e.innerHTML += '</div>';
 }
 
-async function aplicarAccionChats(){
-const action=el('chat-actions')?.value||'';
-if(action==='delete') return borrarChatsSeleccionados();
-notify('Elegí una acción','info');
+function closeChatMenus(){
+document.querySelectorAll('.conv-row-menu.show').forEach(m=>m.classList.remove('show'));
+document.querySelectorAll('.conv-action-btn.active').forEach(b=>b.classList.remove('active'));
 }
 
-async function borrarChatsSeleccionados(){
-const ids=[...document.querySelectorAll('.chat-select:checked')].map(c=>c.value);
-if(!ids.length) return notify('Seleccioná al menos un chat','error');
-if(!confirm('¿Eliminar los chats seleccionados?')) return;
-const {error:msgError}=await db.from('mensajes').delete().in('conversacion_id',ids);
-if(msgError) return notify('No se pudieron eliminar los mensajes del chat: '+msgError.message,'error');
-const {error:membersError}=await db.from('conversacion_miembros').delete().in('conversacion_id',ids);
-if(membersError) return notify('No se pudieron eliminar los miembros del chat: '+membersError.message,'error');
-const {error:convError}=await db.from('conversaciones').delete().in('id',ids);
-if(convError) return notify('No se pudieron eliminar los chats: '+convError.message,'error');
-if(ids.includes(currentConvId)){
+function toggleChatMenu(event, convId){
+event.stopPropagation();
+const menu=el('chat-menu-'+convId);
+const wasOpen=menu?.classList.contains('show');
+closeChatMenus();
+if(menu&&!wasOpen){
+menu.classList.add('show');
+event.currentTarget.classList.add('active');
+}
+}
+
+function confirmarEliminarChat(event, convId, nombre){
+event.stopPropagation();
+closeChatMenus();
+showConfirm('Vas a eliminar el chat <strong>'+escHtml(nombre||'seleccionado')+'</strong> de tu lista.', ()=>eliminarChat(convId), {
+title:'Eliminar chat',
+btnLabel:'Eliminar',
+btnClass:'btn-danger'
+});
+}
+
+async function eliminarChat(convId){
+const {error:memberError}=await db.from('conversacion_miembros')
+.delete().eq('conversacion_id',convId).eq('usuario_id',currentPerfil.id);
+if(memberError) return notify('No se pudo eliminar el chat: '+memberError.message,'error');
+const {data:remaining}=await db.from('conversacion_miembros')
+.select('usuario_id').eq('conversacion_id',convId).limit(1);
+if(!remaining?.length){
+await db.from('mensajes').delete().eq('conversacion_id',convId);
+await db.from('conversaciones').delete().eq('id',convId);
+}
+if(currentConvId===convId){
 currentConvId=null;
 el('chat-panel').style.display='none';
 el('chat-placeholder').style.display='flex';
 }
-if(el('chat-actions')) el('chat-actions').value='';
-notify('Chats eliminados','success');
+notify('Chat eliminado','success');
 await renderChats();
 }
 
