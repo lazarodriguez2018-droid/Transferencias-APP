@@ -2127,6 +2127,7 @@ window.open('https://wa.me/'+numFinal.replace('+','')+'?text='+texto,'_blank');
 //  CHATS GENERAL
 // ═══════════════════════════════════════════
 let currentConvId = null;
+let currentConvChannel = null;
 
 async function renderChats(){
 // Load conversations where I'm a member
@@ -2209,6 +2210,7 @@ await db.from('conversaciones').delete().eq('id',convId);
 }
 if(currentConvId===convId){
 currentConvId=null;
+if(currentConvChannel){ try{ db.removeChannel(currentConvChannel); }catch(_e){} currentConvChannel=null; }
 el('chat-panel').style.display='none';
 el('chat-placeholder').style.display='flex';
 }
@@ -2235,10 +2237,12 @@ const nombre = conv?.es_grupo ? (conv.nombre||'Grupo') : await getConvNombre(con
 el('chat-conv-title').textContent = nombre;
 await renderConvMessages();
 await renderChats(); // refresh list to show active
-// Realtime
-db.channel('conv-'+convId)
+// Realtime — cerrar canal anterior antes de crear uno nuevo
+if(currentConvChannel){ try{ db.removeChannel(currentConvChannel); }catch(_e){} currentConvChannel=null; }
+currentConvChannel = db.channel('conv-'+convId)
 .on('postgres_changes',{event:'INSERT',schema:'public',table:'mensajes',filter:'conversacion_id=eq.'+convId},
-()=>renderConvMessages()).subscribe();
+()=>renderConvMessages());
+currentConvChannel.subscribe();
 }
 
 async function renderConvMessages(){
