@@ -2195,6 +2195,12 @@ async function eliminarChat(convId){
 const {error:memberError}=await db.from('conversacion_miembros')
 .delete().eq('conversacion_id',convId).eq('usuario_id',currentPerfil.id);
 if(memberError) return notify('No se pudo eliminar el chat: '+memberError.message,'error');
+
+const {data:myMembership,error:myMembershipError}=await db.from('conversacion_miembros')
+.select('conversacion_id').eq('conversacion_id',convId).eq('usuario_id',currentPerfil.id).limit(1);
+if(myMembershipError) return notify('No se pudo validar la eliminación: '+myMembershipError.message,'error');
+if(myMembership?.length) return notify('No tenés permisos para salir de este chat o la política de seguridad lo impide.','error');
+
 const {data:remaining}=await db.from('conversacion_miembros')
 .select('usuario_id').eq('conversacion_id',convId).limit(1);
 if(!remaining?.length){
