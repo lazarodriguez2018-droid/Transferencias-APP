@@ -333,6 +333,8 @@ stopIdleWatcher();
 teardownRealtime();
 clearLastActivityMs(currentUser?.id);
 currentUser=null; currentPerfil=null;
+sessionStorage.removeItem('empresa_validada');
+sessionStorage.removeItem('empresa_nombre');
 // Reset UI completamente para evitar que persistan opciones de admin
 const adminNav = el('admin-nav');
 if(adminNav) adminNav.style.display='none';
