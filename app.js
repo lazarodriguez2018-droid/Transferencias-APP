@@ -1005,7 +1005,15 @@ el('modal-detalle-body').innerHTML=
 '<div class="detail-section"><h4>Ruta</h4><div class="route-box"><div class="route-local"><div class="rl-label">SALE DE</div><div class="rl-name">'+escHtml(o.origen_local)+'</div><div class="rl-code">'+escHtml(o.origen_almacen)+'</div></div><div class="arrow">→</div><div class="route-local"><div class="rl-label">LLEGA A</div><div class="rl-name">'+escHtml(o.destino_local)+'</div><div class="rl-code">'+escHtml(o.destino_almacen)+'</div></div></div></div>'+
 '<div class="detail-section"><h4>Cliente</h4><div class="detail-row"><span class="label">Nombre:</span><span class="value">'+escHtml(o.cliente||'–')+'</span></div><div class="detail-row"><span class="label">Teléfono:</span><span class="value">'+escHtml(o.telefono||'–')+'</span></div></div>'+
 '<div class="detail-section"><h4>Info</h4><div class="detail-row"><span class="label">Creado:</span><span class="value">'+fmtDateTime(o.created_at)+'</span></div><div class="detail-row"><span class="label">Actualizado:</span><span class="value">'+fmtDateTime(o.updated_at)+'</span></div>'+extra+'</div>'+
-'<div class="detail-section"><h4>Productos ('+(o.pedido_productos||[]).length+')</h4><div class="product-items">'+prods+'</div></div>'+
+'<div class="detail-section"><h4>Productos ('+(o.pedido_productos||[]).length+')</h4>'+
+((o.pedido_productos||[]).length > 5
+  ? '<div class="product-items">' +
+    (o.pedido_productos||[]).slice(0,5).map(p=>
+      '<div class="product-item"><div class="p-info"><div class="p-name">'+escHtml(p.nombre)+'</div><div class="p-code">'+escHtml(p.codigo)+'</div></div><div class="p-qty">x'+p.cantidad+'</div></div>'
+    ).join('') +
+    '</div><button class="btn btn-ghost btn-sm" onclick="verPedidoCompleto(\''+o.id+'\')" style="width:100%;margin-top:8px;font-size:12px">📦 Ver pedido completo ('+(o.pedido_productos||[]).length+' ítems)</button>'
+  : '<div class="product-items">'+prods+'</div>'
+)+'</div>'+
 '<div class="detail-section"><h4>Seguimiento</h4><div class="timeline">'+timeline+'</div></div>'+
 actions+
 '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">'+
@@ -1050,16 +1058,104 @@ if(tipo==='incompleto' || tipo==='en_escala_incompleto' || tipo==='aceptar_incom
 const label = tipo==='en_escala_incompleto' ? 'Llegó incompleto a escala' : (tipo==='aceptar_incompleto'?'Aceptado incompleto':'Llegó incompleto');
 const {data:o}=await db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single();
 const items=(o?.pedido_productos||[]);
-const itemsHtml=items.map((p,i)=>'<label style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><input type="checkbox" class="incomp-item" data-idx="'+i+'" checked> <span>'+escHtml(p.nombre||'')+' x'+(p.cantidad||1)+'</span></label>').join('');
+const esGrande = items.length > 5;
+
+const itemRowHtml = (p, i) =>
+  '<div class="incomp-row" data-idx="'+i+'" style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:7px;margin-bottom:5px;background:rgba(var(--bg2-rgb,40,40,60),0.5);border:1px solid var(--border)">' +
+  '<input type="checkbox" class="incomp-item" data-idx="'+i+'" checked style="flex-shrink:0;width:16px;height:16px;accent-color:#22c55e">' +
+  '<div style="flex:1;min-width:0">' +
+  '<div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+escHtml(p.nombre||'')+'">'+escHtml(p.nombre||'')+'</div>' +
+  '<div style="font-size:11px;color:var(--text2)">'+escHtml(p.codigo||'')+(p.marca?' · '+escHtml(p.marca):'')+'</div>' +
+  '</div>' +
+  '<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">' +
+  '<span style="font-size:11px;color:var(--text2)">Cant:</span>' +
+  '<input type="number" class="incomp-qty" data-idx="'+i+'" data-original="'+(p.cantidad||1)+'" value="'+(p.cantidad||1)+'" min="0" max="'+(p.cantidad||1)+'" style="width:52px;text-align:center;padding:3px 5px;border-radius:5px;border:1px solid var(--border);background:var(--bg1);color:var(--text1);font-size:13px">' +
+  '<span style="font-size:11px;color:var(--text2)">/ '+(p.cantidad||1)+'</span>' +
+  '</div>' +
+  '</div>';
+
+let itemsHtml;
+if (esGrande) {
+  // Show first 5 + collapsed rest
+  const visible = items.slice(0,5).map((p,i)=>itemRowHtml(p,i)).join('');
+  const hidden = items.slice(5).map((p,i)=>itemRowHtml(p,i+5)).join('');
+  itemsHtml = visible +
+    '<div id="incomp-extra" style="display:none">' + hidden + '</div>' +
+    '<button class="btn btn-ghost btn-sm" id="incomp-ver-mas-btn" onclick="toggleIncompExtra()" style="width:100%;margin-top:6px;font-size:12px">👁 Ver los '+(items.length-5)+' ítems restantes</button>';
+} else {
+  itemsHtml = items.map((p,i)=>itemRowHtml(p,i)).join('');
+}
+
 el('modal-accion-title').textContent='⚠️ '+label;
-el('modal-accion-body').innerHTML='<div class="warning-box">Seleccioná qué ítems llegaron correctamente.</div><div class="form-group" style="margin-top:10px">'+itemsHtml+'</div><div class="form-group" style="margin-top:14px"><label class="form-label">Observación (opcional)</label><textarea class="form-input" id="faltantes-det" rows="3" placeholder="Ej: Faltó 1 unidad de..."></textarea></div>';
-el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-warning btn-sm" onclick="confirmarAccion(\''+tipo+'\',\''+orderId+'\')">Confirmar</button>';
-openModal('modal-accion'); return;
+el('modal-accion-body').innerHTML=
+  '<div class="warning-box" style="margin-bottom:10px">Seleccioná qué ítems van y ajustá las cantidades si es necesario.</div>' +
+  '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">✅ Chequeado = se envía&nbsp;&nbsp;·&nbsp;&nbsp;❌ Desmarcado = no se envía. Podés reducir la cantidad también.</div>' +
+  '<div id="incomp-items-wrap">'+itemsHtml+'</div>' +
+  '<div class="form-group" style="margin-top:12px"><label class="form-label">Observación (opcional)</label><textarea class="form-input" id="faltantes-det" rows="2" placeholder="Ej: Faltó 1 unidad de..."></textarea></div>' +
+  '<div class="form-group" style="margin-top:10px">' +
+  '<label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">' +
+  '<input type="checkbox" id="incomp-notif-local" checked> <span style="font-size:13px">Notificar al local solicitante sobre el envío parcial</span>' +
+  '</label>' +
+  '</div>';
+el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-warning btn-sm" onclick="confirmarAccion(\''+tipo+'\',\''+orderId+'\')">Confirmar envío parcial</button>';
+openModal('modal-accion');
+
+// Bind qty inputs: uncheck if qty=0, recheck if qty>0
+setTimeout(()=>{
+  document.querySelectorAll('.incomp-qty').forEach(input=>{
+    input.addEventListener('input', ()=>{
+      const idx = input.getAttribute('data-idx');
+      const cb = document.querySelector('.incomp-item[data-idx="'+idx+'"]');
+      if(!cb) return;
+      const v = parseInt(input.value)||0;
+      if(v===0){ cb.checked=false; input.style.borderColor='var(--accent2)'; }
+      else { cb.checked=true; input.style.borderColor='var(--border)'; }
+    });
+    const cb = document.querySelector('.incomp-item[data-idx="'+input.getAttribute('data-idx')+'"]');
+    if(cb) cb.addEventListener('change',()=>{
+      if(!cb.checked){ input.value=0; input.style.borderColor='var(--accent2)'; }
+      else { input.value=input.getAttribute('data-original')||1; input.style.borderColor='var(--border)'; }
+    });
+  });
+},100);
+
+return;
 }
 el('modal-accion-title').textContent=labels[tipo]||'Confirmar';
 el('modal-accion-body').innerHTML='<div class="warning-box">⚠️ Esta acción es <strong>irreversible</strong>. ¿Confirmar?</div>';
 el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-primary btn-sm" onclick="confirmarAccion(\''+tipo+'\',\''+orderId+'\')">Sí, confirmar</button>';
 openModal('modal-accion');
+}
+
+
+function toggleIncompExtra(){
+  const extra=el('incomp-extra');
+  const btn=el('incomp-ver-mas-btn');
+  if(!extra||!btn) return;
+  const showing=extra.style.display!=='none';
+  extra.style.display=showing?'none':'block';
+  if(showing){
+    const n=extra.querySelectorAll('.incomp-row').length;
+    btn.textContent='👁 Ver los '+n+' ítems restantes';
+  } else {
+    btn.textContent='▲ Ocultar ítems extra';
+  }
+}
+
+function verPedidoCompleto(orderId){
+  // Load and show full product list from an already-open detail
+  db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single().then(({data:o})=>{
+    if(!o) return;
+    const items=o.pedido_productos||[];
+    const listEl=el('pedido-completo-list');
+    listEl.innerHTML=items.length===0
+      ? '<div style="color:var(--text2);text-align:center;padding:20px">Sin productos</div>'
+      : items.map(p=>'<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:7px;background:rgba(var(--bg2-rgb,40,40,60),0.4);border:1px solid var(--border)">'+
+          '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">'+escHtml(p.nombre||'')+'</div>'+
+          '<div style="font-size:11px;color:var(--text2)">'+escHtml(p.codigo||'')+(p.marca?' · '+escHtml(p.marca):'')+'</div></div>'+
+          '<span style="font-size:13px;font-weight:600;white-space:nowrap">x'+(p.cantidad||1)+'</span></div>').join('');
+    openModal('modal-pedido-completo');
+  });
 }
 
 function previewFoto(e){
@@ -1093,25 +1189,72 @@ fotoBase64=null;
 const {data:o}=await db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single();
 const items=(o?.pedido_productos||[]);
 const checks=Array.from(document.querySelectorAll('.incomp-item'));
-const recibidos=[], faltantesItems=[];
-checks.forEach(ch=>{
-const idx=parseInt(ch.getAttribute('data-idx'),10);
-const it=items[idx]; if(!it) return;
-if(ch.checked) recibidos.push((it.nombre||'')+' x'+(it.cantidad||1));
-else faltantesItems.push((it.nombre||'')+' x'+(it.cantidad||1));
+const qtyInputs=Array.from(document.querySelectorAll('.incomp-qty'));
+
+// Build a map idx->qty from inputs
+const qtyMap={};
+qtyInputs.forEach(inp=>{
+  const idx=parseInt(inp.getAttribute('data-idx'),10);
+  const v=parseInt(inp.value)||0;
+  qtyMap[idx]=v;
 });
-if(!faltantesItems.length) return notify('Marcá al menos 1 ítem faltante para incompleto','error');
+
+const recibidos=[], faltantesItems=[], actualizarQty=[];
+checks.forEach(ch=>{
+  const idx=parseInt(ch.getAttribute('data-idx'),10);
+  const it=items[idx]; if(!it) return;
+  const cantOriginal=it.cantidad||1;
+  const cantAceptada=qtyMap[idx]!==undefined ? qtyMap[idx] : (ch.checked?cantOriginal:0);
+  if(ch.checked && cantAceptada>0){
+    recibidos.push((it.nombre||'')+' x'+cantAceptada+(cantAceptada<cantOriginal?' (de '+cantOriginal+')':''));
+    actualizarQty.push({id:it.id, cantidad:cantAceptada});
+  } else {
+    faltantesItems.push((it.nombre||'')+' x'+cantOriginal);
+    actualizarQty.push({id:it.id, cantidad:0});
+  }
+});
+
+if(!faltantesItems.length && !recibidos.some(r=>r.includes('de '))){
+  return notify('Para marcar como incompleto, al menos 1 ítem debe faltar o tener cantidad reducida','error');
+}
+if(!recibidos.length) return notify('Marcá al menos 1 ítem que sí se recibe','error');
+
 const obs=(el('faltantes-det')&&el('faltantes-det').value.trim())||'';
-const resumen='Recibidos: '+recibidos.join(', ')+' | Faltantes: '+faltantesItems.join(', ')+(obs?(' | Obs: '+obs):'');
+const resumen='Recibidos: '+recibidos.join(' | ')+
+  (faltantesItems.length ? ' | Faltantes: '+faltantesItems.join(', ') : '')+
+  (obs?' | Obs: '+obs:'');
+
+// Update quantities in pedido_productos
+const qtyUpdates=actualizarQty.filter(u=>u.id);
+await Promise.all(qtyUpdates.map(u=>
+  db.from('pedido_productos').update({cantidad:u.cantidad}).eq('id',u.id)
+));
+
 if(tipo==='en_escala_incompleto'){
-updates.estado='en_escala';
-updates.faltantes_escala=resumen;
+  updates.estado='en_escala';
+  updates.faltantes_escala=resumen;
 } else if(tipo==='aceptar_incompleto'){
-updates.estado='aceptado';
-updates.faltantes='Aceptado incompleto - '+resumen;
+  updates.estado='aceptado';
+  updates.faltantes='Aceptado incompleto - '+resumen;
 } else {
-updates.estado='incompleto';
-updates.faltantes=resumen;
+  updates.estado='incompleto';
+  updates.faltantes=resumen;
+}
+
+// Enviar notificación especial al local solicitante si marcaron el checkbox
+const notifCheck=el('incomp-notif-local');
+if(notifCheck&&notifCheck.checked&&faltantesItems.length>0){
+  // Notificación al destino avisando del envío parcial
+  const {data:users2}=await db.from('perfiles').select('id,local_nombre').eq('approved',true);
+  const destinatariosLocal=(users2||[]).filter(u=>u.local_nombre===o.destino_local&&u.id!==currentPerfil.id);
+  if(destinatariosLocal.length){
+    await db.from('notificaciones').insert(destinatariosLocal.map(u=>({
+      usuario_id:u.id,
+      titulo:'⚠️ Pedido se enviará incompleto',
+      cuerpo:'Faltantes: '+faltantesItems.join(', ')+'. ¿Confirmás el envío parcial o preferís cancelar?',
+      pedido_id:orderId
+    })));
+  }
 }
 } else {
 updates.estado=sm[tipo]||tipo;
@@ -1305,7 +1448,8 @@ safeSet('cliente-selected-display', n ? ('Cliente seleccionado: '+n+(t?' · '+t:
 //  NUEVO PEDIDO
 // ═══════════════════════════════════════════
 async function openNuevoPedido(){
-newOrderProducts=[]; fotoBase64=null; selectedProductTemp=null;
+newOrderProducts=[]; fotoBase64=null; selectedProductTemp=null; xlsParsedItems=[];
+if(el('xls-import-banner')) el('xls-import-banner').style.display='none';
 el('new-cliente').value=''; el('new-telefono').value='';
 el('cliente-search-input').value='';
 el('cliente-search-results').classList.remove('show');
@@ -1413,6 +1557,180 @@ function renderSelectedProducts(){
 const e=el('selected-products');
 e.innerHTML=newOrderProducts.length
 ?newOrderProducts.map((p,i)=>'<div class="product-item"><div class="p-info"><div class="p-name">'+p.nombre+'</div><div class="p-code">'+p.codigo+'</div></div><div class="p-qty">x'+p.cantidad+'</div><div class="remove-btn" onclick="removeProduct('+i+')">✕</div></div>').join(''):'';
+}
+
+
+// ═══════════════════════════════════════════
+//  XLS IMPORT (Remito / Padron)
+// ═══════════════════════════════════════════
+
+let xlsParsedItems = []; // {codigo, nombre, marca, cantidad, encontrado}
+
+async function handleXLSImport(event) {
+  const file = event.target.files[0];
+  event.target.value = ''; // reset so same file can be re-selected
+  if (!file) return;
+
+  // Make sure products cache is loaded
+  if (!productsCache.length) {
+    const [baseRes, extraRes] = await Promise.all([
+      db.from('productos').select('codigo,nombre,marca').order('nombre').limit(6000),
+      db.from('padron_extra').select('*').order('nombre').limit(6000)
+    ]);
+    const base = baseRes.data || [];
+    const extra = extraRes.error ? [] : (extraRes.data || []).map(normalizeExtraProduct);
+    productsCache = [...base, ...extra];
+  }
+
+  try {
+    const ab = await file.arrayBuffer();
+    const wb = XLSX.read(ab, { type: 'array' });
+
+    const rawRows = []; // {codigo: string, cantidad: number}
+
+    wb.SheetNames.forEach(sheetName => {
+      const ws = wb.Sheets[sheetName];
+      const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+
+      // Find the header row (where column C = 'Código')
+      let headerRow = -1;
+      for (let r = 0; r < data.length; r++) {
+        const row = data[r];
+        const cellC = row[2]; // column C = index 2
+        if (cellC && String(cellC).trim().toLowerCase() === 'código') {
+          headerRow = r;
+          break;
+        }
+      }
+      if (headerRow === -1) return; // skip sheet if no header found
+
+      // Read data rows after header
+      for (let r = headerRow + 1; r < data.length; r++) {
+        const row = data[r];
+        // Code: try C (2), then D (3), then E (4)
+        let codigo = null;
+        for (const ci of [2, 3, 4]) {
+          const v = row[ci];
+          if (v !== null && v !== undefined && String(v).trim() !== '') {
+            codigo = String(v).trim();
+            break;
+          }
+        }
+        if (!codigo) continue;
+
+        // Quantity: try R (17), then S (18)
+        let cantidad = null;
+        for (const ci of [17, 18]) {
+          const v = row[ci];
+          if (v !== null && v !== undefined) {
+            // Handle comma decimal like "1,00"
+            const parsed = parseFloat(String(v).replace(',', '.'));
+            if (!isNaN(parsed) && parsed > 0) { cantidad = parsed; break; }
+          }
+        }
+        if (!cantidad) continue;
+
+        rawRows.push({ codigo, cantidad: Math.round(cantidad) });
+      }
+    });
+
+    if (!rawRows.length) {
+      notify('No se encontraron productos en el archivo. Verificá el formato.', 'error');
+      return;
+    }
+
+    // Match codes with productsCache
+    // Build a map for fast lookup
+    const codeMap = new Map();
+    productsCache.forEach(p => {
+      if (p.codigo) codeMap.set(String(p.codigo).trim().toLowerCase(), p);
+    });
+
+    xlsParsedItems = rawRows.map(r => {
+      const found = codeMap.get(r.codigo.toLowerCase());
+      return {
+        codigo: r.codigo,
+        nombre: found ? found.nombre : r.codigo + ' (no encontrado)',
+        marca: found ? (found.marca || '') : '',
+        cantidad: r.cantidad,
+        encontrado: !!found
+      };
+    });
+
+    // Show preview modal
+    showXLSPreviewModal();
+
+  } catch (err) {
+    notify('Error al leer el archivo: ' + err.message, 'error');
+  }
+}
+
+function showXLSPreviewModal() {
+  const encontrados = xlsParsedItems.filter(i => i.encontrado);
+  const noEncontrados = xlsParsedItems.filter(i => !i.encontrado);
+
+  el('xls-preview-summary').innerHTML =
+    '<strong>' + xlsParsedItems.length + '</strong> productos leídos — ' +
+    '<span style="color:#22c55e">' + encontrados.length + ' encontrados en el padrón</span>' +
+    (noEncontrados.length ? ' · <span style="color:var(--accent2)">' + noEncontrados.length + ' no encontrados</span>' : '');
+
+  const listEl = el('xls-preview-list');
+  listEl.innerHTML = xlsParsedItems.map((it, i) =>
+    '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:7px;background:' +
+    (it.encontrado ? 'rgba(34,197,94,0.05)' : 'rgba(239,68,68,0.07)') + ';border:1px solid ' +
+    (it.encontrado ? 'rgba(34,197,94,0.18)' : 'rgba(239,68,68,0.22)') + '">' +
+    '<span style="font-size:16px">' + (it.encontrado ? '✅' : '❓') + '</span>' +
+    '<div style="flex:1;min-width:0">' +
+    '<div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml(it.nombre) + '</div>' +
+    '<div style="font-size:11px;color:var(--text2)">' + escHtml(it.codigo) + (it.marca ? ' · ' + escHtml(it.marca) : '') + '</div>' +
+    '</div>' +
+    '<span style="font-size:13px;font-weight:600;white-space:nowrap">x' + it.cantidad + '</span>' +
+    '</div>'
+  ).join('');
+
+  openModal('modal-xls-preview');
+}
+
+function verDetalleXLS() {
+  if (!xlsParsedItems.length) return;
+  showXLSPreviewModal();
+}
+
+function resetXLSImport() {
+  xlsParsedItems = [];
+  el('xls-import-banner').style.display = 'none';
+  // Remove XLS-imported products (those with xlsImported flag)
+  newOrderProducts = newOrderProducts.filter(p => !p.xlsImported);
+  renderSelectedProducts();
+}
+
+function confirmarXLSImport() {
+  const soloEncontrados = xlsParsedItems.filter(i => i.encontrado);
+  const noEncontrados = xlsParsedItems.filter(i => !i.encontrado);
+
+  // Add to newOrderProducts (merge if already exists)
+  soloEncontrados.forEach(it => {
+    const ex = newOrderProducts.find(p => p.codigo === it.codigo);
+    if (ex) { ex.cantidad += it.cantidad; }
+    else { newOrderProducts.push({ codigo: it.codigo, nombre: it.nombre, marca: it.marca, cantidad: it.cantidad, xlsImported: true }); }
+  });
+
+  renderSelectedProducts();
+
+  // Update banner
+  const bannerEl = el('xls-import-banner');
+  const summaryEl = el('xls-import-summary');
+  summaryEl.innerHTML = '📂 XLS importado: <strong>' + soloEncontrados.length + ' productos</strong> agregados' +
+    (noEncontrados.length ? ' · <span style="color:var(--accent2)">' + noEncontrados.length + ' no encontrados ignorados</span>' : '');
+  bannerEl.style.display = 'block';
+
+  closeModal('modal-xls-preview');
+
+  if (noEncontrados.length) {
+    notify(noEncontrados.length + ' código(s) no encontrados en el padrón fueron ignorados', 'warning');
+  } else {
+    notify(soloEncontrados.length + ' productos importados correctamente', 'success');
+  }
 }
 
 async function crearPedido(){
