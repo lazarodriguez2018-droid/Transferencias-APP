@@ -2967,18 +2967,20 @@ inp.value=''; await renderConvMessages();
 
 async function abrirNuevaConv(){
 // Load all users
-const {data:users} = await db.from('perfiles').select('id,nombre,apellido,nombre_display,local_nombre,almacen')
+const {data:users,error} = await db.from('perfiles').select('id,nombre,apellido,nombre_display,local_nombre')
 .eq('approved',true).neq('id',currentPerfil.id).order('nombre');
+if(error) { notify('No se pudieron cargar los usuarios: '+error.message,'error'); return; }
 el('nueva-conv-body').innerHTML=
 '<div class="form-group"><label class="form-label">Nombre del grupo (solo para grupos)</label>'+
 '<input class="form-input" type="text" id="nuevo-grupo-nombre" placeholder="Ej: Equipo MDO (dejar vacío para chat individual)"></div>'+
 '<div class="form-group"><label class="form-label">Seleccioná participantes</label>'+
 '<div style="max-height:280px;overflow-y:auto;background:var(--surface2);border-radius:var(--radius-sm);padding:8px">'+
+(!users||!users.length ? '<div style="padding:16px;text-align:center;color:var(--text2);font-size:13px">No hay otros usuarios disponibles</div>' :
 (users||[]).map(u=>'<label style="display:flex;align-items:center;gap:10px;padding:8px;cursor:pointer;border-radius:6px" onmouseover="this.style.background=\'var(--surface3)\'" onmouseout="this.style.background=\'\'">'+
 '<input type="checkbox" value="'+u.id+'" style="width:16px;height:16px">'+
 '<div><div style="font-size:13px;font-weight:500">'+escHtml(u.nombre_display||(u.nombre+' '+u.apellido))+'</div>'+
-'<div style="font-size:11px;color:var(--text2)">'+escHtml(u.local_nombre)+' ('+escHtml(u.almacen)+')</div></div>'+
-'</label>').join('')+
+'<div style="font-size:11px;color:var(--text2)">'+escHtml(u.local_nombre||'')+'</div></div>'+
+'</label>').join(''))+
 '</div></div>';
 openModal('modal-nueva-conv');
 }
