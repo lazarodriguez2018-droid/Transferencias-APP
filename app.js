@@ -2274,8 +2274,19 @@ async function exportarXLSPedido(orderId){
   XLSX.utils.book_append_sheet(wb,ws,'Reporte');
 
   const nombreArchivo='pedido_'+pedidoRef.replace('#','')+'_'+fecha.replace(/\//g,'-')+'.xlsx';
-  XLSX.writeFile(wb,nombreArchivo);
-  notify('XLS generado: '+nombreArchivo,'success');
+  // Usar Blob + <a> para forzar descarga en cualquier navegador
+  try {
+    const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+    const blob = new Blob([wbout], {type:'application/octet-stream'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = nombreArchivo;
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+    notify('✅ XLS descargado: '+nombreArchivo,'success');
+  } catch(err) {
+    notify('Error al generar XLS: '+err.message,'error');
+  }
 }
 
 async function generarEtiqueta(orderId){
