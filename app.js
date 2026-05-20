@@ -1539,6 +1539,15 @@ el('product-search-input').value=''; el('product-qty').value='1';
 renderSelectedProducts();
 const opts=localesCache.map(l=>'<option value="'+l.nombre+'|'+l.almacen+'">'+l.nombre+' ('+l.almacen+')</option>').join('');
 el('new-origen').innerHTML=opts; el('new-destino').innerHTML=opts;
+// Populate escala manual select with all locales except origen and destino
+const escSel=el('new-escala-local');
+if(escSel){
+  escSel.innerHTML='<option value="">Seleccioná el local de escala...</option>'+
+    locales.map(l=>'<option value="'+escHtml(l.nombre)+'|'+escHtml(l.almacen||'')+'">'+escHtml(l.nombre)+' ('+escHtml(l.almacen||l.codigo||'')+')</option>').join('');
+}
+// Reset checkbox and hide manual select
+if(el('new-tiene-escala')) el('new-tiene-escala').checked=false;
+if(el('escala-manual-select')) el('escala-manual-select').style.display='none';
 // Default destino = mi local, origen = primer local distinto
 const dest=el('new-destino');
 for(let i=0;i<dest.options.length;i++){ if(dest.options[i].value.startsWith(currentPerfil.local_nombre+'|')){dest.selectedIndex=i;break;} }
@@ -1556,17 +1565,29 @@ const oNom=ov?ov.split('|')[0]:'–';
 const dNom=dv?dv.split('|')[0]:'–';
 safeSet('rp-origen', oNom);
 safeSet('rp-destino', dNom);
-// Mostrar aviso de escala si el destino tiene escala
+// Mostrar aviso de escala automática (configurada en ESCALAS)
 const escalaBox=el('escala-aviso');
 if(escalaBox){
-const esc=dv?getEscala(dNom):null;
-if(esc){
-escalaBox.style.display='block';
-escalaBox.innerHTML='🔄 <strong>Escala automática:</strong> La mercadería pasará primero por <strong>'+esc.escala+'</strong> antes de llegar a <strong>'+dNom+'</strong>.';
-} else {
-escalaBox.style.display='none';
+  const esc=dv?getEscala(dNom):null;
+  // Si hay escala automática, ocultamos el checkbox manual y mostramos el aviso
+  const manualWrap=el('escala-manual-wrap');
+  if(esc){
+    escalaBox.style.display='block';
+    escalaBox.innerHTML='🔄 <strong>Escala automática:</strong> La mercadería pasará primero por <strong>'+esc.escala+'</strong> antes de llegar a <strong>'+dNom+'</strong>.';
+    if(manualWrap) manualWrap.style.display='none';
+  } else {
+    escalaBox.style.display='none';
+    if(manualWrap) manualWrap.style.display='block';
+  }
 }
 }
+
+function toggleEscalaManual(){
+  const cb=el('new-tiene-escala');
+  const wrap=el('escala-manual-select');
+  if(!wrap) return;
+  wrap.style.display=cb&&cb.checked?'block':'none';
+  updateRoutePreview();
 }
 
 let _searchTimeout=null;
@@ -1795,8 +1816,21 @@ const ov=el('new-origen').value, dv=el('new-destino').value;
 if(!ov||!dv) return notify('Seleccioná origen y destino','error');
 if(ov===dv) return notify('Origen y destino no pueden ser iguales','error');
 const [oNom,oAlm]=ov.split('|'), [dNom,dAlm]=dv.split('|');
+// Determinar escala: automática (config) o manual (usuario)
+const escalaAutoConf=getEscala(dNom);
+const tieneEscalaCb=el('new-tiene-escala');
+const escalaManualSel=el('new-escala-local');
+let escalaManualNom=null;
+if(!escalaAutoConf&&tieneEscalaCb&&tieneEscalaCb.checked&&escalaManualSel&&escalaManualSel.value){
+  escalaManualNom=escalaManualSel.value.split('|')[0]||null;
+  if(escalaManualNom===oNom||escalaManualNom===dNom){
+    return notify('El local de escala no puede ser igual al origen o destino','error');
+  }
+}
+const escalaLocalFinal=escalaAutoConf?escalaAutoConf.escala:(escalaManualNom||null);
 const {data:pedido,error}=await db.from('pedidos').insert({
 origen_local:oNom,origen_almacen:oAlm,destino_local:dNom,destino_almacen:dAlm,
+escala_local:escalaLocalFinal,
 cliente:el('new-cliente').value.trim()||null,
 telefono:el('new-telefono').value.trim()||null,
 urgente:el('new-urgente').checked,
@@ -1807,11 +1841,9 @@ if(error) return notify('Error al crear pedido: '+error.message,'error');
 // Insert products
 await db.from('pedido_productos').insert(newOrderProducts.map(p=>({pedido_id:pedido.id,codigo:p.codigo,nombre:p.nombre,marca:p.marca,cantidad:p.cantidad})));
 await db.from('pedido_historial').insert({pedido_id:pedido.id,estado:'pendiente',usuario_id:currentPerfil.id});
-// Notify origen local users
+// Notify origen + escala (auto o manual)
 const {data:users}=await db.from('perfiles').select('id,local_nombre,role').eq('approved',true);
-// Notificar origen + escala si aplica
-const escalaCrear = getEscala(dNom);
-const dest=users?.filter(u=>u.id!==currentPerfil.id&&(u.local_nombre===oNom||(escalaCrear&&u.local_nombre===escalaCrear.escala)))||[];
+const dest=users?.filter(u=>u.id!==currentPerfil.id&&(u.local_nombre===oNom||(escalaLocalFinal&&u.local_nombre===escalaLocalFinal)))||[];
 if(dest.length) await db.from('notificaciones').insert(dest.map(u=>({usuario_id:u.id,titulo:'📦 Nuevo pedido de '+dNom,cuerpo:'#'+pedido.id.slice(-8,-2).toUpperCase()+(pedido.cliente?' · '+pedido.cliente:''),pedido_id:pedido.id})));
 closeModal('modal-nuevo-pedido');
 notify('¡Pedido creado exitosamente!','success');
@@ -2629,7 +2661,7 @@ for(const {pid,msg,pedido} of pedidoChatItems){
 for(const conv of convs||[]){
   const {data:lastMsg} = await db.from('mensajes')
     .select('texto,usuario_nombre,created_at').eq('conversacion_id',conv.id)
-    .order('created_at',{ascending:false}).limit(1).single();
+    .order('created_at',{ascending:false}).limit(1).maybeSingle();
   const nombre = conv.es_grupo ? (conv.nombre||'Grupo') : await getConvNombre(conv.id);
   const hora = lastMsg ? new Date(lastMsg.created_at).toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'}) : '';
   e.innerHTML += '<div class="conv-item'+(currentConvId===conv.id?' active':'')+'" onclick="openConversacion(\''+escJsStr(conv.id)+'\')">' +
@@ -2640,7 +2672,7 @@ for(const conv of convs||[]){
     '</div>'+
     '<div class="conv-time">'+hora+'</div>'+
     '<button class="conv-action-btn" onclick="toggleChatMenu(event,\''+escJsStr(conv.id)+'\');" title="Opciones">⌄</button>'+
-    '<div class="conv-row-menu" id="chat-menu-'+escHtml(conv.id)+'" onclick="event.stopPropagation()"><button onclick="confirmarEliminarChat(event,\''+escJsStr(conv.id)+'\',\''+escJsStr(nombre)+'\'">Eliminar</button></div>'+
+    '<div class="conv-row-menu" id="chat-menu-'+escHtml(conv.id)+'" onclick="event.stopPropagation()"><button onclick="confirmarEliminarChat(event,\''+escJsStr(conv.id)+'\',\''+escJsStr(nombre)+'\'\')">Eliminar</button></div>'+
   '</div>';
 }
 e.innerHTML += '</div>';
