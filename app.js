@@ -593,6 +593,14 @@ incompleto:       ['⚠️','Incompleto','badge-incomplete'],
 return m[estado]||['❓',estado,'badge-pending'];
 }
 
+// Versión extendida que detecta "Aceptado incompleto"
+function estadoInfoOrder(o){
+  if(o.estado==='aceptado' && o.faltantes && o.faltantes.startsWith('Aceptado incompleto')){
+    return ['⚠️','Aceptado incompleto','badge-incomplete'];
+  }
+  return estadoInfo(o.estado);
+}
+
 function roleLabel(role){
 return (role==='admin' || role==='supervisor_general') ? 'Supervisor' : 'Local';
 }
@@ -847,10 +855,10 @@ if(selDestino.value) q=q.eq('destino_local',selDestino.value);
 if(selCreador?.value) q=q.eq('creado_por',selCreador.value);
 }
 
-if(despachoTab==='pendientes'){
-q=q.in('estado',['pendiente','aceptado','listo','transito_escala','en_escala','listo_escala']);
 const estadoFiltroEnv=el('filter-env-estado').value;
 const estadoEnv=(estadoFiltroEnv==='aceptado_incompleto')?'aceptado':estadoFiltroEnv;
+if(despachoTab==='pendientes'){
+q=q.in('estado',['pendiente','aceptado','listo','transito_escala','en_escala','listo_escala']);
 if(estadoEnv) q=q.eq('estado',estadoEnv);
 q=q.order('created_at',{ascending:true});
 } else {
@@ -874,7 +882,6 @@ list.forEach(o=>{
 if(['pendiente','aceptado'].includes(o.estado))
 o._viejo=(Date.now()-new Date(o.created_at).getTime())/3600000>24;
 });
-if(estadoFiltroEnv==='aceptado_incompleto') list=list.filter(o=>o.estado==='aceptado'&&o.faltantes&&o.faltantes.startsWith('Aceptado incompleto'));
 renderList('list-paraEnviar',list,despachoTab==='pendientes'?'📭':'✅',
 despachoTab==='pendientes'?'No hay pedidos pendientes':'No hay pedidos completados aún');
 }
@@ -990,30 +997,43 @@ if(o.transporte) extra+='<div class="detail-row"><span class="label">Transporte:
 if(o.tracking)   extra+='<div class="detail-row"><span class="label">Tracking:</span><span class="value" style="font-family:\'DM Mono\',monospace">'+escHtml(o.tracking)+'</span></div>';
 if(o.remito)     extra+='<div class="detail-row"><span class="label">N° Remito:</span><span class="value" style="font-family:\'DM Mono\',monospace">'+escHtml(o.remito)+'</span></div>';
 if(o.foto_url)   extra+='<br><img src="'+encodeURI(o.foto_url)+'" class="photo-preview" alt="Foto">';
-if((o.estado==='incompleto'||o.faltantes)&&o.faltantes){
-  // Separar sobrantes (recibido > enviado) de faltantes (recibido < enviado o no recibido)
-  // Parsear desde __xls__ si existe, sino usar texto plano
+if(o.faltantes){
   const xlsMatch=(o.faltantes||'').match(/\n__xls__:(.*)/s);
   let sobrantes=[], faltantesArr=[];
   if(xlsMatch){
     try{
       const data=JSON.parse(xlsMatch[1].trim());
       data.forEach(r=>{
-        if(r.recibido>r.enviado) sobrantes.push(escHtml(r.nombre)+' <strong>+'+(r.recibido-r.enviado)+'</strong> (env:'+r.enviado+' rec:'+r.recibido+')');
-        else if(r.recibido<r.enviado) faltantesArr.push(escHtml(r.nombre)+' <strong>-'+(r.enviado-r.recibido)+'</strong> (env:'+r.enviado+' rec:'+r.recibido+')');
+        if(r.recibido>r.enviado) sobrantes.push({nombre:r.nombre,diff:r.recibido-r.enviado,env:r.enviado,rec:r.recibido});
+        else if(r.recibido<r.enviado) faltantesArr.push({nombre:r.nombre,diff:r.enviado-r.recibido,env:r.enviado,rec:r.recibido});
       });
     }catch(e){}
   }
   if(sobrantes.length||faltantesArr.length){
-    let difHtml='<div class="detail-row" style="flex-direction:column;align-items:flex-start;gap:4px"><span class="label" style="color:var(--text2)">Diferencias:</span>';
-    if(faltantesArr.length) difHtml+='<span style="color:var(--accent2);font-size:12px">❌ Faltantes: '+faltantesArr.join(', ')+'</span>';
-    if(sobrantes.length)    difHtml+='<span style="color:#22c55e;font-size:12px">➕ Sobrantes: '+sobrantes.join(', ')+'</span>';
-    difHtml+='</div>';
-    extra+=difHtml;
+    const nF=faltantesArr.length, nS=sobrantes.length;
+    const difId='dif-'+o.id.slice(-6);
+    const resumen=(nF?'<span style="color:var(--accent2)">❌ '+nF+' faltante'+(nF>1?'s':'')+'</span>':'')+
+      (nF&&nS?' &nbsp;·&nbsp; ':'')+
+      (nS?'<span style="color:#22c55e">➕ '+nS+' sobrante'+(nS>1?'s':'')+'</span>':'');
+    extra+=
+      '<div class="detail-row" style="align-items:center;gap:8px">'+
+        '<span class="label">Diferencias:</span>'+
+        '<span style="font-size:12px">'+resumen+'</span>'+
+        '<button onclick="toggleDifDetalle(\''+difId+'\');" style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);border-radius:5px;padding:2px 8px;cursor:pointer;color:var(--text1);font-size:11px">🔍 ver</button>'+
+      '</div>'+
+      '<div id="'+difId+'" style="display:none;padding:10px 12px;margin-bottom:6px;border-radius:8px;background:rgba(0,0,0,0.25);font-size:12px;line-height:1.8">'+
+        (faltantesArr.length?
+          '<div style="color:var(--accent2);margin-bottom:6px"><strong>❌ Faltantes</strong><br>'+
+          faltantesArr.map(r=>escHtml(r.nombre)+' &nbsp;<strong style=\"font-size:13px\">−'+r.diff+'</strong>&nbsp;<span style=\"opacity:.55\">(env:'+r.env+' · rec:'+r.rec+')</span>').join('<br>')+
+          '</div>':'')+
+        (sobrantes.length?
+          '<div style="color:#22c55e"><strong>➕ Sobrantes</strong><br>'+
+          sobrantes.map(r=>escHtml(r.nombre)+' &nbsp;<strong style=\"font-size:13px\">+'+r.diff+'</strong>&nbsp;<span style=\"opacity:.55\">(env:'+r.env+' · rec:'+r.rec+')</span>').join('<br>')+
+          '</div>':'')+
+      '</div>';
   } else {
-    // Sin datos estructurados: mostrar texto limpio (sin el bloque __xls__)
     const textoLimpio=(o.faltantes||'').split('\n__xls__:')[0];
-    extra+='<div class="detail-row"><span class="label">Diferencias:</span><span class="value" style="color:var(--accent2)">'+escHtml(textoLimpio)+'</span></div>';
+    extra+='<div class="detail-row"><span class="label">Diferencias:</span><span class="value" style="color:var(--accent2);font-size:12px">'+escHtml(textoLimpio)+'</span></div>';
   }
 }
 if(o.notas) extra+='<div class="detail-row"><span class="label">Notas:</span><span class="value">'+escHtml(o.notas)+'</span></div>';
@@ -1029,7 +1049,7 @@ let actions='';
 if(esEscala){
 // ── FLUJO CON ESCALA ──
 if(canOrigen && o.estado==='pendiente'){
-actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'aceptar\',\''+o.id+'\')">✅ Aceptar completo</button><button class="btn btn-warning btn-sm" onclick="accion(\'aceptar_incompleto\',\''+o.id+'\')">⚠️ Aceptar incompleto</button><button class="btn btn-danger btn-sm" onclick="accion(\'denegar\',\''+o.id+'\')">❌ Denegar pedido</button></div>';
+actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'aceptar\',\''+o.id+'\')">✅ Aceptar</button><button class="btn btn-danger btn-sm" onclick="accion(\'denegar\',\''+o.id+'\')">❌ Denegar</button></div>';
 } else if(canOrigen && o.estado==='aceptado'){
 actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'listo\',\''+o.id+'\')">📦 Marcar listo para enviar a '+escalaInfo.escala+'</button></div>';
 } else if(canOrigen && o.estado==='listo'){
@@ -1048,7 +1068,7 @@ actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick
 } else {
 // ── FLUJO NORMAL ──
 if(canOrigen && o.estado==='pendiente'){
-actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'aceptar\',\''+o.id+'\')">✅ Aceptar completo</button><button class="btn btn-warning btn-sm" onclick="accion(\'aceptar_incompleto\',\''+o.id+'\')">⚠️ Aceptar incompleto</button><button class="btn btn-danger btn-sm" onclick="accion(\'denegar\',\''+o.id+'\')">❌ Denegar pedido</button></div>';
+actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'aceptar\',\''+o.id+'\')">✅ Aceptar</button><button class="btn btn-danger btn-sm" onclick="accion(\'denegar\',\''+o.id+'\')">❌ Denegar</button></div>';
 } else if(canOrigen && o.estado==='aceptado'){
 actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'listo\',\''+o.id+'\')">📦 Marcar listo para enviar</button></div>';
 } else if(canOrigen && o.estado==='listo'){
@@ -3049,4 +3069,9 @@ await updateBadges(); refreshView();
 },
 {title:'Retroceder estado', btnLabel:'Sí, retroceder', btnClass:'btn-warning'}
 );
+}
+
+function toggleDifDetalle(id){
+  const d=document.getElementById(id);
+  if(d) d.style.display=d.style.display==='none'?'block':'none';
 }
