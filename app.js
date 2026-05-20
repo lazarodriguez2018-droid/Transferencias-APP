@@ -2628,14 +2628,19 @@ for(const {pid,msg,pedido} of pedidoChatItems){
 }
 
 // Render conversaciones generales — batch last messages in one query
-// Get all member names for non-group convs in one shot
+// Batch load members and their names
 const membersRes = convIds.length
-  ? await db.from('conversacion_miembros').select('conversacion_id,usuario_nombre').in('conversacion_id',convIds)
+  ? await db.from('conversacion_miembros').select('conversacion_id,usuario_id').in('conversacion_id',convIds)
   : {data:[]};
+const allMemberIds=[...new Set((membersRes.data||[]).map(m=>m.usuario_id))];
+const perfilesRes = allMemberIds.length
+  ? await db.from('perfiles').select('id,nombre,apellido,nombre_display').in('id',allMemberIds)
+  : {data:[]};
+const perfilesById=new Map((perfilesRes.data||[]).map(p=>[p.id, p.nombre_display||(p.nombre+' '+p.apellido)]));
 const membersMap = new Map();
 (membersRes.data||[]).forEach(m=>{
   if(!membersMap.has(m.conversacion_id)) membersMap.set(m.conversacion_id,[]);
-  membersMap.get(m.conversacion_id).push(m.usuario_nombre||'');
+  membersMap.get(m.conversacion_id).push({uid:m.usuario_id, nombre:perfilesById.get(m.usuario_id)||'Usuario'});
 });
 // Get last message per conv in one query
 const lastMsgsRes = convIds.length
@@ -2647,17 +2652,20 @@ const lastMsgMap = new Map();
 for(const conv of convs||[]){
   const lastMsg=lastMsgMap.get(conv.id)||null;
   const miembros=membersMap.get(conv.id)||[];
-  const nombre=conv.es_grupo?(conv.nombre||'Grupo'):miembros.filter(n=>n&&!n.includes(currentPerfil.nombre)).join(', ')||conv.nombre||'Conversación';
+  const nombre=conv.es_grupo?(conv.nombre||'Grupo'):miembros.filter(m=>m.uid!==currentPerfil.id).map(m=>m.nombre).join(', ')||conv.nombre||'Conversación';
+  // For groups: build participant list for display
+  const participantes=miembros.map(m=>m.nombre).join(', ');
   const hora=lastMsg?new Date(lastMsg.created_at).toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'}):'';
   e.innerHTML += '<div class="conv-item'+(currentConvId===conv.id?' active':'')+'" onclick="openConversacion(\''+escJsStr(conv.id)+'\')">' +
     '<div class="conv-avatar">'+(conv.es_grupo?'👥':'👤')+'</div>'+
     '<div class="conv-info">'+
     '<div class="conv-nombre">'+escHtml(nombre)+'</div>'+
+    (conv.es_grupo?'<div style="font-size:10px;color:var(--text2);margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(participantes)+'</div>':'')+
     '<div class="conv-last">'+(lastMsg?(escHtml((lastMsg.usuario_nombre||'').split(' ')[0])+': '+escHtml((lastMsg.texto||'').substring(0,35))):'Sin mensajes')+'</div>'+
     '</div>'+
     '<div class="conv-time">'+hora+'</div>'+
     '<button class="conv-action-btn" onclick="toggleChatMenu(event,\''+escJsStr(conv.id)+'\');" title="Opciones">⌄</button>'+
-    '<div class="conv-row-menu" id="chat-menu-'+escHtml(conv.id)+'" onclick="event.stopPropagation()"><button onclick="confirmarEliminarChat(event,\''+escJsStr(conv.id)+'\',\''+escJsStr(nombre)+'\'\')">Eliminar</button></div>'+
+    '<div class="conv-row-menu" id="chat-menu-'+escHtml(conv.id)+'" onclick="event.stopPropagation()"><button data-conv-id="'+escHtml(conv.id)+'" data-conv-nombre="'+escHtml(nombre)+'" onclick="eliminarChatBtn(event,this)">Eliminar</button></div>'+
   '</div>';
 }
 e.innerHTML += '</div>';
@@ -2686,6 +2694,13 @@ if(menu&&!wasOpen){
 menu.classList.add('show');
 event.currentTarget.classList.add('active');
 }
+}
+
+function eliminarChatBtn(event, btn){
+  event.stopPropagation();
+  const convId = btn.getAttribute('data-conv-id');
+  const nombre = btn.getAttribute('data-conv-nombre');
+  confirmarEliminarChat(event, convId, nombre);
 }
 
 function confirmarEliminarChat(event, convId, nombre){
