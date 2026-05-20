@@ -597,6 +597,35 @@ function roleLabel(role){
 return (role==='admin' || role==='supervisor_general') ? 'Supervisor' : 'Local';
 }
 
+// Carga todos los productos del padrón paginando de a 1000 (límite real de Supabase/PostgREST)
+async function loadProductsCache(){
+  if(productsCache.length) return;
+  const PAGE = 1000;
+  let base = [], extra = [];
+
+  // Cargar tabla principal paginando
+  let from = 0;
+  while(true){
+    const {data, error} = await db.from('productos').select('codigo,nombre,marca').order('nombre').range(from, from+PAGE-1);
+    if(error || !data || !data.length) break;
+    base = base.concat(data);
+    if(data.length < PAGE) break;
+    from += PAGE;
+  }
+
+  // Cargar padron_extra paginando
+  from = 0;
+  while(true){
+    const {data, error} = await db.from('padron_extra').select('*').order('nombre').range(from, from+PAGE-1);
+    if(error || !data || !data.length) break;
+    extra = extra.concat(data.map(normalizeExtraProduct));
+    if(data.length < PAGE) break;
+    from += PAGE;
+  }
+
+  productsCache = [...base, ...extra];
+}
+
 function normalizeText(v){
 return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,' ').replace(/\s+/g,' ').trim();
 }
@@ -955,9 +984,34 @@ if(o.transporte) extra+='<div class="detail-row"><span class="label">Transporte:
 if(o.tracking)   extra+='<div class="detail-row"><span class="label">Tracking:</span><span class="value" style="font-family:\'DM Mono\',monospace">'+escHtml(o.tracking)+'</span></div>';
 if(o.remito)     extra+='<div class="detail-row"><span class="label">N° Remito:</span><span class="value" style="font-family:\'DM Mono\',monospace">'+escHtml(o.remito)+'</span></div>';
 if(o.foto_url)   extra+='<br><img src="'+encodeURI(o.foto_url)+'" class="photo-preview" alt="Foto">';
-if(o.estado==='incompleto'&&o.faltantes) extra+='<div class="detail-row"><span class="label">Faltantes:</span><span class="value" style="color:var(--accent2)">'+escHtml(o.faltantes)+'</span></div>';
+if((o.estado==='incompleto'||o.faltantes)&&o.faltantes){
+  // Separar sobrantes (recibido > enviado) de faltantes (recibido < enviado o no recibido)
+  // Parsear desde __xls__ si existe, sino usar texto plano
+  const xlsMatch=(o.faltantes||'').match(/\n__xls__:(.*)/s);
+  let sobrantes=[], faltantesArr=[];
+  if(xlsMatch){
+    try{
+      const data=JSON.parse(xlsMatch[1].trim());
+      data.forEach(r=>{
+        if(r.recibido>r.enviado) sobrantes.push(escHtml(r.nombre)+' <strong>+'+(r.recibido-r.enviado)+'</strong> (env:'+r.enviado+' rec:'+r.recibido+')');
+        else if(r.recibido<r.enviado) faltantesArr.push(escHtml(r.nombre)+' <strong>-'+(r.enviado-r.recibido)+'</strong> (env:'+r.enviado+' rec:'+r.recibido+')');
+      });
+    }catch(e){}
+  }
+  if(sobrantes.length||faltantesArr.length){
+    let difHtml='<div class="detail-row" style="flex-direction:column;align-items:flex-start;gap:4px"><span class="label" style="color:var(--text2)">Diferencias:</span>';
+    if(faltantesArr.length) difHtml+='<span style="color:var(--accent2);font-size:12px">❌ Faltantes: '+faltantesArr.join(', ')+'</span>';
+    if(sobrantes.length)    difHtml+='<span style="color:#22c55e;font-size:12px">➕ Sobrantes: '+sobrantes.join(', ')+'</span>';
+    difHtml+='</div>';
+    extra+=difHtml;
+  } else {
+    // Sin datos estructurados: mostrar texto limpio (sin el bloque __xls__)
+    const textoLimpio=(o.faltantes||'').split('\n__xls__:')[0];
+    extra+='<div class="detail-row"><span class="label">Diferencias:</span><span class="value" style="color:var(--accent2)">'+escHtml(textoLimpio)+'</span></div>';
+  }
+}
 if(o.notas) extra+='<div class="detail-row"><span class="label">Notas:</span><span class="value">'+escHtml(o.notas)+'</span></div>';
-if(o.faltantes_escala) extra+='<div class="detail-row"><span class="label">Faltó en escala:</span><span class="value" style="color:#a855f7">'+escHtml(o.faltantes_escala)+'</span></div>';
+if(o.faltantes_escala) extra+='<div class="detail-row"><span class="label">Diferencias en escala:</span><span class="value" style="color:#a855f7">'+escHtml(o.faltantes_escala.split('\n__xls__:')[0])+'</span></div>';
 
 const canOrigen  = isOrigen  || currentPerfil.role==='admin';
 const canDestino = isDestino || currentPerfil.role==='admin';
@@ -1200,43 +1254,35 @@ qtyInputs.forEach(inp=>{
   qtyMap[idx]=v;
 });
 
-const recibidos=[], faltantesItems=[], actualizarQty=[];
+const recibidos=[], faltantesItems=[], recibidosData=[];
 checks.forEach(ch=>{
   const idx=parseInt(ch.getAttribute('data-idx'),10);
   const it=items[idx]; if(!it) return;
   const cantOriginal=it.cantidad||1;
   const cantAceptada=qtyMap[idx]!==undefined ? qtyMap[idx] : (ch.checked?cantOriginal:0);
   if(ch.checked && cantAceptada>0){
-    recibidos.push((it.nombre||'')+' x'+cantAceptada+(cantAceptada<cantOriginal?' (de '+cantOriginal+')':''));
-    actualizarQty.push({id:it.id, cantidad:cantAceptada});
+    const diff=cantAceptada!==cantOriginal?' (ped:'+cantOriginal+')':'';
+    recibidos.push((it.nombre||'')+' x'+cantAceptada+diff);
+    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:cantAceptada});
   } else {
     faltantesItems.push((it.nombre||'')+' x'+cantOriginal);
-    actualizarQty.push({id:it.id, cantidad:0});
+    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:0});
   }
 });
+// NO se toca pedido_productos.cantidad — queda como la cantidad originalmente enviada
 
-const hayDiferencia=checks.some(ch=>{
-const idx2=parseInt(ch.getAttribute('data-idx'),10);
-const it2=items[idx2]; if(!it2) return false;
-const orig2=it2.cantidad||1;
-const cant2=qtyMap[idx2]!==undefined?qtyMap[idx2]:(ch.checked?orig2:0);
-return !ch.checked||cant2!==orig2;
-});
+const hayDiferencia=recibidosData.some(r=>r.recibido!==r.enviado);
 if(!hayDiferencia){
-  return notify('Para marcar como incompleto, al menos 1 ítem debe faltar o tener cantidad reducida','error');
+  return notify('Para marcar como incompleto, al menos 1 ítem debe tener una cantidad diferente a la pedida','error');
 }
 if(!recibidos.length) return notify('Marcá al menos 1 ítem que sí se recibe','error');
 
 const obs=(el('faltantes-det')&&el('faltantes-det').value.trim())||'';
+const recibidosJson=JSON.stringify(recibidosData);
 const resumen='Recibidos: '+recibidos.join(' | ')+
   (faltantesItems.length ? ' | Faltantes: '+faltantesItems.join(', ') : '')+
-  (obs?' | Obs: '+obs:'');
-
-// Update quantities in pedido_productos
-const qtyUpdates=actualizarQty.filter(u=>u.id);
-await Promise.all(qtyUpdates.map(u=>
-  db.from('pedido_productos').update({cantidad:u.cantidad}).eq('id',u.id)
-));
+  (obs?' | Obs: '+obs:'')+
+  '\n__xls__:'+recibidosJson;
 
 if(tipo==='en_escala_incompleto'){
   updates.estado='en_escala';
@@ -1473,16 +1519,8 @@ for(let i=0;i<dest.options.length;i++){ if(dest.options[i].value.startsWith(curr
 const orig=el('new-origen');
 for(let i=0;i<orig.options.length;i++){ if(!orig.options[i].value.startsWith(currentPerfil.local_nombre+'|')){orig.selectedIndex=i;break;} }
 updateRoutePreview();
-// Load products if not cached
-if(!productsCache.length){
-const [baseRes,extraRes]=await Promise.all([
-db.from('productos').select('codigo,nombre,marca').order('nombre').limit(6000),
-db.from('padron_extra').select('*').order('nombre').limit(6000)
-]);
-const base=baseRes.data||[];
-const extra=extraRes.error?[]:(extraRes.data||[]).map(normalizeExtraProduct);
-productsCache=[...base,...extra];
-}
+// Load products if not cached (paginated to bypass Supabase 1000-row limit)
+await loadProductsCache();
 openModal('modal-nuevo-pedido');
 }
 
@@ -1513,15 +1551,7 @@ if(q.length<2){res.classList.remove('show');return;}
 // Debounce 300ms para no spamear queries
 clearTimeout(_searchTimeout);
 _searchTimeout=setTimeout(async()=>{
-if(!productsCache.length){
-const [baseRes,extraRes]=await Promise.all([
-db.from('productos').select('codigo,nombre,marca').order('nombre').limit(6000),
-db.from('padron_extra').select('*').order('nombre').limit(6000)
-]);
-const base=baseRes.data||[];
-const extra=extraRes.error?[]:(extraRes.data||[]).map(normalizeExtraProduct);
-productsCache=[...base,...extra];
-}
+await loadProductsCache();
 const tokens=tokenizeSearch(q);
 const merged=productsCache.filter(p=>productMatchesTokens(p,tokens)).slice(0,120);
 const map=new Map();
@@ -1579,16 +1609,8 @@ async function handleXLSImport(event) {
   event.target.value = ''; // reset so same file can be re-selected
   if (!file) return;
 
-  // Make sure products cache is loaded
-  if (!productsCache.length) {
-    const [baseRes, extraRes] = await Promise.all([
-      db.from('productos').select('codigo,nombre,marca').order('nombre').limit(6000),
-      db.from('padron_extra').select('*').order('nombre').limit(6000)
-    ]);
-    const base = baseRes.data || [];
-    const extra = extraRes.error ? [] : (extraRes.data || []).map(normalizeExtraProduct);
-    productsCache = [...base, ...extra];
-  }
+  // Make sure products cache is loaded (paginated)
+  await loadProductsCache();
 
   try {
     const ab = await file.arrayBuffer();
@@ -2205,62 +2227,36 @@ async function exportarXLSPedido(orderId){
   const productos=o.pedido_productos||[];
   const pedidoRef='#'+o.id.slice(-8,-2).toUpperCase();
   const fecha=new Date(o.updated_at||o.created_at).toLocaleDateString('es-UY');
+  const faltantesRaw=o.faltantes||o.faltantes_escala||'';
 
-  // Parsear faltantes del campo o.faltantes para obtener cantidades recibidas reales
-  // Formato guardado: "Recibidos: PROD x2 (de 3) | ... | Faltantes: PROD2 x1"
-  // Usamos las cantidades actuales en pedido_productos (ya fueron actualizadas al confirmar)
-  // La cantidad "enviada" es la original (data-original) — pero no la tenemos aquí.
-  // Lo mejor: pedido_productos.cantidad = recibido. El pedido original no lo guardamos por separado.
-  // Intentamos parsear el campo faltantes para reconstruir enviados vs recibidos.
-
-  // Construir mapa recibido desde pedido_productos (estas ya fueron actualizadas)
-  // Para "enviado" necesitamos parsear el resumen guardado en faltantes
-  let enviadoMap={}; // codigo -> cantEnviada
-  if(o.faltantes){
-    // Parsear "Recibidos: X x2 (de 3) | Y x1 | Faltantes: Z x2"
-    const recibidosPart=(o.faltantes.match(/Recibidos:\s*(.*?)(\s*\|\s*Faltantes:|$)/s)||[])[1]||'';
-    const faltantesPart=(o.faltantes.match(/Faltantes:\s*(.*?)(\s*\|\s*Obs:|$)/s)||[])[1]||'';
-    // Para faltantes: esos tienen cantidad 0 recibida
-    faltantesPart.split(',').forEach(s=>{
-      const m=s.trim().match(/^(.+?)\s+x(\d+)/);
-      if(m){
-        const nombre=m[1].trim();
-        const cant=parseInt(m[2]);
-        const prod=productos.find(p=>p.nombre&&p.nombre.trim()===nombre);
-        if(prod) enviadoMap[prod.codigo]=cant; // enviado = la cantidad que faltó (no recibida)
-      }
-    });
+  // Intentar usar los datos estructurados guardados como __xls__:{...}
+  let rows=[];
+  const xlsMatch=faltantesRaw.match(/\n__xls__:(.*)/s);
+  if(xlsMatch){
+    try{
+      const data=JSON.parse(xlsMatch[1].trim());
+      rows=data.map(r=>({
+        'Código':    r.codigo||'',
+        'Nombre':    r.nombre||'',
+        'Enviado':   r.enviado||0,
+        'Recibido':  r.recibido||0,
+        'Diferencia':(r.recibido||0)-(r.enviado||0)
+      }));
+    }catch(e){ rows=[]; }
   }
 
-  // Construir filas
-  const rows=productos.map(p=>{
-    const recibido=p.cantidad||0;
-    // enviado: si está en enviadoMap (era faltante), enviado = recibido+faltante
-    // Si no está, enviado = recibido (llegó todo bien)
-    const faltante=enviadoMap[p.codigo]||0;
-    const enviado=recibido+faltante;
-    const diferencia=recibido-enviado;
-    return {
-      'Código':      p.codigo||'',
-      'Nombre':      p.nombre||'',
-      'Enviado':     enviado,
-      'Recibido':    recibido,
-      'Diferencia':  diferencia
-    };
-  });
+  // Fallback: pedido_productos.cantidad = enviado, todos recibidos = enviado (pedido completo)
+  if(!rows.length){
+    rows=productos.map(p=>({
+      'Código':    p.codigo||'',
+      'Nombre':    p.nombre||'',
+      'Enviado':   p.cantidad||0,
+      'Recibido':  p.cantidad||0,
+      'Diferencia':0
+    }));
+  }
 
-  const wb=XLSX.utils.book_new();
-  const wsData=[
-    ['TransferApp — Reporte de pedido '+pedidoRef],
-    ['Fecha: '+fecha+'   Origen: '+o.origen_local+'   Destino: '+o.destino_local+(o.cliente?'   Cliente: '+o.cliente:'')],
-    [],
-    ['Código','Nombre','Enviado','Recibido','Diferencia'],
-    ...rows.map(r=>[r['Código'],r['Nombre'],r['Enviado'],r['Recibido'],r['Diferencia']])
-  ];
-
-  const ws=XLSX.utils.aoa_to_sheet(wsData);
-
-  // Anchos de columna
+    // Anchos de columna
   ws['!cols']=[{wch:16},{wch:45},{wch:10},{wch:10},{wch:12}];
 
   // Resaltar filas con diferencia negativa (faltó mercadería)
