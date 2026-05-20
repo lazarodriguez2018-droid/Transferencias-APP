@@ -2660,12 +2660,14 @@ for(const conv of convs||[]){
     '<div class="conv-avatar">'+(conv.es_grupo?'👥':'👤')+'</div>'+
     '<div class="conv-info">'+
     '<div class="conv-nombre">'+escHtml(nombre)+'</div>'+
-    (conv.es_grupo?'<div style="font-size:10px;color:var(--text2);margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(participantes)+'</div>':'')+
     '<div class="conv-last">'+(lastMsg?(escHtml((lastMsg.usuario_nombre||'').split(' ')[0])+': '+escHtml((lastMsg.texto||'').substring(0,35))):'Sin mensajes')+'</div>'+
     '</div>'+
     '<div class="conv-time">'+hora+'</div>'+
     '<button class="conv-action-btn" onclick="toggleChatMenu(event,\''+escJsStr(conv.id)+'\');" title="Opciones">⌄</button>'+
-    '<div class="conv-row-menu" id="chat-menu-'+escHtml(conv.id)+'" onclick="event.stopPropagation()"><button data-conv-id="'+escHtml(conv.id)+'" data-conv-nombre="'+escHtml(nombre)+'" onclick="eliminarChatBtn(event,this)">Eliminar</button></div>'+
+    '<div class="conv-row-menu" id="chat-menu-'+escHtml(conv.id)+'" onclick="event.stopPropagation()">'+
+    (conv.es_grupo?'<button data-conv-id="'+escHtml(conv.id)+'" data-conv-nombre="'+escHtml(nombre)+'" onclick="verParticipantesBtn(event,this)">👥 Ver participantes</button>':'')+
+    '<button data-conv-id="'+escHtml(conv.id)+'" data-conv-nombre="'+escHtml(nombre)+'" onclick="eliminarChatBtn(event,this)">🗑️ Eliminar</button>'+
+    '</div>'+
   '</div>';
 }
 e.innerHTML += '</div>';
@@ -2694,6 +2696,42 @@ if(menu&&!wasOpen){
 menu.classList.add('show');
 event.currentTarget.classList.add('active');
 }
+}
+
+function verParticipantesBtn(event, btn){
+  event.stopPropagation();
+  closeChatMenus();
+  const convId = btn.getAttribute('data-conv-id');
+  const nombre = btn.getAttribute('data-conv-nombre');
+  verParticipantes(convId, nombre);
+}
+
+async function verParticipantes(convId, nombre){
+  const {data:members} = await db.from('conversacion_miembros')
+    .select('usuario_id').eq('conversacion_id',convId);
+  const ids=(members||[]).map(m=>m.usuario_id);
+  const {data:perfs} = ids.length
+    ? await db.from('perfiles').select('id,nombre,apellido,nombre_display,local_nombre,foto_url').in('id',ids)
+    : {data:[]};
+
+  const modalTitle = el('modal-participantes-title');
+  const modalBody  = el('modal-participantes-body');
+  if(!modalTitle||!modalBody) return;
+  modalTitle.textContent = '👥 ' + (nombre||'Grupo');
+  modalBody.innerHTML = (perfs||[]).map(p=>{
+    const n=p.nombre_display||(p.nombre+' '+p.apellido);
+    const isMe=p.id===currentPerfil.id;
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border)">'+
+      '<div style="width:36px;height:36px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;flex-shrink:0;overflow:hidden">'+
+      (p.foto_url?'<img src="'+escHtml(p.foto_url)+'" style="width:100%;height:100%;object-fit:cover">':escHtml(n.slice(0,2).toUpperCase()))+
+      '</div>'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-size:13px;font-weight:500">'+escHtml(n)+(isMe?' <span style="font-size:11px;opacity:.6">(vos)</span>':'')+'</div>'+
+        '<div style="font-size:11px;color:var(--text2)">'+escHtml(p.local_nombre||'')+'</div>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+  openModal('modal-participantes');
 }
 
 function eliminarChatBtn(event, btn){

@@ -816,6 +816,20 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   </div>
 </div>
 
+<!-- MODAL PARTICIPANTES -->
+<div class="modal-overlay" id="modal-participantes">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <h2 id="modal-participantes-title">👥 Participantes</h2>
+      <div class="modal-close" onclick="closeModal('modal-participantes')">✕</div>
+    </div>
+    <div class="modal-body" id="modal-participantes-body" style="max-height:60vh;overflow-y:auto"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-participantes')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <!-- NUEVO CLIENTE AGENDA -->
 <div class="modal-overlay" id="modal-cliente-agenda">
   <div class="modal" style="max-width:480px">
