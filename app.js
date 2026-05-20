@@ -1018,8 +1018,9 @@ el('modal-detalle-body').innerHTML=
 actions+
 '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">'+
 '<button class="btn btn-ghost btn-sm" onclick="openChat(\''+o.id+'\')">💬 Chat del pedido</button>'+
-(o.telefono?'<button class="btn btn-success btn-sm" onclick="abrirWhatsApp(\''+escJsStr(o.telefono)+'\',\''+escJsStr(o.cliente||'')+'\')" style="background:#25d366;border-color:#25d366;color:#fff">💬 WhatsApp cliente</button>':'')+
+(o.telefono?'<button class="btn btn-success btn-sm" onclick="abrirWhatsApp(\''+escJsStr(o.telefono)+'\',\''+escJsStr(o.cliente||'')+'\')\'" style="background:#25d366;border-color:#25d366;color:#fff">💬 WhatsApp cliente</button>':'')+
 '<button class="btn btn-ghost btn-sm" onclick="generarEtiqueta(\''+o.id+'\')">🖨️ Etiqueta de envío</button>'+
+(['completo','incompleto'].includes(o.estado)?'<button class="btn btn-ghost btn-sm" onclick="exportarXLSPedido(\''+o.id+'\')" style="color:#22c55e;border-color:rgba(34,197,94,0.35)">📊 Exportar XLS comparativo</button>':'')+
 (currentPerfil.role==='admin'?
 '<button class="btn btn-warning btn-sm" onclick="retrocederEstado(\''+o.id+'\')">↩️ Retroceder estado</button>'+
 '<button class="btn btn-danger btn-sm" onclick="eliminarPedido(\''+o.id+'\')">🗑️ Eliminar pedido</button>':'')+
@@ -1069,8 +1070,8 @@ const itemRowHtml = (p, i) =>
   '</div>' +
   '<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">' +
   '<span style="font-size:11px;color:var(--text2)">Cant:</span>' +
-  '<input type="number" class="incomp-qty" data-idx="'+i+'" data-original="'+(p.cantidad||1)+'" value="'+(p.cantidad||1)+'" min="0" max="'+(p.cantidad||1)+'" style="width:52px;text-align:center;padding:3px 5px;border-radius:5px;border:1px solid var(--border);background:var(--bg1);color:var(--text1);font-size:13px">' +
-  '<span style="font-size:11px;color:var(--text2)">/ '+(p.cantidad||1)+'</span>' +
+  '<input type="number" class="incomp-qty" data-idx="'+i+'" data-original="'+(p.cantidad||1)+'" value="'+(p.cantidad||1)+'" min="0" style="width:60px;text-align:center;padding:3px 5px;border-radius:5px;border:1px solid var(--border);background:var(--bg1);color:var(--text1);font-size:13px">' +
+  '<span style="font-size:11px;color:var(--text2)">ped: '+(p.cantidad||1)+'</span>' +
   '</div>' +
   '</div>';
 
@@ -2188,6 +2189,83 @@ r.readAsBinaryString(f); e.target.value='';
 // ═══════════════════════════════════════════
 //  ETIQUETA PDF — genera e imprime en A4
 // ═══════════════════════════════════════════
+
+async function exportarXLSPedido(orderId){
+  notify('Generando XLS...','info');
+  const {data:o}=await db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single();
+  if(!o){ notify('No se pudo cargar el pedido','error'); return; }
+
+  const productos=o.pedido_productos||[];
+  const pedidoRef='#'+o.id.slice(-8,-2).toUpperCase();
+  const fecha=new Date(o.updated_at||o.created_at).toLocaleDateString('es-UY');
+
+  // Parsear faltantes del campo o.faltantes para obtener cantidades recibidas reales
+  // Formato guardado: "Recibidos: PROD x2 (de 3) | ... | Faltantes: PROD2 x1"
+  // Usamos las cantidades actuales en pedido_productos (ya fueron actualizadas al confirmar)
+  // La cantidad "enviada" es la original (data-original) — pero no la tenemos aquí.
+  // Lo mejor: pedido_productos.cantidad = recibido. El pedido original no lo guardamos por separado.
+  // Intentamos parsear el campo faltantes para reconstruir enviados vs recibidos.
+
+  // Construir mapa recibido desde pedido_productos (estas ya fueron actualizadas)
+  // Para "enviado" necesitamos parsear el resumen guardado en faltantes
+  let enviadoMap={}; // codigo -> cantEnviada
+  if(o.faltantes){
+    // Parsear "Recibidos: X x2 (de 3) | Y x1 | Faltantes: Z x2"
+    const recibidosPart=(o.faltantes.match(/Recibidos:\s*(.*?)(\s*\|\s*Faltantes:|$)/s)||[])[1]||'';
+    const faltantesPart=(o.faltantes.match(/Faltantes:\s*(.*?)(\s*\|\s*Obs:|$)/s)||[])[1]||'';
+    // Para faltantes: esos tienen cantidad 0 recibida
+    faltantesPart.split(',').forEach(s=>{
+      const m=s.trim().match(/^(.+?)\s+x(\d+)/);
+      if(m){
+        const nombre=m[1].trim();
+        const cant=parseInt(m[2]);
+        const prod=productos.find(p=>p.nombre&&p.nombre.trim()===nombre);
+        if(prod) enviadoMap[prod.codigo]=cant; // enviado = la cantidad que faltó (no recibida)
+      }
+    });
+  }
+
+  // Construir filas
+  const rows=productos.map(p=>{
+    const recibido=p.cantidad||0;
+    // enviado: si está en enviadoMap (era faltante), enviado = recibido+faltante
+    // Si no está, enviado = recibido (llegó todo bien)
+    const faltante=enviadoMap[p.codigo]||0;
+    const enviado=recibido+faltante;
+    const diferencia=recibido-enviado;
+    return {
+      'Código':      p.codigo||'',
+      'Nombre':      p.nombre||'',
+      'Enviado':     enviado,
+      'Recibido':    recibido,
+      'Diferencia':  diferencia
+    };
+  });
+
+  const wb=XLSX.utils.book_new();
+  const wsData=[
+    ['TransferApp — Reporte de pedido '+pedidoRef],
+    ['Fecha: '+fecha+'   Origen: '+o.origen_local+'   Destino: '+o.destino_local+(o.cliente?'   Cliente: '+o.cliente:'')],
+    [],
+    ['Código','Nombre','Enviado','Recibido','Diferencia'],
+    ...rows.map(r=>[r['Código'],r['Nombre'],r['Enviado'],r['Recibido'],r['Diferencia']])
+  ];
+
+  const ws=XLSX.utils.aoa_to_sheet(wsData);
+
+  // Anchos de columna
+  ws['!cols']=[{wch:16},{wch:45},{wch:10},{wch:10},{wch:12}];
+
+  // Resaltar filas con diferencia negativa (faltó mercadería)
+  // XLSX básico no soporta estilos sin xlsx-style, dejamos datos claros
+
+  XLSX.utils.book_append_sheet(wb,ws,'Reporte');
+
+  const nombreArchivo='pedido_'+pedidoRef.replace('#','')+'_'+fecha.replace(/\//g,'-')+'.xlsx';
+  XLSX.writeFile(wb,nombreArchivo);
+  notify('XLS generado: '+nombreArchivo,'success');
+}
+
 async function generarEtiqueta(orderId){
 const {data:o}=await db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single();
 if(!o) return notify('No se pudo cargar el pedido','error');
