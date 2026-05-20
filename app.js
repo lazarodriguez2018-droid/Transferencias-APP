@@ -587,7 +587,7 @@ en_escala:        ['📍','En depósito escala','badge-arrived'],
 listo_escala:     ['📦','Listo para enviar a destino','badge-ready'],
 transito:         ['🚚','En viaje al destino','badge-transit'],
 llegado:          ['📍','Llegó a sucursal','badge-arrived'],
-completo:         ['✅','Completo','badge-complete'],
+completo:         ['✅','Completado','badge-complete'],
 incompleto:       ['⚠️','Incompleto','badge-incomplete'],
 };
 return m[estado]||['❓',estado,'badge-pending'];
@@ -744,7 +744,8 @@ let q=db.from('pedidos').select('*,pedido_productos(*)')
 // Empleado: solo sus pedidos (es destino). Admin: puede ver todos pero con filtros
 if(!isAdmin) q=q.eq('destino_local',local);
 
-const estado  = el('filter-mis-estado').value;
+const estadoFiltro = el('filter-mis-estado').value;
+const estado = (estadoFiltro === 'aceptado_incompleto') ? 'aceptado' : estadoFiltro;
 const origen  = selOrigen.value;
 const destino = isAdmin ? selDestino.value : '';
 const creador = isAdmin && selCreador ? selCreador.value : '';
@@ -766,6 +767,8 @@ let list=data||[];
 const qText=el('filter-mis-busqueda')?.value||'';
 const tokens=tokenizeSearch(qText);
 if(tokens.length) list=list.filter(o=>orderMatchesTokens(o,tokens));
+// Filtro cliente: aceptado_incompleto (estado=aceptado con faltantes de incompleto)
+if(estadoFiltro==='aceptado_incompleto') list=list.filter(o=>o.estado==='aceptado'&&o.faltantes&&o.faltantes.startsWith('Aceptado incompleto'));
 // Actualizar título/subtítulo según rol
 if(isAdmin){
 safeSet('mis-pedidos-title','📤 Pedidos realizados');
@@ -846,8 +849,9 @@ if(selCreador?.value) q=q.eq('creado_por',selCreador.value);
 
 if(despachoTab==='pendientes'){
 q=q.in('estado',['pendiente','aceptado','listo','transito_escala','en_escala','listo_escala']);
-const estado=el('filter-env-estado').value;
-if(estado) q=q.eq('estado',estado);
+const estadoFiltroEnv=el('filter-env-estado').value;
+const estadoEnv=(estadoFiltroEnv==='aceptado_incompleto')?'aceptado':estadoFiltroEnv;
+if(estadoEnv) q=q.eq('estado',estadoEnv);
 q=q.order('created_at',{ascending:true});
 } else {
 q=q.in('estado',['transito','completo','incompleto','denegado']);
@@ -865,10 +869,12 @@ let list=data||[];
 const qText=el('filter-para-busqueda')?.value||'';
 const tokens=tokenizeSearch(qText);
 if(tokens.length) list=list.filter(o=>orderMatchesTokens(o,tokens));
+if(estadoFiltroEnv==='aceptado_incompleto') list=list.filter(o=>o.estado==='aceptado'&&o.faltantes&&o.faltantes.startsWith('Aceptado incompleto'));
 list.forEach(o=>{
 if(['pendiente','aceptado'].includes(o.estado))
 o._viejo=(Date.now()-new Date(o.created_at).getTime())/3600000>24;
 });
+if(estadoFiltroEnv==='aceptado_incompleto') list=list.filter(o=>o.estado==='aceptado'&&o.faltantes&&o.faltantes.startsWith('Aceptado incompleto'));
 renderList('list-paraEnviar',list,despachoTab==='pendientes'?'📭':'✅',
 despachoTab==='pendientes'?'No hay pedidos pendientes':'No hay pedidos completados aún');
 }
@@ -2229,7 +2235,7 @@ async function exportarXLSPedido(orderId){
   const fecha=new Date(o.updated_at||o.created_at).toLocaleDateString('es-UY');
   const faltantesRaw=o.faltantes||o.faltantes_escala||'';
 
-  // Intentar usar los datos estructurados guardados como __xls__:{...}
+  // Usar datos estructurados __xls__ si existen
   let rows=[];
   const xlsMatch=faltantesRaw.match(/\n__xls__:(.*)/s);
   if(xlsMatch){
@@ -2244,8 +2250,7 @@ async function exportarXLSPedido(orderId){
       }));
     }catch(e){ rows=[]; }
   }
-
-  // Fallback: pedido_productos.cantidad = enviado, todos recibidos = enviado (pedido completo)
+  // Fallback: todos enviado=recibido (pedido completo sin diferencias)
   if(!rows.length){
     rows=productos.map(p=>({
       'Código':    p.codigo||'',
@@ -2256,12 +2261,16 @@ async function exportarXLSPedido(orderId){
     }));
   }
 
-    // Anchos de columna
+  const wb=XLSX.utils.book_new();
+  const wsData=[
+    ['TransferApp — Reporte de pedido '+pedidoRef],
+    ['Fecha: '+fecha+'   Origen: '+(o.origen_local||'')+'   Destino: '+(o.destino_local||'')+(o.cliente?'   Cliente: '+o.cliente:'')],
+    [],
+    ['Código','Nombre','Enviado','Recibido','Diferencia'],
+    ...rows.map(r=>[r['Código'],r['Nombre'],r['Enviado'],r['Recibido'],r['Diferencia']])
+  ];
+  const ws=XLSX.utils.aoa_to_sheet(wsData);
   ws['!cols']=[{wch:16},{wch:45},{wch:10},{wch:10},{wch:12}];
-
-  // Resaltar filas con diferencia negativa (faltó mercadería)
-  // XLSX básico no soporta estilos sin xlsx-style, dejamos datos claros
-
   XLSX.utils.book_append_sheet(wb,ws,'Reporte');
 
   const nombreArchivo='pedido_'+pedidoRef.replace('#','')+'_'+fecha.replace(/\//g,'-')+'.xlsx';
@@ -2529,40 +2538,90 @@ let currentConvId = null;
 let currentConvChannel = null;
 
 async function renderChats(){
-// Load conversations where I'm a member
-const {data:memberships} = await db.from('conversacion_miembros')
-.select('conversacion_id').eq('usuario_id',currentPerfil.id);
-const convIds = (memberships||[]).map(m=>m.conversacion_id);
-
 const e = el('list-chats');
-if(!convIds.length){
-e.innerHTML='<div class="empty-state"><div class="icon">💬</div><p>No tenés conversaciones aún.<br>Creá una nueva con el botón +</p></div>';
-el('chat-panel').style.display='none'; return;
+
+// ── 1. Conversaciones generales ──
+const {data:memberships} = await db.from('conversacion_miembros')
+  .select('conversacion_id').eq('usuario_id',currentPerfil.id);
+const convIds = (memberships||[]).map(m=>m.conversacion_id);
+const {data:convs} = convIds.length
+  ? await db.from('conversaciones').select('*').in('id',convIds).order('updated_at',{ascending:false})
+  : {data:[]};
+
+// ── 2. Chats de pedido con mensajes ──
+const {data:pedidoMsgs} = await db.from('chat_mensajes')
+  .select('pedido_id,texto,usuario_nombre,created_at')
+  .order('created_at',{ascending:false});
+const pedidoMsgMap = new Map();
+(pedidoMsgs||[]).forEach(m=>{ if(!pedidoMsgMap.has(m.pedido_id)) pedidoMsgMap.set(m.pedido_id,m); });
+const pedidoIds = [...pedidoMsgMap.keys()];
+const {data:pedidos} = pedidoIds.length
+  ? await db.from('pedidos').select('id,origen_local,destino_local,cliente,estado,faltantes,pedido_productos(nombre,cantidad)').in('id',pedidoIds)
+  : {data:[]};
+const pedidoMap = new Map((pedidos||[]).map(p=>[p.id,p]));
+const pedidoChatItems = [...pedidoMsgMap.entries()]
+  .map(([pid,msg])=>({pid,msg,pedido:pedidoMap.get(pid)}))
+  .filter(x=>x.pedido)
+  .sort((a,b)=>new Date(b.msg.created_at)-new Date(a.msg.created_at));
+
+if(!convIds.length && !pedidoChatItems.length){
+  e.innerHTML='<div class="empty-state"><div class="icon">💬</div><p>No tenés conversaciones aún.<br>Creá una nueva con el botón +</p></div>';
+  el('chat-panel').style.display='none'; return;
 }
 
-const {data:convs} = await db.from('conversaciones')
-.select('*').in('id',convIds).order('updated_at',{ascending:false});
-
-// Get last message for each
 e.innerHTML = '<div class="conv-list">';
+
+// Render pedido chats
+for(const {pid,msg,pedido} of pedidoChatItems){
+  const ref='#'+pid.slice(-8,-2).toUpperCase();
+  const hora=new Date(msg.created_at).toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'});
+  const [stIcon,stLabel]=estadoInfoOrder(pedido);
+  e.innerHTML += '<div class="conv-item" onclick="openChatFromList(\''+pid+'\')">'+
+    '<div class="conv-avatar" style="background:rgba(99,102,241,0.18);font-size:14px">📦</div>'+
+    '<div class="conv-info">'+
+      '<div class="conv-nombre" style="font-size:13px">Pedido '+escHtml(ref)+
+        ' <span style="font-size:11px;font-weight:400;opacity:.75">'+stIcon+' '+stLabel+'</span></div>'+
+      '<div class="conv-last" style="font-size:11px">'+
+        '<span style="opacity:.6">'+escHtml(pedido.origen_local||'')+'→'+escHtml(pedido.destino_local||'')+
+        (pedido.cliente?' · '+escHtml(pedido.cliente):'')+'</span>'+
+        ' &nbsp;'+escHtml((msg.usuario_nombre||'').split(' ')[0])+': '+escHtml((msg.texto||'').substring(0,35))+
+      '</div>'+
+    '</div>'+
+    '<div class="conv-time" style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">'+
+      '<span>'+hora+'</span>'+
+      '<button onclick="event.stopPropagation();openDetalleFromChat(\''+pid+'\');" style="font-size:10px;background:rgba(99,102,241,0.15);border:none;border-radius:4px;padding:2px 6px;cursor:pointer;color:var(--text1)" title="Ver pedido">🔍 ver</button>'+
+    '</div>'+
+  '</div>';
+}
+
+// Render conversaciones generales
 for(const conv of convs||[]){
-const {data:lastMsg} = await db.from('mensajes')
-.select('texto,usuario_nombre,created_at').eq('conversacion_id',conv.id)
-.order('created_at',{ascending:false}).limit(1).single();
-const nombre = conv.es_grupo ? (conv.nombre||'Grupo') : await getConvNombre(conv.id);
-const hora = lastMsg ? new Date(lastMsg.created_at).toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'}) : '';
-e.innerHTML += '<div class="conv-item'+(currentConvId===conv.id?' active':'')+'" onclick="openConversacion(\''+escJsStr(conv.id)+'\')">'+
-'<div class="conv-avatar">'+(conv.es_grupo?'👥':'👤')+'</div>'+
-'<div class="conv-info">'+
-'<div class="conv-nombre">'+escHtml(nombre)+'</div>'+
-'<div class="conv-last">'+(lastMsg?(escHtml((lastMsg.usuario_nombre||'').split(' ')[0])+': '+escHtml((lastMsg.texto||'').substring(0,35))):'Sin mensajes')+'</div>'+
-'</div>'+
-'<div class="conv-time">'+hora+'</div>'+
-'<button class="conv-action-btn" onclick="toggleChatMenu(event,\''+escJsStr(conv.id)+'\')" title="Opciones">⌄</button>'+
-'<div class="conv-row-menu" id="chat-menu-'+escHtml(conv.id)+'" onclick="event.stopPropagation()"><button onclick="confirmarEliminarChat(event,\''+escJsStr(conv.id)+'\',\''+escJsStr(nombre)+'\')">Eliminar</button></div>'+
-'</div>';
+  const {data:lastMsg} = await db.from('mensajes')
+    .select('texto,usuario_nombre,created_at').eq('conversacion_id',conv.id)
+    .order('created_at',{ascending:false}).limit(1).single();
+  const nombre = conv.es_grupo ? (conv.nombre||'Grupo') : await getConvNombre(conv.id);
+  const hora = lastMsg ? new Date(lastMsg.created_at).toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'}) : '';
+  e.innerHTML += '<div class="conv-item'+(currentConvId===conv.id?' active':'')+'" onclick="openConversacion(\''+escJsStr(conv.id)+'\')">' +
+    '<div class="conv-avatar">'+(conv.es_grupo?'👥':'👤')+'</div>'+
+    '<div class="conv-info">'+
+    '<div class="conv-nombre">'+escHtml(nombre)+'</div>'+
+    '<div class="conv-last">'+(lastMsg?(escHtml((lastMsg.usuario_nombre||'').split(' ')[0])+': '+escHtml((lastMsg.texto||'').substring(0,35))):'Sin mensajes')+'</div>'+
+    '</div>'+
+    '<div class="conv-time">'+hora+'</div>'+
+    '<button class="conv-action-btn" onclick="toggleChatMenu(event,\''+escJsStr(conv.id)+'\');" title="Opciones">⌄</button>'+
+    '<div class="conv-row-menu" id="chat-menu-'+escHtml(conv.id)+'" onclick="event.stopPropagation()"><button onclick="confirmarEliminarChat(event,\''+escJsStr(conv.id)+'\',\''+escJsStr(nombre)+'\'">Eliminar</button></div>'+
+  '</div>';
 }
 e.innerHTML += '</div>';
+}
+
+async function openChatFromList(orderId){
+  await openChat(orderId);
+}
+
+async function openDetalleFromChat(orderId){
+  closeModal('modal-chat');
+  await openDetalle(orderId);
 }
 
 function closeChatMenus(){

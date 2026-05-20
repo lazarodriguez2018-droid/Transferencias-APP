@@ -331,6 +331,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
           <option value="">Todos los estados</option>
           <option value="pendiente">⏳ Pendiente</option>
           <option value="aceptado">✅ Aceptado</option>
+          <option value="aceptado_incompleto">⚠️ Aceptado incompleto</option>
           <option value="denegado">❌ Denegado</option>
           <option value="listo">📦 Listo para enviar</option>
           <option value="transito">🚚 En viaje</option>
@@ -371,6 +372,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
           <option value="">Todos los estados</option>
           <option value="pendiente">⏳ Sin aceptar</option>
           <option value="aceptado">✅ Aceptado</option>
+          <option value="aceptado_incompleto">⚠️ Aceptado incompleto</option>
           <option value="listo">📦 Listo para enviar</option>
         </select>
         <select class="filter-select" id="filter-para-origen" style="display:none">
@@ -402,8 +404,8 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         </select>
         <select class="filter-select" id="filter-hist-estado">
           <option value="">Todos</option>
-          <option value="completo">✅ Completo</option>
-          <option value="incompleto">⚠️ Incompleto</option>
+          <option value="completo">✅ Completado</option>
+          <option value="incompleto">⚠️ Completado incompleto</option>
           <option value="denegado">❌ Denegado</option>
         </select>
         <select class="filter-select" id="filter-hist-origen">
@@ -732,16 +734,6 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
       </div>
       <hr class="divider">
       <h4 style="font-size:13px;font-weight:600;margin-bottom:10px">Productos solicitados</h4>
-      <!-- XLS Import Banner (shown after import) -->
-      <div id="xls-import-banner" style="display:none;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.3);border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-          <div id="xls-import-summary" style="color:var(--text1);flex:1"></div>
-          <div style="display:flex;gap:6px;flex-shrink:0">
-            <button class="btn btn-ghost btn-sm" onclick="verDetalleXLS()" style="padding:5px 10px;font-size:12px">🔍 Ver todo</button>
-            <button class="btn btn-ghost btn-sm" onclick="resetXLSImport()" style="padding:5px 10px;font-size:12px;color:var(--accent2)">✕ Quitar</button>
-          </div>
-        </div>
-      </div>
       <div class="product-items" id="selected-products"></div>
       <div class="product-search-wrap">
         <div style="display:flex;gap:8px">
@@ -753,18 +745,6 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
           <input class="form-input qty-input" type="number" id="product-qty" placeholder="Cant." min="1" value="1">
           <button class="btn btn-ghost btn-sm" onclick="addSelectedProduct()" style="white-space:nowrap;padding:9px 13px">+ Agregar</button>
         </div>
-      </div>
-      <!-- XLS Import — fuera del product-search-wrap para evitar overflow:hidden -->
-      <div style="margin-top:8px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-          <div style="flex:1;height:1px;background:var(--border)"></div>
-          <span style="font-size:11px;color:var(--text2);white-space:nowrap">o importar desde archivo</span>
-          <div style="flex:1;height:1px;background:var(--border)"></div>
-        </div>
-        <input type="file" id="xls-file-input" accept=".xls,.xlsx" style="display:none" onchange="handleXLSImport(event)">
-        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('xls-file-input').click()" style="width:100%;justify-content:center;gap:6px">
-          📂 Cargar productos desde XLS / Remito
-        </button>
       </div>
       <hr class="divider">
       <div class="form-group">
@@ -780,41 +760,6 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
     <div class="modal-footer">
       <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-nuevo-pedido')">Cancelar</button>
       <button class="btn btn-primary btn-sm" onclick="crearPedido()">Crear Pedido</button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL XLS PREVIEW -->
-<div class="modal-overlay" id="modal-xls-preview">
-  <div class="modal" style="max-width:540px">
-    <div class="modal-header">
-      <h2>📂 Importar desde XLS</h2>
-      <div class="modal-close" onclick="closeModal('modal-xls-preview')">✕</div>
-    </div>
-    <div class="modal-body">
-      <div id="xls-preview-summary" style="margin-bottom:14px;font-size:13px;color:var(--text2)"></div>
-      <div id="xls-preview-list" style="max-height:400px;overflow-y:auto;display:flex;flex-direction:column;gap:6px"></div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-xls-preview')">Cerrar</button>
-      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('xls-file-input').click();closeModal('modal-xls-preview')" style="color:var(--accent)">🔄 Re-subir XLS</button>
-      <button class="btn btn-primary btn-sm" onclick="confirmarXLSImport()">✅ Aceptar e importar</button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL VER PEDIDO COMPLETO (para incompleto) -->
-<div class="modal-overlay" id="modal-pedido-completo">
-  <div class="modal" style="max-width:560px">
-    <div class="modal-header">
-      <h2>📦 Ver pedido completo</h2>
-      <div class="modal-close" onclick="closeModal('modal-pedido-completo')">✕</div>
-    </div>
-    <div class="modal-body">
-      <div id="pedido-completo-list" style="max-height:500px;overflow-y:auto;display:flex;flex-direction:column;gap:6px"></div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-pedido-completo')">Cerrar</button>
     </div>
   </div>
 </div>
