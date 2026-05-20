@@ -1018,7 +1018,7 @@ el('modal-detalle-body').innerHTML=
 actions+
 '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">'+
 '<button class="btn btn-ghost btn-sm" onclick="openChat(\''+o.id+'\')">💬 Chat del pedido</button>'+
-(o.telefono?'<button class="btn btn-success btn-sm" onclick="abrirWhatsApp(\''+escJsStr(o.telefono)+'\',\''+escJsStr(o.cliente||'')+'\')\'" style="background:#25d366;border-color:#25d366;color:#fff">💬 WhatsApp cliente</button>':'')+
+(o.telefono?'<button class="btn btn-success btn-sm" onclick="abrirWhatsApp(\''+escJsStr(o.telefono)+'\',\''+escJsStr(o.cliente||'')+'\')" style="background:#25d366;border-color:#25d366;color:#fff">💬 WhatsApp cliente</button>':'')+
 '<button class="btn btn-ghost btn-sm" onclick="generarEtiqueta(\''+o.id+'\')">🖨️ Etiqueta de envío</button>'+
 (['completo','incompleto'].includes(o.estado)?'<button class="btn btn-ghost btn-sm" onclick="exportarXLSPedido(\''+o.id+'\')" style="color:#22c55e;border-color:rgba(34,197,94,0.35)">📊 Exportar XLS comparativo</button>':'')+
 (currentPerfil.role==='admin'?
@@ -1090,7 +1090,7 @@ if (esGrande) {
 el('modal-accion-title').textContent='⚠️ '+label;
 el('modal-accion-body').innerHTML=
   '<div class="warning-box" style="margin-bottom:10px">Seleccioná qué ítems van y ajustá las cantidades si es necesario.</div>' +
-  '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">✅ Chequeado = se envía&nbsp;&nbsp;·&nbsp;&nbsp;❌ Desmarcado = no se envía. Podés reducir la cantidad también.</div>' +
+  '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">✅ Chequeado = se envía&nbsp;&nbsp;·&nbsp;&nbsp;❌ Desmarcado = no se envía. Podés ajustar la cantidad (más o menos de lo pedido).</div>' +
   '<div id="incomp-items-wrap">'+itemsHtml+'</div>' +
   '<div class="form-group" style="margin-top:12px"><label class="form-label">Observación (opcional)</label><textarea class="form-input" id="faltantes-det" rows="2" placeholder="Ej: Faltó 1 unidad de..."></textarea></div>' +
   '<div class="form-group" style="margin-top:10px">' +
@@ -1215,7 +1215,14 @@ checks.forEach(ch=>{
   }
 });
 
-if(!faltantesItems.length && !recibidos.some(r=>r.includes('de '))){
+const hayDiferencia=checks.some(ch=>{
+const idx2=parseInt(ch.getAttribute('data-idx'),10);
+const it2=items[idx2]; if(!it2) return false;
+const orig2=it2.cantidad||1;
+const cant2=qtyMap[idx2]!==undefined?qtyMap[idx2]:(ch.checked?orig2:0);
+return !ch.checked||cant2!==orig2;
+});
+if(!hayDiferencia){
   return notify('Para marcar como incompleto, al menos 1 ítem debe faltar o tener cantidad reducida','error');
 }
 if(!recibidos.length) return notify('Marcá al menos 1 ítem que sí se recibe','error');
