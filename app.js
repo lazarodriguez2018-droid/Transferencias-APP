@@ -698,7 +698,7 @@ return '<div class="order-card" onclick="openDetalle(\''+o.id+'\')">'+
 '<div class="order-top"><div>'+
 '<div class="order-id">'+rol+'  #'+o.id.slice(-8,-2).toUpperCase()+urgente+viejo+'</div>'+
 '<div class="order-title">'+escHtml(o.cliente||'Sin cliente')+(o.telefono?' · 📞 '+escHtml(o.telefono):'')+'</div>'+
-(tieneEscala(o.destino_local)?'<div class="order-route">📤 '+escHtml(o.origen_local)+' → 🔄 '+escHtml(getEscala(o.destino_local).escala)+' → 📥 '+escHtml(o.destino_local)+(o.transporte?' · 🚛 '+escHtml(o.transporte):'')+'</div>':'<div class="order-route">📤 '+escHtml(o.origen_local)+' ('+escHtml(o.origen_almacen)+') → 📥 '+escHtml(o.destino_local)+' ('+escHtml(o.destino_almacen)+')'+(o.transporte?' · 🚛 '+escHtml(o.transporte):'')+'</div>')+
+(tieneEscala(o.destino_local,o)?'<div class="order-route">📤 '+escHtml(o.origen_local)+' → 🔄 '+escHtml(getEscala(o.destino_local,o).escala)+' → 📥 '+escHtml(o.destino_local)+(o.transporte?' · 🚛 '+escHtml(o.transporte):'')+'</div>':'<div class="order-route">📤 '+escHtml(o.origen_local)+' ('+escHtml(o.origen_almacen)+') → 📥 '+escHtml(o.destino_local)+' ('+escHtml(o.destino_almacen)+')'+(o.transporte?' · 🚛 '+escHtml(o.transporte):'')+'</div>')+
 '</div><span class="badge '+cls+'">'+icon+' '+label+'</span></div>'+
 '<div class="order-meta"><span class="order-date">📅 '+fecha+'</span><span class="order-products">🏷️ '+pn+'</span></div>'+
 '</div>';
@@ -3280,7 +3280,7 @@ const {data:o}=await db.from('pedidos').select('*').eq('id',orderId).single();
 if(!o) return;
 const flujoNormal=['pendiente','aceptado','listo','transito','llegado','completo','incompleto'];
 const flujoEscala=['pendiente','aceptado','listo','transito_escala','en_escala','listo_escala','transito','llegado','completo','incompleto'];
-const flujo=tieneEscala(o.destino_local)?flujoEscala:flujoNormal;
+const flujo=tieneEscala(o.destino_local,o)?flujoEscala:flujoNormal;
 let estadoAnterior='';
 if(o.estado==='denegado'){
 // Permitir recuperar pedidos denegados por error
