@@ -1715,6 +1715,7 @@ const dest=el('new-destino');
 for(let i=0;i<dest.options.length;i++){ if(dest.options[i].value.startsWith(currentPerfil.local_nombre+'|')){dest.selectedIndex=i;break;} }
 const orig=el('new-origen');
 for(let i=0;i<orig.options.length;i++){ if(!orig.options[i].value.startsWith(currentPerfil.local_nombre+'|')){orig.selectedIndex=i;break;} }
+const escSel=el('new-con-escala'); if(escSel) escSel.value='auto';
 updateRoutePreview();
 // Load products if not cached (paginated to bypass Supabase 1000-row limit)
 await loadProductsCache();
