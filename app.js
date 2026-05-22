@@ -939,6 +939,12 @@ async function openDetalle(orderId){
 showSpinner();
 const {data:o}=await db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single();
 if(!o){ hideSpinner(); return; }
+const {data:historialRows}=await db.from('pedido_historial').select('estado,created_at,usuario_id,perfiles(nombre,apellido)').eq('pedido_id',orderId).order('created_at',{ascending:true});
+const historialPorEstado={};
+(historialRows||[]).forEach(h=>{
+  if(!h?.estado) return;
+  historialPorEstado[h.estado]=h;
+});
 const [icon,label,cls]=estadoInfo(o.estado);
 const isOrigen  = o.origen_local===currentPerfil.local_nombre;
 const isDestino = o.destino_local===currentPerfil.local_nombre;
@@ -989,7 +995,7 @@ const isLast=i===steps.length-1;
 return '<div class="timeline-item"><div class="timeline-line">'+
 '<div class="timeline-dot '+(done?'done':'')+(cur?' current':'')+'"></div>'+
 (!isLast?'<div class="timeline-connector"></div>':'')+
-'</div><div class="timeline-content"><div class="timeline-title" style="color:'+(cur?'var(--accent)':(done?'var(--accent3)':'var(--text3)'))+'">'+s[1]+' '+s[2]+'</div></div></div>';
+'</div><div class="timeline-content"><div class="timeline-title" style="color:'+(cur?'var(--accent)':(done?'var(--accent3)':'var(--text3)'))+'">'+s[1]+' '+s[2]+'</div>'+(function(){const hm=historialPorEstado[s[0]]; if(!hm) return ''; const nom=((hm.perfiles&&hm.perfiles.nombre)?hm.perfiles.nombre:'')+' '+((hm.perfiles&&hm.perfiles.apellido)?hm.perfiles.apellido:''); const limpio=nom.trim(); return limpio?'<div class="timeline-meta" style="font-size:11px;color:var(--text2);margin-top:2px">👤 '+escHtml(limpio)+'</div>':'';})()+'</div></div>';
 }).join('');
 }
 
