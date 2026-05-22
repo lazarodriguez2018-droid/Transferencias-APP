@@ -1082,7 +1082,7 @@ actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick
 } else if(canEscala && o.estado==='transito_escala'){
 actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'listo_escala\',\''+o.id+'\')">📍 Recibido por '+o.origen_local+' y listo para enviar a '+proxParada+'</button></div>';
 } else if(canEscala && (o.estado==='en_escala' || o.estado==='listo_escala')){
-actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'transito\',\''+o.id+'\')">🚚 Marcar en viaje hacia '+proxParada+'</button></div>';
+actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'transito\',\''+o.id+'\')">🚚 Marcar en viaje hacia '+proxParada+'</button><button class="btn btn-ghost btn-sm" onclick="accion(\'agregar_escala\',\''+o.id+'\')">🔎➕ Agregar otra escala</button></div>';
 } else if(canDestino && o.estado==='transito'){
 actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'llegado\',\''+o.id+'\')">📍 Confirmar llegada a '+o.destino_local+'</button></div>';
 } else if(canDestino && o.estado==='llegado'){
@@ -1115,7 +1115,7 @@ el('modal-detalle-body').innerHTML=
     '</div><button class="btn btn-ghost btn-sm" onclick="verPedidoCompleto(\''+o.id+'\')" style="width:100%;margin-top:8px;font-size:12px">📦 Ver pedido completo ('+(o.pedido_productos||[]).length+' ítems)</button>'
   : '<div class="product-items">'+prods+'</div>'
 )+'</div>'+
-'<div class="detail-section"><h4>Seguimiento</h4><div class="timeline">'+timeline+'</div></div>'+
+'<div class="detail-section"><h4>Seguimiento <button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="verProcesoCompleto(\''+o.id+'\')">🔎➕ Ver completo</button></h4><div class="timeline">'+timeline+'</div></div>'+
 actions+
 '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">'+
 '<button class="btn btn-ghost btn-sm" onclick="openChat(\''+o.id+'\')">💬 Chat del pedido</button>'+
@@ -1163,6 +1163,13 @@ if(tipo==='denegar'){
 el('modal-accion-title').textContent='❌ Denegar pedido';
 el('modal-accion-body').innerHTML='<div class="warning-box">⚠️ Esta acción es <strong>irreversible</strong>.</div><div class="form-group" style="margin-top:14px"><label class="form-label">Motivo (obligatorio)</label><textarea class="form-input" id="motivo-den" rows="3" placeholder="Ej: Sin stock..."></textarea></div>'+renderResponsableField();
 el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-danger btn-sm" onclick="confirmarAccion(\'denegar\',\''+orderId+'\')">Confirmar denegación</button>';
+openModal('modal-accion'); return;
+}
+if(tipo==='agregar_escala'){
+el('modal-accion-title').textContent='🔎➕ Agregar otra escala';
+const opciones=localesCache.map(l=>'<option value="'+l.nombre+'|'+l.almacen+'">'+l.nombre+' ('+l.almacen+')</option>').join('');
+el('modal-accion-body').innerHTML='<div class="warning-box">Seleccioná la próxima escala para este pedido.</div><div class="form-group" style="margin-top:12px"><label class="form-label">Nueva escala</label><select class="form-input" id="nueva-escala-local"><option value="">Seleccionar...</option>'+opciones+'</select></div>'+renderResponsableField();
+el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-primary btn-sm" onclick="confirmarAccion(\'agregar_escala\',\''+orderId+'\')">Agregar escala</button>';
 openModal('modal-accion'); return;
 }
 if(tipo==='listo' || tipo==='transito' || tipo==='transito_escala'){
@@ -1287,6 +1294,22 @@ function verPedidoCompleto(orderId){
   });
 }
 
+async function verProcesoCompleto(orderId){
+  const {data:o}=await db.from('pedidos').select('*').eq('id',orderId).single();
+  const {data:h}=await db.from('pedido_historial').select('estado,created_at,persona_nombre,perfiles(nombre,apellido)').eq('pedido_id',orderId).order('created_at',{ascending:true});
+  if(!o) return;
+  const cola=parseEscalaQueue(o).map(x=>x.nombre).join(' → ');
+  const lines=(h||[]).map(r=>{
+    const nom=(r.persona_nombre||(((r.perfiles&&r.perfiles.nombre)?r.perfiles.nombre:'')+' '+((r.perfiles&&r.perfiles.apellido)?r.perfiles.apellido:''))).trim();
+    return '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">'+fmtDateTime(r.created_at)+' · <strong>'+escHtml(r.estado)+'</strong>'+(nom?' · 👤 '+escHtml(nom):'')+'</div>';
+  }).join('');
+  el('pedido-completo-list').innerHTML=
+    '<div style="margin-bottom:8px;font-size:12px;color:var(--text2)">Ruta actual: '+escHtml(o.origen_local)+' → '+escHtml(o.destino_local)+'</div>'+
+    (cola?'<div style="margin-bottom:8px;font-size:12px;color:#a855f7">Escalas pendientes: '+escHtml(cola)+'</div>':'')+
+    '<div>'+lines+'</div>';
+  openModal('modal-pedido-completo');
+}
+
 function previewFoto(e){
 const f=e.target.files[0]; if(!f) return;
 const r=new FileReader();
@@ -1312,7 +1335,12 @@ updates.estado='denegado'; updates.motivo_denegacion=m;
 let transp=el('accion-transporte')&&el('accion-transporte').value;
 if(transp==='__otro__') transp=el('transporte-otro-input')&&el('transporte-otro-input').value.trim();
 if(!transp) return notify('Seleccioná el transporte','error');
-updates.estado=(tipo==='listo'?'listo':(tipo==='transito_escala'?'transito_escala':'transito')); updates.transporte=transp;
+let estadoTx=(tipo==='listo'?'listo':(tipo==='transito_escala'?'transito_escala':'transito'));
+if(tipo==='transito'){
+  const {data:po}=await db.from('pedidos').select('notas').eq('id',orderId).single();
+  if(parseEscalaQueue(po).length>0) estadoTx='transito_escala';
+}
+updates.estado=estadoTx; updates.transporte=transp;
 updates.remito=(el('num-remito')&&el('num-remito').value.trim())||null;
 updates.tracking=(el('num-tracking')&&el('num-tracking').value.trim())||null;
 if(fotoBase64) updates.foto_url=fotoBase64;
@@ -1414,6 +1442,18 @@ if(tipo==='aceptar'){
     const {data:po}=await db.from('pedidos').select('notas').eq('id',orderId).single();
     updates.notas=stripEscalaQueueNotas(po?.notas||'')||null;
   }
+} else if(tipo==='agregar_escala'){
+  const v=(el('nueva-escala-local')&&el('nueva-escala-local').value)||'';
+  if(!v) return notify('Seleccioná la escala','error');
+  const [eNom,eAlm]=v.split('|');
+  const {data:po}=await db.from('pedidos').select('notas').eq('id',orderId).single();
+  const cola=parseEscalaQueue(po);
+  cola.push({nombre:eNom,almacen:eAlm||null});
+  const notasBase=stripEscalaQueueNotas(po?.notas||'');
+  updates.notas=(notasBase?notasBase+'\n':'')+'__escala_queue__:'+JSON.stringify(cola);
+  updates.escala_local=eNom;
+  updates.escala_almacen=eAlm||null;
+  updates.estado='en_escala';
 } else if(tipo==='listo_escala'){
   const {data:po}=await db.from('pedidos').select('notas').eq('id',orderId).single();
   const cola=parseEscalaQueue(po);
