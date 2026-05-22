@@ -711,15 +711,6 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         <div class="arrow">→</div>
         <div class="route-local"><div class="rl-label">DESTINO</div><div class="rl-name" id="rp-destino">–</div></div>
       </div>
-      <div class="form-group" style="margin-top:10px">
-        <label class="form-label">🔄 ¿Este pedido lleva escala?</label>
-        <select class="form-input" id="new-con-escala" onchange="updateRoutePreview()">
-          <option value="auto">Automático según destino</option>
-          <option value="si">Sí, con escala</option>
-          <option value="no">No, envío directo</option>
-        </select>
-      </div>
-      <div id="escala-aviso" style="display:none;background:rgba(168,85,247,0.1);border:1px solid rgba(168,85,247,0.3);border-radius:8px;padding:10px 14px;font-size:13px;color:#a855f7;margin-top:8px;line-height:1.5"></div>
       <hr class="divider">
       <input type="hidden" id="new-cliente">
       <input type="hidden" id="new-telefono">

@@ -1605,19 +1605,6 @@ const oNom=ov?ov.split('|')[0]:'–';
 const dNom=dv?dv.split('|')[0]:'–';
 safeSet('rp-origen', oNom);
 safeSet('rp-destino', dNom);
-// Mostrar aviso de escala si el destino tiene escala
-const escalaBox=el('escala-aviso');
-if(escalaBox){
-const modoEscala=el('new-con-escala')?el('new-con-escala').value:'auto';
-const escAuto=dv?getEscala(dNom):null;
-const esc=(modoEscala==='no')?null:((modoEscala==='si')?(escAuto||{escala:'Local de escala'}) : escAuto);
-if(esc){
-escalaBox.style.display='block';
-escalaBox.innerHTML='🔄 <strong>Escala automática:</strong> La mercadería pasará primero por <strong>'+esc.escala+'</strong> antes de llegar a <strong>'+dNom+'</strong>.';
-} else {
-escalaBox.style.display='none';
-}
-}
 }
 
 let _searchTimeout=null;
@@ -1860,9 +1847,8 @@ await db.from('pedido_productos').insert(newOrderProducts.map(p=>({pedido_id:ped
 await db.from('pedido_historial').insert({pedido_id:pedido.id,estado:'pendiente',usuario_id:currentPerfil.id,persona_nombre:((currentPerfil?.nombre||'')+' '+(currentPerfil?.apellido||'')).trim()||null});
 // Notify origen local users
 const {data:users}=await db.from('perfiles').select('id,local_nombre,role').eq('approved',true);
-// Notificar origen + escala si aplica
-const escalaCrear = getEscala(dNom,pedido);
-const dest=users?.filter(u=>u.id!==currentPerfil.id&&(u.local_nombre===oNom||(escalaCrear&&u.local_nombre===escalaCrear.escala)))||[];
+// Notificar solo al origen. La escala se decide al aceptar el pedido.
+const dest=users?.filter(u=>u.id!==currentPerfil.id&&u.local_nombre===oNom)||[];
 if(dest.length) await db.from('notificaciones').insert(dest.map(u=>({usuario_id:u.id,titulo:'📦 Nuevo pedido de '+dNom,cuerpo:'#'+pedido.id.slice(-8,-2).toUpperCase()+(pedido.cliente?' · '+pedido.cliente:''),pedido_id:pedido.id})));
 closeModal('modal-nuevo-pedido');
 notify('¡Pedido creado exitosamente!','success');
