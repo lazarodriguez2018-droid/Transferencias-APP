@@ -536,6 +536,20 @@ const ESCALAS = {
 // Agregar más locales con escala acá si es necesario
 };
 
+function parseEscalaQueue(pedido){
+  const notas=String(pedido?.notas||'');
+  const m=notas.match(/__escala_queue__:(\[[^\]]*\])/);
+  if(!m) return [];
+  try{
+    const arr=JSON.parse(m[1]);
+    return Array.isArray(arr)?arr.filter(x=>x&&x.nombre):[];
+  }catch(_){ return []; }
+}
+
+function stripEscalaQueueNotas(notas){
+  return String(notas||'').replace(/\n?__escala_queue__:\[[^\]]*\]\n?/g,'').trim();
+}
+
 function tieneEscala(destino_local, pedido=null) {
 if(pedido?.escala_local) return true;
 return !!ESCALAS[destino_local];
@@ -1055,6 +1069,8 @@ const canDestino = isDestino || currentPerfil.role==='admin';
 const esEscala   = escalaInfo !== null;
 const isEscalaLocal = escalaInfo && currentPerfil.local_nombre === escalaInfo.escala;
 const canEscala  = isEscalaLocal || currentPerfil.role==='admin';
+const colaEscalas=parseEscalaQueue(o);
+const proxParada=(colaEscalas[0]&&colaEscalas[0].nombre)||o.destino_local;
 let actions='';
 
 if(esEscala){
@@ -1064,9 +1080,9 @@ actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick
 } else if(canOrigen && (o.estado==='aceptado' || o.estado==='listo')){
 actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'transito_escala\',\''+o.id+'\')">🚚 Marcar en viaje hacia '+escalaInfo.escala+'</button></div>';
 } else if(canEscala && o.estado==='transito_escala'){
-actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'listo_escala\',\''+o.id+'\')">📍 Recibido por '+o.origen_local+' y listo para enviar a '+o.destino_local+'</button></div>';
+actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'listo_escala\',\''+o.id+'\')">📍 Recibido por '+o.origen_local+' y listo para enviar a '+proxParada+'</button></div>';
 } else if(canEscala && (o.estado==='en_escala' || o.estado==='listo_escala')){
-actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'transito\',\''+o.id+'\')">🚚 Marcar en viaje hacia '+o.destino_local+'</button></div>';
+actions='<div class="actions-bar"><button class="btn btn-primary btn-sm" onclick="accion(\'transito\',\''+o.id+'\')">🚚 Marcar en viaje hacia '+proxParada+'</button></div>';
 } else if(canDestino && o.estado==='transito'){
 actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick="accion(\'llegado\',\''+o.id+'\')">📍 Confirmar llegada a '+o.destino_local+'</button></div>';
 } else if(canDestino && o.estado==='llegado'){
@@ -1130,10 +1146,15 @@ el('modal-accion-title').textContent='✅ Aceptar el pedido';
 const {data:ord}=await db.from('pedidos').select('destino_local,escala_local').eq('id',orderId).single();
 const escSugerida=(ord&&getEscala(ord.destino_local,ord))||null;
 const opciones=localesCache.map(l=>'<option value="'+l.nombre+'|'+l.almacen+'"'+(escSugerida&&escSugerida.escala===l.nombre?' selected':'')+'>'+l.nombre+' ('+l.almacen+')</option>').join('');
+const rutasDobleEscala = [
+  {id:'cda_pde',label:'CDA → PDE',escalas:[{nombre:'Centro de Distribución y Almacenaje',almacen:'CDA'},{nombre:'Punta del Este',almacen:'PDE'}]}
+];
+const optsRuta=rutasDobleEscala.map(r=>'<option value="'+r.id+'">'+r.label+'</option>').join('');
 el('modal-accion-body').innerHTML='<div class="warning-box">Confirmá la aceptación y definí si pasa por escala.</div>'+
 '<div class="form-group" style="margin-top:12px"><label class="form-label" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="aceptar-con-escala" '+(escSugerida?'checked':'')+'> ¿La mercadería pasa por una escala?</label></div>'+
+'<div class="form-group" id="aceptar-ruta-wrap" style="'+(escSugerida?'':'display:none')+'"><label class="form-label">Ruta predefinida (opcional)</label><select class="form-input" id="aceptar-ruta-predef"><option value="">Sin ruta predefinida</option>'+optsRuta+'</select></div>'+
 '<div class="form-group" id="aceptar-escala-wrap" style="'+(escSugerida?'':'display:none')+'"><label class="form-label">Local escala</label><select class="form-input" id="aceptar-escala-local"><option value="">Seleccionar...</option>'+opciones+'</select></div>'+renderResponsableField();
-setTimeout(()=>{ const c=el('aceptar-con-escala'); if(c) c.onchange=()=>{el('aceptar-escala-wrap').style.display=c.checked?'block':'none';}; },80);
+setTimeout(()=>{ const c=el('aceptar-con-escala'); if(c) c.onchange=()=>{el('aceptar-escala-wrap').style.display=c.checked?'block':'none'; el('aceptar-ruta-wrap').style.display=c.checked?'block':'none';}; },80);
 el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-success btn-sm" onclick="confirmarAccion(\'aceptar\',\''+orderId+'\')">Confirmar aceptación</button>';
 openModal('modal-accion'); return;
 }
@@ -1371,14 +1392,38 @@ updates.estado=sm[tipo]||tipo;
 if(tipo==='aceptar'){
   const conEscala=!!(el('aceptar-con-escala')&&el('aceptar-con-escala').checked);
   if(conEscala){
+    const rutaSel=(el('aceptar-ruta-predef')&&el('aceptar-ruta-predef').value)||'';
+    const rutasMap={cda_pde:[{nombre:'Centro de Distribución y Almacenaje',almacen:'CDA'},{nombre:'Punta del Este',almacen:'PDE'}]};
+    const ruta=rutasMap[rutaSel]||null;
+    if(ruta&&ruta.length){
+      updates.escala_local=ruta[0].nombre;
+      updates.escala_almacen=ruta[0].almacen||null;
+      const cola=ruta.slice(1);
+      const notasBase=stripEscalaQueueNotas((await db.from('pedidos').select('notas').eq('id',orderId).single()).data?.notas||'');
+      updates.notas=(notasBase?notasBase+'\n':'')+'__escala_queue__:'+JSON.stringify(cola);
+    } else {
     const v=(el('aceptar-escala-local')&&el('aceptar-escala-local').value)||'';
     if(!v) return notify('Seleccioná el local de escala','error');
     const [eNom,eAlm]=v.split('|');
     updates.escala_local=eNom;
     updates.escala_almacen=eAlm||null;
+    }
   } else {
     updates.escala_local=null;
     updates.escala_almacen=null;
+    const {data:po}=await db.from('pedidos').select('notas').eq('id',orderId).single();
+    updates.notas=stripEscalaQueueNotas(po?.notas||'')||null;
+  }
+} else if(tipo==='listo_escala'){
+  const {data:po}=await db.from('pedidos').select('notas').eq('id',orderId).single();
+  const cola=parseEscalaQueue(po);
+  if(cola.length){
+    const prox=cola[0];
+    updates.escala_local=prox.nombre;
+    updates.escala_almacen=prox.almacen||null;
+    const resto=cola.slice(1);
+    const notasBase=stripEscalaQueueNotas(po?.notas||'');
+    updates.notas=resto.length?((notasBase?notasBase+'\n':'')+'__escala_queue__:'+JSON.stringify(resto)):(notasBase||null);
   }
 }
 }
@@ -1422,6 +1467,26 @@ u.id!==currentPerfil.id &&
 );
 if(destinatarios.length){
 await db.from('notificaciones').insert(destinatarios.map(u=>({usuario_id:u.id,titulo,cuerpo,pedido_id:orderId})));
+}
+// Aviso opcional por email para locales de escala (si hay endpoint configurado)
+if(['aceptado','transito_escala','listo_escala'].includes(estado)){
+  try{
+    const endpoint=window.ESCALA_EMAIL_WEBHOOK||'';
+    if(endpoint){
+      const escalaObj=getEscala(o.destino_local);
+      if(escalaObj?.escala){
+        const {data:locs}=await db.from('locales').select('nombre,email').in('nombre',[escalaObj.escala,o.destino_local]).not('email','is',null);
+        const mails=(locs||[]).map(x=>x.email).filter(Boolean);
+        if(mails.length){
+          await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+            to:mails,
+            subject:'Pedido en escala: #'+orderId.slice(-8,-2).toUpperCase(),
+            text:'El pedido '+orderId+' está en flujo de escala ('+o.origen_local+' → '+o.destino_local+'). Revisar TransferApp para continuar el despacho.'
+          })});
+        }
+      }
+    }
+  }catch(_){}
 }
 }
 
@@ -1576,6 +1641,8 @@ safeSet('cliente-selected-display', n ? ('Cliente seleccionado: '+n+(t?' · '+t:
 //  NUEVO PEDIDO
 // ═══════════════════════════════════════════
 async function openNuevoPedido(){
+showSpinner();
+try{
 newOrderProducts=[]; fotoBase64=null; selectedProductTemp=null; xlsParsedItems=[];
 if(el('xls-import-banner')) el('xls-import-banner').style.display='none';
 el('new-cliente').value=''; el('new-telefono').value='';
@@ -1597,6 +1664,7 @@ updateRoutePreview();
 // Load products if not cached (paginated to bypass Supabase 1000-row limit)
 await loadProductsCache();
 openModal('modal-nuevo-pedido');
+}finally{ hideSpinner(); }
 }
 
 function updateRoutePreview(){
