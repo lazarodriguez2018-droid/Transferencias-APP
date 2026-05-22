@@ -562,6 +562,14 @@ if(pedido?.escala_local){
 return ESCALAS[destino_local] || null;
 }
 
+function getEscalaActiva(pedido){
+  const esc=getEscala(pedido?.destino_local,pedido);
+  if(!esc||!esc.escala) return null;
+  // Evitar duplicar ruta cuando la escala coincide con origen o destino
+  if(esc.escala===pedido?.origen_local || esc.escala===pedido?.destino_local) return null;
+  return esc;
+}
+
 // Estados que pertenecen a la fase de escala
 const ESTADOS_ESCALA = ['transito_escala','en_escala','listo_escala'];
 // Estados que pertenecen a la fase final (destino real)
@@ -694,11 +702,12 @@ const isAdmin=currentPerfil.role==='admin';
 const rol=isMio
 ?'<span style="font-size:10px;font-weight:700;color:var(--text3)">YO PEDÍ</span>'
 :'<span style="font-size:10px;font-weight:700;color:var(--accent4)">ME PIDIERON</span>';
+const escActiva=getEscalaActiva(o);
 return '<div class="order-card" onclick="openDetalle(\''+o.id+'\')">'+
 '<div class="order-top"><div>'+
 '<div class="order-id">'+rol+'  #'+o.id.slice(-8,-2).toUpperCase()+urgente+viejo+'</div>'+
 '<div class="order-title">'+escHtml(o.cliente||'Sin cliente')+(o.telefono?' · 📞 '+escHtml(o.telefono):'')+'</div>'+
-(tieneEscala(o.destino_local,o)?'<div class="order-route">📤 '+escHtml(o.origen_local)+' → 🔄 '+escHtml(getEscala(o.destino_local,o).escala)+' → 📥 '+escHtml(o.destino_local)+(o.transporte?' · 🚛 '+escHtml(o.transporte):'')+'</div>':'<div class="order-route">📤 '+escHtml(o.origen_local)+' ('+escHtml(o.origen_almacen)+') → 📥 '+escHtml(o.destino_local)+' ('+escHtml(o.destino_almacen)+')'+(o.transporte?' · 🚛 '+escHtml(o.transporte):'')+'</div>')+
+(escActiva?'<div class="order-route">📤 '+escHtml(o.origen_local)+' → 🔄 '+escHtml(escActiva.escala)+' → 📥 '+escHtml(o.destino_local)+(o.transporte?' · 🚛 '+escHtml(o.transporte):'')+'</div>':'<div class="order-route">📤 '+escHtml(o.origen_local)+' ('+escHtml(o.origen_almacen)+') → 📥 '+escHtml(o.destino_local)+' ('+escHtml(o.destino_almacen)+')'+(o.transporte?' · 🚛 '+escHtml(o.transporte):'')+'</div>')+
 '</div><span class="badge '+cls+'">'+icon+' '+label+'</span></div>'+
 '<div class="order-meta"><span class="order-date">📅 '+fecha+'</span><span class="order-products">🏷️ '+pn+'</span></div>'+
 '</div>';
@@ -973,7 +982,7 @@ const prods=(o.pedido_productos||[]).map(p=>
 ).join('');
 
 // Determinar si el pedido tiene escala
-const escalaInfo = tieneEscala(o.destino_local,o) ? getEscala(o.destino_local,o) : null;
+const escalaInfo = getEscalaActiva(o);
 
 let stateOrder, steps;
 if(escalaInfo){
@@ -1295,18 +1304,22 @@ function verPedidoCompleto(orderId){
 }
 
 async function verProcesoCompleto(orderId){
-  closeModal('modal-detalle');
   const {data:o}=await db.from('pedidos').select('*').eq('id',orderId).single();
   const {data:h}=await db.from('pedido_historial').select('estado,created_at,persona_nombre,perfiles(nombre,apellido)').eq('pedido_id',orderId).order('created_at',{ascending:true});
   if(!o) return;
   const cola=parseEscalaQueue(o).map(x=>x.nombre).join(' → ');
+  const escActiva=getEscalaActiva(o);
+  const rutaBase=escActiva?(o.origen_local+' → '+escActiva.escala+' → '+o.destino_local):(o.origen_local+' → '+o.destino_local);
+  const labels={pendiente:'Pedido creado',aceptado:'Aceptado por origen',listo:'Listo para envío',transito_escala:'En viaje a escala',en_escala:'Escala recibió',listo_escala:'Escala despacha',transito:'En viaje a destino',llegado:'Llegó a destino',completo:'Completado',incompleto:'Incompleto',denegado:'Denegado'};
   const lines=(h||[]).map(r=>{
     const nom=(r.persona_nombre||(((r.perfiles&&r.perfiles.nombre)?r.perfiles.nombre:'')+' '+((r.perfiles&&r.perfiles.apellido)?r.perfiles.apellido:''))).trim();
-    return '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">'+fmtDateTime(r.created_at)+' · <strong>'+escHtml(r.estado)+'</strong>'+(nom?' · 👤 '+escHtml(nom):'')+'</div>';
+    const etq=labels[r.estado]||r.estado;
+    return '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">'+fmtDateTime(r.created_at)+' · <strong>'+escHtml(etq)+'</strong>'+(nom?' · 👤 '+escHtml(nom):'')+'</div>';
   }).join('');
   el('pedido-completo-list').innerHTML=
-    '<div style="margin-bottom:8px;font-size:12px;color:var(--text2)">Ruta actual: '+escHtml(o.origen_local)+' → '+escHtml(o.destino_local)+'</div>'+
-    (cola?'<div style="margin-bottom:8px;font-size:12px;color:#a855f7">Escalas pendientes: '+escHtml(cola)+'</div>':'')+
+    '<div style="margin-bottom:8px;font-size:12px;color:var(--text2)"><strong>Ruta real:</strong> '+escHtml(rutaBase)+'</div>'+
+    '<div style="margin-bottom:8px;font-size:12px;color:var(--text2)"><strong>Participan:</strong> '+escHtml(o.origen_local)+' · '+escHtml(o.destino_local)+(escActiva?(' · '+escHtml(escActiva.escala)):'')+'</div>'+
+    (cola?'<div style="margin-bottom:8px;font-size:12px;color:#a855f7"><strong>Escalas pendientes:</strong> '+escHtml(cola)+'</div>':'')+
     '<div>'+lines+'</div>';
   openModal('modal-pedido-completo');
 }
