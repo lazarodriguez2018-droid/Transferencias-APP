@@ -1295,6 +1295,7 @@ function verPedidoCompleto(orderId){
 }
 
 async function verProcesoCompleto(orderId){
+  closeModal('modal-detalle');
   const {data:o}=await db.from('pedidos').select('*').eq('id',orderId).single();
   const {data:h}=await db.from('pedido_historial').select('estado,created_at,persona_nombre,perfiles(nombre,apellido)').eq('pedido_id',orderId).order('created_at',{ascending:true});
   if(!o) return;
@@ -1689,6 +1690,8 @@ el('new-cliente').value=''; el('new-telefono').value='';
 el('cliente-search-input').value='';
 el('cliente-search-results').classList.remove('show');
 updatePedidoClienteDisplay();
+if(el('new-escala-auto-wrap')) el('new-escala-auto-wrap').style.display='none';
+if(el('new-escala-auto-choice')) el('new-escala-auto-choice').value='si';
 el('new-notas').value=''; el('new-urgente').checked=false;
 el('product-search-input').value=''; el('product-qty').value='1';
 renderSelectedProducts();
@@ -1713,6 +1716,17 @@ const oNom=ov?ov.split('|')[0]:'–';
 const dNom=dv?dv.split('|')[0]:'–';
 safeSet('rp-origen', oNom);
 safeSet('rp-destino', dNom);
+const escAuto=dv?getEscala(dNom):null;
+const wrap=el('new-escala-auto-wrap');
+const msg=el('new-escala-auto-msg');
+if(wrap&&msg){
+  if(escAuto){
+    wrap.style.display='block';
+    msg.innerHTML='🔄 Este local tiene una escala automática asignada: <strong>'+escHtml(escAuto.escala)+'</strong>. ¿Querés usarla?';
+  }else{
+    wrap.style.display='none';
+  }
+}
 }
 
 let _searchTimeout=null;
@@ -1941,12 +1955,16 @@ const ov=el('new-origen').value, dv=el('new-destino').value;
 if(!ov||!dv) return notify('Seleccioná origen y destino','error');
 if(ov===dv) return notify('Origen y destino no pueden ser iguales','error');
 const [oNom,oAlm]=ov.split('|'), [dNom,dAlm]=dv.split('|');
+const escAuto=getEscala(dNom);
+const usarEscalaAuto=!!(escAuto && (el('new-escala-auto-choice')?.value||'si')==='si');
 const {data:pedido,error}=await db.from('pedidos').insert({
 origen_local:oNom,origen_almacen:oAlm,destino_local:dNom,destino_almacen:dAlm,
 cliente:el('new-cliente').value.trim()||null,
 telefono:el('new-telefono').value.trim()||null,
 urgente:el('new-urgente').checked,
 notas:el('new-notas').value.trim()||null,
+escala_local:usarEscalaAuto?escAuto.escala:null,
+escala_almacen:usarEscalaAuto?(escAuto.almacen||null):null,
 estado:'pendiente',creado_por:currentPerfil.id
 }).select().single();
 if(error) return notify('Error al crear pedido: '+error.message,'error');
