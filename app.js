@@ -1204,7 +1204,7 @@ el('modal-accion-body').innerHTML=
   '<label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">' +
   '<input type="checkbox" id="incomp-notif-local" checked> <span style="font-size:13px">Notificar al local solicitante sobre el envío parcial</span>' +
   '</label>' +
-  '</div>';
+  '</div>' + renderResponsableField();
 el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-warning btn-sm" onclick="confirmarAccion(\''+tipo+'\',\''+orderId+'\')">Confirmar envío parcial</button>';
 openModal('modal-accion');
 
