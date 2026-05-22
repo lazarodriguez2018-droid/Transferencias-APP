@@ -464,9 +464,12 @@ const qMis  = db.from('pedidos').select('id',{count:'exact',head:true}).not('est
 // Para enviar: incluir pedidos de escala donde este local es la escala
 const escalasDe = Object.entries(ESCALAS).filter(([d,e])=>e.escala===local).map(([d])=>d);
 let qPara = db.from('pedidos').select('id',{count:'exact',head:true}).in('estado',['pendiente','aceptado','listo','transito_escala','en_escala','listo_escala']);
-let _condPara='origen_local.eq.'+local+',escala_local.eq.'+local;
-if(escalasDe.length>0) _condPara+=',destino_local.in.('+escalasDe.map(d=>'"'+d+'"').join(',')+')';
-qPara = qPara.or(_condPara);
+if(escalasDe.length>0){
+// Soy local de escala O soy origen
+qPara = qPara.or('origen_local.eq.'+local+',destino_local.in.('+escalasDe.map(d=>'"'+d+'"').join(',')+')');
+} else {
+qPara = qPara.eq('origen_local',local);
+}
 
 const [mp,pe,no]=await Promise.all([
 countOrZero(qMis),
@@ -533,13 +536,11 @@ const ESCALAS = {
 // Agregar más locales con escala acá si es necesario
 };
 
-function tieneEscala(destino_local, pedido=null) {
-if(pedido && pedido.escala_local) return true;
+function tieneEscala(destino_local) {
 return !!ESCALAS[destino_local];
 }
 
-function getEscala(destino_local, pedido=null) {
-if(pedido && pedido.escala_local) return { escala: pedido.escala_local, almacen: pedido.escala_almacen||'' };
+function getEscala(destino_local) {
 return ESCALAS[destino_local] || null;
 }
 
@@ -679,7 +680,7 @@ return '<div class="order-card" onclick="openDetalle(\''+o.id+'\')">'+
 '<div class="order-top"><div>'+
 '<div class="order-id">'+rol+'  #'+o.id.slice(-8,-2).toUpperCase()+urgente+viejo+'</div>'+
 '<div class="order-title">'+escHtml(o.cliente||'Sin cliente')+(o.telefono?' · 📞 '+escHtml(o.telefono):'')+'</div>'+
-(tieneEscala(o.destino_local,o)?'<div class="order-route">📤 '+escHtml(o.origen_local)+' → 🔄 '+escHtml(getEscala(o.destino_local,o).escala)+' → 📥 '+escHtml(o.destino_local)+(o.transporte?' · 🚛 '+escHtml(o.transporte):'')+'</div>':'<div class="order-route">📤 '+escHtml(o.origen_local)+' ('+escHtml(o.origen_almacen)+') → 📥 '+escHtml(o.destino_local)+' ('+escHtml(o.destino_almacen)+')'+(o.transporte?' · 🚛 '+escHtml(o.transporte):'')+'</div>')+
+(tieneEscala(o.destino_local)?'<div class="order-route">📤 '+escHtml(o.origen_local)+' → 🔄 '+escHtml(getEscala(o.destino_local).escala)+' → 📥 '+escHtml(o.destino_local)+(o.transporte?' · 🚛 '+escHtml(o.transporte):'')+'</div>':'<div class="order-route">📤 '+escHtml(o.origen_local)+' ('+escHtml(o.origen_almacen)+') → 📥 '+escHtml(o.destino_local)+' ('+escHtml(o.destino_almacen)+')'+(o.transporte?' · 🚛 '+escHtml(o.transporte):'')+'</div>')+
 '</div><span class="badge '+cls+'">'+icon+' '+label+'</span></div>'+
 '<div class="order-meta"><span class="order-date">📅 '+fecha+'</span><span class="order-products">🏷️ '+pn+'</span></div>'+
 '</div>';
@@ -842,9 +843,12 @@ const soyEscalaDe = Object.entries(ESCALAS).filter(([d,e])=>e.escala===local).ma
 
 let q=db.from('pedidos').select('*,pedido_productos(*)');
 if(!isAdmin){
-let _condEnv='origen_local.eq.'+local+',escala_local.eq.'+local;
-if(soyEscalaDe.length>0) _condEnv+=',destino_local.in.('+soyEscalaDe.map(d=>'"'+d+'"').join(',')+')';
-q=q.or(_condEnv);
+if(soyEscalaDe.length>0){
+// Veo mis pedidos propios + los pedidos donde soy escala
+q=q.or('origen_local.eq.'+local+',destino_local.in.('+soyEscalaDe.map(d=>'"'+d+'"').join(',')+')');
+} else {
+q=q.eq('origen_local',local);
+}
 } else {
 if(selOrigen.value)  q=q.eq('origen_local',selOrigen.value);
 if(selDestino.value) q=q.eq('destino_local',selDestino.value);
@@ -932,12 +936,9 @@ renderList('list-historial', list, '📋','No hay historial');
 //  DETALLE
 // ═══════════════════════════════════════════
 async function openDetalle(orderId){
+showSpinner();
 const {data:o}=await db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single();
-if(!o) return;
-// Cargar historial para mostrar quién hizo cada paso
-const {data:historialData}=await db.from('pedido_historial').select('*').eq('pedido_id',orderId).order('created_at');
-const histMap={};
-(historialData||[]).forEach(h=>{ if(!histMap[h.estado]) histMap[h.estado]=h; });
+if(!o){ hideSpinner(); return; }
 const [icon,label,cls]=estadoInfo(o.estado);
 const isOrigen  = o.origen_local===currentPerfil.local_nombre;
 const isDestino = o.destino_local===currentPerfil.local_nombre;
@@ -947,8 +948,8 @@ const prods=(o.pedido_productos||[]).map(p=>
 '<div class="product-item"><div class="p-info"><div class="p-name">'+escHtml(p.nombre)+'</div><div class="p-code">'+escHtml(p.codigo)+'</div></div><div class="p-qty">x'+p.cantidad+'</div></div>'
 ).join('');
 
-// Determinar si el pedido tiene escala (dinámica o hardcodeada)
-const escalaInfo = tieneEscala(o.destino_local,o) ? getEscala(o.destino_local,o) : null;
+// Determinar si el pedido tiene escala
+const escalaInfo = tieneEscala(o.destino_local) ? getEscala(o.destino_local) : null;
 
 let stateOrder, steps;
 if(escalaInfo){
@@ -985,12 +986,10 @@ const idx=stateOrder.indexOf(s[0]);
 const done=idx<ci;
 const cur=s[0]===o.estado||(o.estado==='incompleto'&&s[0]==='completo');
 const isLast=i===steps.length-1;
-const hEntry=histMap[s[0]];
-const personaStr=(done||cur)&&hEntry&&hEntry.persona_nombre?'<div style="font-size:11px;color:var(--text3);margin-top:2px">👤 '+escHtml(hEntry.persona_nombre)+'</div>':'';
 return '<div class="timeline-item"><div class="timeline-line">'+
 '<div class="timeline-dot '+(done?'done':'')+(cur?' current':'')+'"></div>'+
 (!isLast?'<div class="timeline-connector"></div>':'')+
-'</div><div class="timeline-content"><div class="timeline-title" style="color:'+(cur?'var(--accent)':(done?'var(--accent3)':'var(--text3)'))+'">'+s[1]+' '+s[2]+'</div>'+personaStr+'</div></div>';
+'</div><div class="timeline-content"><div class="timeline-title" style="color:'+(cur?'var(--accent)':(done?'var(--accent3)':'var(--text3)'))+'">'+s[1]+' '+s[2]+'</div></div></div>';
 }).join('');
 }
 
@@ -1107,63 +1106,25 @@ actions+
 '<button class="btn btn-warning btn-sm" onclick="retrocederEstado(\''+o.id+'\')">↩️ Retroceder estado</button>'+
 '<button class="btn btn-danger btn-sm" onclick="eliminarPedido(\''+o.id+'\')">🗑️ Eliminar pedido</button>':'')+
 '</div>';
+hideSpinner();
 openModal('modal-detalle');
 }
 
 // ═══════════════════════════════════════════
 //  ACCIONES
 // ═══════════════════════════════════════════
-function personaNombreHtml(){
-return '<div class="form-group" style="margin-bottom:14px"><label class="form-label">Tu nombre <span style="color:var(--accent2)">*</span></label>'+
-'<input class="form-input" type="text" id="accion-persona-nombre" placeholder="Ej: Juan García" autocomplete="name" style="font-size:14px"></div>';
-}
-
 async function accion(tipo, orderId){
 const labels={aceptar:'Aceptar el pedido',transito:'Marcar en viaje',transito_escala:'Marcar en viaje a escala',en_escala_completo:'Llegó completo a escala',en_escala_incompleto:'Llegó incompleto a escala',listo_escala:'Listo para enviar a destino',llegado:'Confirmar llegada final',completo:'Marcar como completo'};
-if(tipo==='aceptar'){
-const {data:o2}=await db.from('pedidos').select('destino_local,destino_almacen').eq('id',orderId).single();
-const destinoNom=o2?.destino_local||'';
-const escalaDefault=getEscala(destinoNom);
-const localesList=localesCache.filter(l=>l.nombre!==destinoNom).map(l=>'<option value="'+l.nombre+'|'+(l.almacen||'')+'">'+l.nombre+' ('+(l.almacen||'')+')</option>').join('');
-el('modal-accion-title').textContent='✅ Aceptar pedido';
-el('modal-accion-body').innerHTML=
-  personaNombreHtml()+
-  '<div class="warning-box" style="margin-bottom:12px">⚠️ Una vez aceptado, se notificará al solicitante.</div>'+
-  '<div class="form-group" style="margin-top:12px">'+
-  '<label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">'+
-  '<input type="checkbox" id="accion-usa-escala"'+(escalaDefault?' checked':'')+'> <span>¿La mercadería pasa por una <strong>escala</strong> antes del destino final?</span>'+
-  '</label></div>'+
-  '<div id="accion-escala-wrap" style="'+(escalaDefault?'':'display:none')+';margin-top:8px">'+
-  '<div class="form-group"><label class="form-label">Local de escala (depósito intermedio)</label>'+
-  '<select class="form-input" id="accion-escala-local"><option value="">Seleccionar local escala...</option>'+localesList+'</select></div>'+
-  '<div style="font-size:11px;color:var(--text2);margin-top:4px">💡 Podés aclarar el detalle en Notas del pedido</div>'+
-  '</div>';
-setTimeout(()=>{
-  const chk=el('accion-usa-escala');
-  const wrap=el('accion-escala-wrap');
-  if(chk) chk.onchange=function(){wrap.style.display=this.checked?'block':'none';};
-  if(escalaDefault){
-    const sel=el('accion-escala-local');
-    if(sel){
-      for(let i=0;i<sel.options.length;i++){
-        if(sel.options[i].value.startsWith(escalaDefault.escala+'|')){sel.selectedIndex=i;break;}
-      }
-    }
-  }
-},100);
-el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-success btn-sm" onclick="confirmarAccion(\'aceptar\',\''+orderId+'\')">✅ Confirmar aceptación</button>';
-openModal('modal-accion'); return;
-}
 if(tipo==='denegar'){
 el('modal-accion-title').textContent='❌ Denegar pedido';
-el('modal-accion-body').innerHTML=personaNombreHtml()+'<div class="warning-box">⚠️ Esta acción es <strong>irreversible</strong>.</div><div class="form-group" style="margin-top:14px"><label class="form-label">Motivo (obligatorio)</label><textarea class="form-input" id="motivo-den" rows="3" placeholder="Ej: Sin stock..."></textarea></div>';
+el('modal-accion-body').innerHTML='<div class="warning-box">⚠️ Esta acción es <strong>irreversible</strong>.</div><div class="form-group" style="margin-top:14px"><label class="form-label">Motivo (obligatorio)</label><textarea class="form-input" id="motivo-den" rows="3" placeholder="Ej: Sin stock..."></textarea></div>';
 el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-danger btn-sm" onclick="confirmarAccion(\'denegar\',\''+orderId+'\')">Confirmar denegación</button>';
 openModal('modal-accion'); return;
 }
 if(tipo==='listo'){
 fotoBase64=null;
 el('modal-accion-title').textContent='📦 Listo para enviar';
-el('modal-accion-body').innerHTML=personaNombreHtml()+'<div class="warning-box">⚠️ Esta acción es <strong>irreversible</strong>.</div>'+
+el('modal-accion-body').innerHTML='<div class="warning-box">⚠️ Esta acción es <strong>irreversible</strong>.</div>'+
 '<div class="form-group" style="margin-top:14px"><label class="form-label">Método de transporte (obligatorio)</label>'+
 '<select class="form-input" id="accion-transporte"><option value="">Seleccionar...</option>'+
 transportesCache.map(t=>'<option value="'+t.nombre+'">'+t.nombre+'</option>').join('')+
@@ -1172,13 +1133,15 @@ transportesCache.map(t=>'<option value="'+t.nombre+'">'+t.nombre+'</option>').jo
 '<div class="form-group"><label class="form-label">N° Remito (opcional)</label><input class="form-input" id="num-remito" type="text" placeholder="Ej: 000123" style="font-family:\'DM Mono\',monospace"></div>'+
 '<div class="form-group"><label class="form-label">N° Tracking (opcional)</label><input class="form-input" id="num-tracking" type="text" placeholder="Ej: 1Z999AA10123456784" style="font-family:\'DM Mono\',monospace"></div>'+
 '<div class="form-group"><label class="form-label">Foto del paquete (opcional)</label><div class="photo-upload" onclick="el(\'foto-input\').click()">📷 Agregar foto<input type="file" id="foto-input" accept="image/*" style="display:none" onchange="previewFoto(event)"></div><img id="foto-preview" class="photo-preview" style="display:none" alt="Preview"></div>';
-setTimeout(()=>{ const s=el('accion-transporte'); if(s) s.onchange=function(){el('transporte-otro-wrap').style.display=this.value==='**otro**'?'block':'none';}; },100);
+setTimeout(()=>{ const s=el('accion-transporte'); if(s) s.onchange=function(){el('transporte-otro-wrap').style.display=this.value==='__otro__'?'block':'none';}; },100);
 el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-primary btn-sm" onclick="confirmarAccion(\'listo\',\''+orderId+'\')">Confirmar</button>';
 openModal('modal-accion'); return;
 }
 if(tipo==='incompleto' || tipo==='en_escala_incompleto' || tipo==='aceptar_incompleto'){
 const label = tipo==='en_escala_incompleto' ? 'Llegó incompleto a escala' : (tipo==='aceptar_incompleto'?'Aceptado incompleto':'Llegó incompleto');
+showSpinner();
 const {data:o}=await db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single();
+hideSpinner();
 const items=(o?.pedido_productos||[]);
 const esGrande = items.length > 5;
 
@@ -1210,7 +1173,6 @@ if (esGrande) {
 
 el('modal-accion-title').textContent='⚠️ '+label;
 el('modal-accion-body').innerHTML=
-  personaNombreHtml()+
   '<div class="warning-box" style="margin-bottom:10px">Seleccioná qué ítems van y ajustá las cantidades si es necesario.</div>' +
   '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">✅ Chequeado = se envía&nbsp;&nbsp;·&nbsp;&nbsp;❌ Desmarcado = no se envía. Podés ajustar la cantidad (más o menos de lo pedido).</div>' +
   '<div id="incomp-items-wrap">'+itemsHtml+'</div>' +
@@ -1245,7 +1207,7 @@ setTimeout(()=>{
 return;
 }
 el('modal-accion-title').textContent=labels[tipo]||'Confirmar';
-el('modal-accion-body').innerHTML=personaNombreHtml()+'<div class="warning-box">⚠️ Esta acción es <strong>irreversible</strong>. ¿Confirmar?</div>';
+el('modal-accion-body').innerHTML='<div class="warning-box">⚠️ Esta acción es <strong>irreversible</strong>. ¿Confirmar?</div>';
 el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-primary btn-sm" onclick="confirmarAccion(\''+tipo+'\',\''+orderId+'\')">Sí, confirmar</button>';
 openModal('modal-accion');
 }
@@ -1294,32 +1256,14 @@ aceptar:'aceptado', transito:'transito', transito_escala:'transito_escala',
 en_escala_completo:'en_escala', listo_escala:'listo_escala',
 llegado:'llegado', completo:'completo'
 };
-// Leer y validar nombre de la persona que realiza la acción
-const personaNombre=(el('accion-persona-nombre')&&el('accion-persona-nombre').value.trim())||'';
-if(!personaNombre) return notify('Ingresá tu nombre para registrar la acción','error');
-
 const updates={updated_at:new Date().toISOString()};
 if(tipo==='denegar'){
 const m=el('motivo-den')&&el('motivo-den').value.trim();
 if(!m) return notify('Ingresá el motivo','error');
 updates.estado='denegado'; updates.motivo_denegacion=m;
-} else if(tipo==='aceptar'){
-// Verificar si se seleccionó escala
-const usaEscala=el('accion-usa-escala')?.checked;
-if(usaEscala){
-const escalaVal=el('accion-escala-local')?.value;
-if(!escalaVal) return notify('Seleccioná el local de escala o desmarcá la opción','error');
-const [escNom,escAlm]=escalaVal.split('|');
-updates.escala_local=escNom||null;
-updates.escala_almacen=escAlm||null;
-} else {
-updates.escala_local=null;
-updates.escala_almacen=null;
-}
-updates.estado='aceptado';
 } else if(tipo==='listo'){
 let transp=el('accion-transporte')&&el('accion-transporte').value;
-if(transp==='**otro**') transp=el('transporte-otro-input')&&el('transporte-otro-input').value.trim();
+if(transp==='__otro__') transp=el('transporte-otro-input')&&el('transporte-otro-input').value.trim();
 if(!transp) return notify('Seleccioná el transporte','error');
 updates.estado='listo'; updates.transporte=transp;
 updates.remito=(el('num-remito')&&el('num-remito').value.trim())||null;
@@ -1403,8 +1347,10 @@ updates.estado=sm[tipo]||tipo;
 const {error}=await db.from('pedidos').update(updates).eq('id',orderId);
 if(error) return notify('Error al actualizar: '+error.message,'error');
 
+showSpinner();
+try{
 // Historial
-await db.from('pedido_historial').insert({pedido_id:orderId,estado:updates.estado,usuario_id:currentPerfil.id,persona_nombre:personaNombre||null});
+await db.from('pedido_historial').insert({pedido_id:orderId,estado:updates.estado,usuario_id:currentPerfil.id});
 
 // Notificar a los otros participantes
 await notificarCambioEstado(orderId, updates.estado);
@@ -1417,6 +1363,7 @@ notify('Estado actualizado correctamente','success');
 await updateBadges(); refreshView();
 // Reabrir el detalle del pedido para quedarse en pantalla
 await openDetalle(orderId);
+}finally{ hideSpinner(); }
 }
 
 async function notificarCambioEstado(orderId, estado){
@@ -3179,7 +3126,7 @@ const {data:o}=await db.from('pedidos').select('*').eq('id',orderId).single();
 if(!o) return;
 const flujoNormal=['pendiente','aceptado','listo','transito','llegado','completo','incompleto'];
 const flujoEscala=['pendiente','aceptado','listo','transito_escala','en_escala','listo_escala','transito','llegado','completo','incompleto'];
-const flujo=tieneEscala(o.destino_local,o)?flujoEscala:flujoNormal;
+const flujo=tieneEscala(o.destino_local)?flujoEscala:flujoNormal;
 let estadoAnterior='';
 if(o.estado==='denegado'){
 // Permitir recuperar pedidos denegados por error
