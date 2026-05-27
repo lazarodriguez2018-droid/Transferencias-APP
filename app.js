@@ -1332,7 +1332,7 @@ const nom=((currentPerfil?.nombre||'')+' '+(currentPerfil?.apellido||'')).trim()
 return '<div class="form-group" style="margin-top:12px"><label class="form-label">👤 Responsable (obligatorio)</label><input class="form-input" id="accion-responsable" type="text" placeholder="Tu nombre" value="'+escHtml(nom)+'"></div>';
 }
 function recepcionProductOptions(selectedCode=''){
-  return '<option value="">Seleccionar producto...</option>'+(productsCache||[]).map(p=>{
+  return '<option value="">Seleccionar producto...</option><option value="__manual__">✍️ Cargar producto manualmente</option>'+(productsCache||[]).map(p=>{
     const code=p.codigo||'';
     const name=p.nombre||'';
     return '<option value="'+escHtml(code)+'" data-name="'+escHtml(name)+'"'+(selectedCode===code?' selected':'')+'>'+escHtml(code+' · '+name)+'</option>';
@@ -1394,6 +1394,15 @@ openModal('modal-accion'); return;
 if(tipo==='incompleto' || tipo==='en_escala_incompleto' || tipo==='aceptar_incompleto'){
 const label = tipo==='en_escala_incompleto' ? 'Llegó incompleto a escala' : (tipo==='aceptar_incompleto'?'Aceptado incompleto':'Llegó incompleto');
 showSpinner();
+if(!productsCache.length){
+  try{
+    const [r1,r2]=await Promise.all([
+      db.from('productos').select('codigo,nombre,marca').limit(3000),
+      db.from('padron_extra').select('codigo,nombre,marca').limit(1000)
+    ]);
+    productsCache=[...(r1.data||[]),...(r2.data||[])];
+  }catch(_e){}
+}
 const {data:o}=await db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single();
 hideSpinner();
 const items=(o?.pedido_productos||[]);
@@ -1417,6 +1426,7 @@ const itemRowHtml = (p, i) =>
   '<div class="incomp-subst" data-idx="'+i+'" style="display:none;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">' +
   '<div style="font-size:11px;color:var(--text2);margin-bottom:6px">Producto solicitado: <strong>'+escHtml(p.nombre||'')+'</strong> · Cantidad solicitada: '+(p.cantidad||1)+'</div>' +
   '<div style="display:grid;grid-template-columns:1fr 110px;gap:6px;margin-bottom:6px"><select class="form-input incomp-subst-product" data-idx="'+i+'">'+recepcionProductOptions()+'</select><input type="number" class="form-input incomp-subst-qty" data-idx="'+i+'" min="0" value="'+(p.cantidad||1)+'"></div>' +
+  '<div class="incomp-subst-manual" data-idx="'+i+'" style="display:none;grid-template-columns:120px 1fr;gap:6px;margin-bottom:6px"><input class="form-input incomp-subst-code" data-idx="'+i+'" placeholder="Código"><input class="form-input incomp-subst-name" data-idx="'+i+'" placeholder="Nombre producto recibido"></div>'+
   '<input class="form-input incomp-subst-motivo" data-idx="'+i+'" placeholder="Motivo (opcional)" style="margin-bottom:6px">' +
   '<input class="form-input incomp-subst-obs" data-idx="'+i+'" placeholder="Observaciones (opcional)">' +
   '</div>' +
@@ -1475,6 +1485,13 @@ setTimeout(()=>{
       if(sel.value==='NO_RECIBIDO' && qty && cb){ qty.value=0; cb.checked=false; }
       if(sel.value==='CORRECTO' && qty && cb){ qty.value=qty.getAttribute('data-original')||1; cb.checked=true; }
       if(sel.value==='SUSTITUIDO' && cb) cb.checked=true;
+    });
+  });
+  document.querySelectorAll('.incomp-subst-product').forEach(sel=>{
+    sel.addEventListener('change', ()=>{
+      const idx=sel.getAttribute('data-idx');
+      const manual=document.querySelector('.incomp-subst-manual[data-idx="'+idx+'"]');
+      if(manual) manual.style.display=sel.value==='__manual__'?'grid':'none';
     });
   });
 },100);
@@ -1607,6 +1624,12 @@ checks.forEach(ch=>{
     const opt=pSel&&pSel.selectedOptions?pSel.selectedOptions[0]:null;
     codRec=(pSel&&pSel.value)||'';
     nomRec=(opt&&opt.getAttribute('data-name'))||'';
+    if(codRec==='__manual__'){
+      const codeManual=document.querySelector('.incomp-subst-code[data-idx="'+idx+'"]');
+      const nameManual=document.querySelector('.incomp-subst-name[data-idx="'+idx+'"]');
+      codRec=(codeManual&&codeManual.value.trim())||'';
+      nomRec=(nameManual&&nameManual.value.trim())||'';
+    }
     qtyRec=parseInt((qSel&&qSel.value)||'0',10)||0;
     motivoLinea=(mSel&&mSel.value.trim())||null;
     obsLinea=(oSel&&oSel.value.trim())||null;
