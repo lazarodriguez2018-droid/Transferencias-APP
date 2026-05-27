@@ -1231,18 +1231,19 @@ if (esGrande) {
   itemsHtml = items.map((p,i)=>itemRowHtml(p,i)).join('');
 }
 
+const esLlegada = tipo==='incompleto' || tipo==='en_escala_incompleto';
 el('modal-accion-title').textContent='⚠️ '+label;
 el('modal-accion-body').innerHTML=
-  '<div class="warning-box" style="margin-bottom:10px">Seleccioná qué ítems van y ajustá las cantidades si es necesario.</div>' +
-  '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">✅ Chequeado = se envía&nbsp;&nbsp;·&nbsp;&nbsp;❌ Desmarcado = no se envía. Podés ajustar la cantidad (más o menos de lo pedido).</div>' +
+  '<div class="warning-box" style="margin-bottom:10px">'+(esLlegada ? 'Seleccioná qué ítems llegaron y ajustá las cantidades recibidas.' : 'Seleccioná qué ítems van y ajustá las cantidades si es necesario.')+'</div>' +
+  '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">'+(esLlegada ? '✅ Chequeado = llegó&nbsp;&nbsp;·&nbsp;&nbsp;❌ Desmarcado = no llegó. Podés ajustar la cantidad recibida.' : '✅ Chequeado = se envía&nbsp;&nbsp;·&nbsp;&nbsp;❌ Desmarcado = no se envía. Podés ajustar la cantidad (más o menos de lo pedido).')+'</div>' +
   '<div id="incomp-items-wrap">'+itemsHtml+'</div>' +
   '<div class="form-group" style="margin-top:12px"><label class="form-label">Observación (opcional)</label><textarea class="form-input" id="faltantes-det" rows="2" placeholder="Ej: Faltó 1 unidad de..."></textarea></div>' +
   '<div class="form-group" style="margin-top:10px">' +
   '<label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">' +
-  '<input type="checkbox" id="incomp-notif-local" checked> <span style="font-size:13px">Notificar al local solicitante sobre el envío parcial</span>' +
+  '<input type="checkbox" id="incomp-notif-local" checked> <span style="font-size:13px">'+(esLlegada ? 'Notificar al local de origen sobre la llegada incompleta' : 'Notificar al local solicitante sobre el envío parcial')+'</span>' +
   '</label>' +
   '</div>' + renderResponsableField();
-el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-warning btn-sm" onclick="confirmarAccion(\''+tipo+'\',\''+orderId+'\')">Confirmar envío parcial</button>';
+el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-warning btn-sm" onclick="confirmarAccion(\''+tipo+'\',\''+orderId+'\')">'+(esLlegada ? 'Confirmar llegada incompleta' : 'Confirmar envío parcial')+'</button>';
 openModal('modal-accion');
 
 // Bind qty inputs: uncheck if qty=0, recheck if qty>0
@@ -1415,17 +1416,21 @@ if(tipo==='en_escala_incompleto'){
   updates.faltantes=resumen;
 }
 
-// Enviar notificación especial al local solicitante si marcaron el checkbox
+// Enviar notificación especial si marcaron el checkbox
 const notifCheck=el('incomp-notif-local');
 if(notifCheck&&notifCheck.checked&&faltantesItems.length>0){
-  // Notificación al destino avisando del envío parcial
+  const esLlegadaNotif = tipo==='incompleto' || tipo==='en_escala_incompleto';
+  // Para llegada: notificar al origen. Para envío parcial: notificar al destino.
+  const localNotif = esLlegadaNotif ? o.origen_local : o.destino_local;
   const {data:users2}=await db.from('perfiles').select('id,local_nombre').eq('approved',true);
-  const destinatariosLocal=(users2||[]).filter(u=>u.local_nombre===o.destino_local&&u.id!==currentPerfil.id);
+  const destinatariosLocal=(users2||[]).filter(u=>u.local_nombre===localNotif&&u.id!==currentPerfil.id);
   if(destinatariosLocal.length){
     await db.from('notificaciones').insert(destinatariosLocal.map(u=>({
       usuario_id:u.id,
-      titulo:'⚠️ Pedido se enviará incompleto',
-      cuerpo:'Faltantes: '+faltantesItems.join(', ')+'. ¿Confirmás el envío parcial o preferís cancelar?',
+      titulo: esLlegadaNotif ? '⚠️ Pedido llegó incompleto' : '⚠️ Pedido se enviará incompleto',
+      cuerpo: esLlegadaNotif
+        ? 'El pedido llegó con faltantes: '+faltantesItems.join(', ')+'.'
+        : 'Faltantes: '+faltantesItems.join(', ')+'. ¿Confirmás el envío parcial o preferís cancelar?',
       pedido_id:orderId
     })));
   }
