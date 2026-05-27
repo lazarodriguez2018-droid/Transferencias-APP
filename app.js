@@ -847,12 +847,28 @@ function exportDashboard(type){
   const stamp='dashboard_'+new Date().toISOString().slice(0,10);
   let blob, filename;
   if(type==='xls'){
-    const headers=Object.keys(rows[0]||{});
-    const th=headers.map(h=>'<th style="background:#f3f4f6;font-weight:700;border:1px solid #d1d5db;padding:6px;text-align:left">'+escHtml(h)+'</th>').join('');
-    const tr=rows.map(r=>'<tr>'+headers.map(h=>'<td style="border:1px solid #d1d5db;padding:6px;text-align:left;vertical-align:top">'+escHtml(r[h])+'</td>').join('')+'</tr>').join('');
-    const html='<!doctype html><html><head><meta charset="utf-8"></head><body><table>'+('<thead><tr>'+th+'</tr></thead><tbody>'+tr+'</tbody>')+'</table></body></html>';
-    blob = new Blob(['\ufeff', html],{type:'application/vnd.ms-excel;charset=utf-8;'});
-    filename=stamp+'.xls';
+    if(typeof XLSX==='undefined'){
+      notify('No se pudo exportar Excel: librería XLSX no disponible.','error');
+      return;
+    }
+    const wb = XLSX.utils.book_new();
+    const rankingRows=(d.ranking||[]).map(x=>({
+      Producto:x.producto,'Cantidad Total':x.total,'Cantidad de Pedidos':x.orders,'% de Pedidos':Number(x.pct.toFixed(1)),
+      'Promedio por Pedido':Number(x.avg.toFixed(1)),'Días Distintos':x.days?.size||0,'Última Solicitud':x.last?fmtDate(x.last):'',
+      Tendencia:x.trendTxt,Estado:x.state
+    }));
+    const faltantesRows=(d.faltantes||[]).map(x=>({Producto:x.producto,'Veces Incompleto':x.faltVeces,'Cantidad Faltante':x.faltQty}));
+    const incompletosRows=(d.incompletos||[]).map(x=>({Pedido:x.pedido,Fecha:x.fecha,Producto:x.producto,Solicitado:x.sol,Recibido:x.rec,Diferencia:x.dif}));
+    const insightsRows=(d.insights||[]).map(x=>({Insight:x}));
+    const alertsRows=(d.alerts||[]).map(x=>({Alerta:x}));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rankingRows), 'Ranking');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(faltantesRows), 'Faltantes');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(incompletosRows), 'Incompletos');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(insightsRows), 'Insights');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(alertsRows), 'Alertas');
+    const out = XLSX.write(wb,{bookType:'xlsx',type:'array'});
+    blob = new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    filename=stamp+'.xlsx';
   } else {
     const csv=toCsv(rows);
     blob = new Blob(['\ufeff', csv],{type:'text/csv;charset=utf-8;'});
