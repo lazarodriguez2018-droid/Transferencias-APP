@@ -1425,7 +1425,7 @@ const itemRowHtml = (p, i) =>
   '</div>' +
   '<div class="incomp-subst" data-idx="'+i+'" style="display:none;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">' +
   '<div style="font-size:11px;color:var(--text2);margin-bottom:6px">Producto solicitado: <strong>'+escHtml(p.nombre||'')+'</strong> · Cantidad solicitada: '+(p.cantidad||1)+'</div>' +
-  '<div style="display:grid;grid-template-columns:1fr 110px;gap:6px;margin-bottom:6px"><select class="form-input incomp-subst-product" data-idx="'+i+'">'+recepcionProductOptions()+'</select><input type="number" class="form-input incomp-subst-qty" data-idx="'+i+'" min="0" value="'+(p.cantidad||1)+'"></div>' +
+  '<div style="display:grid;grid-template-columns:1fr auto 110px;gap:6px;margin-bottom:6px"><select class="form-input incomp-subst-product" data-idx="'+i+'">'+recepcionProductOptions()+'</select><button class="btn btn-ghost btn-sm" type="button" onclick="abrirSelectorSustitucion('+i+')">Buscar</button><input type="number" class="form-input incomp-subst-qty" data-idx="'+i+'" min="0" value="'+(p.cantidad||1)+'"></div>' +
   '<div class="incomp-subst-manual" data-idx="'+i+'" style="display:none;grid-template-columns:120px 1fr;gap:6px;margin-bottom:6px"><input class="form-input incomp-subst-code" data-idx="'+i+'" placeholder="Código"><input class="form-input incomp-subst-name" data-idx="'+i+'" placeholder="Nombre producto recibido"></div>'+
   '<input class="form-input incomp-subst-motivo" data-idx="'+i+'" placeholder="Motivo (opcional)" style="margin-bottom:6px">' +
   '<input class="form-input incomp-subst-obs" data-idx="'+i+'" placeholder="Observaciones (opcional)">' +
@@ -1484,7 +1484,7 @@ setTimeout(()=>{
       if(sub) sub.style.display=sel.value==='SUSTITUIDO'?'block':'none';
       if(sel.value==='NO_RECIBIDO' && qty && cb){ qty.value=0; cb.checked=false; }
       if(sel.value==='CORRECTO' && qty && cb){ qty.value=qty.getAttribute('data-original')||1; cb.checked=true; }
-      if(sel.value==='SUSTITUIDO' && cb) cb.checked=true;
+      if(sel.value==='SUSTITUIDO' && cb){ cb.checked=true; abrirSelectorSustitucion(idx); }
     });
   });
   document.querySelectorAll('.incomp-subst-product').forEach(sel=>{
@@ -1517,6 +1517,64 @@ function toggleIncompExtra(){
   } else {
     btn.textContent='▲ Ocultar ítems extra';
   }
+}
+
+
+
+function normalizeSearchTokens(v){
+  return String(v||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9\s]/g,' ').split(/\s+/).filter(Boolean);
+}
+
+function incompSmartFindProducts(q, limit=60){
+  const tokens=normalizeSearchTokens(q);
+  if(!tokens.length) return productsCache.slice(0,limit);
+  const withScore=productsCache.map(p=>{
+    const hay=normalizeSearchTokens((p.nombre||'')+' '+(p.codigo||'')+' '+(p.marca||'')).join(' ');
+    let score=0;
+    for(const t of tokens){ if(hay.includes(t)) score++; }
+    if(score===tokens.length) score+=2;
+    return {p,score};
+  }).filter(x=>x.score>0);
+  withScore.sort((a,b)=>b.score-a.score || String(a.p.nombre||'').localeCompare(String(b.p.nombre||'')));
+  return withScore.slice(0,limit).map(x=>x.p);
+}
+
+function abrirSelectorSustitucion(idx){
+  const panelId='incomp-sust-panel';
+  let panel=el(panelId);
+  if(!panel){
+    panel=document.createElement('div');
+    panel.id=panelId;
+    panel.className='modal-overlay';
+    panel.style.zIndex='10150';
+    panel.innerHTML=`<div class="modal" style="max-width:640px"><div class="modal-header"><h2>🔎 Seleccionar producto recibido</h2><div class="modal-close" onclick="closeModal('incomp-sust-panel')">✕</div></div><div class="modal-body"><input id="incomp-sust-search" class="form-input" placeholder="Buscar por nombre/código. Ej: biofresh adulto"><div id="incomp-sust-results" style="margin-top:10px;max-height:46vh;overflow:auto"></div></div><div class="modal-footer"><button class="btn btn-ghost btn-sm" onclick="closeModal('incomp-sust-panel')">Cerrar</button></div></div>`;
+    document.body.appendChild(panel);
+  }
+  panel.setAttribute('data-target-idx', String(idx));
+  openModal(panelId);
+  const search=el('incomp-sust-search');
+  const results=el('incomp-sust-results');
+  const render=(val)=>{
+    const list=incompSmartFindProducts(val);
+    results.innerHTML=list.map(p=>{
+      const nombre=escHtml(p.nombre||'');
+      const codigo=escHtml(p.codigo||'');
+      const marca=escHtml(p.marca||'');
+      return '<button class="btn btn-ghost btn-sm" style="display:block;width:100%;text-align:left;margin-bottom:6px;padding:8px 10px" data-code="'+codigo+'"><div style="font-weight:600">'+nombre+'</div><div style="font-size:12px;color:var(--text2)">'+codigo+(marca?' · '+marca:'')+'</div></button>';
+    }).join('') || '<div style="font-size:12px;color:var(--text2)">Sin resultados. Probá con menos palabras.</div>';
+    results.querySelectorAll('button[data-code]').forEach(btn=>{
+      btn.onclick=()=>{
+        const target=panel.getAttribute('data-target-idx');
+        const sel=document.querySelector('.incomp-subst-product[data-idx="'+target+'"]');
+        if(sel){ sel.value=btn.getAttribute('data-code'); sel.dispatchEvent(new Event('change')); }
+        closeModal(panelId);
+      };
+    });
+  };
+  search.value='';
+  render('');
+  search.oninput=()=>render(search.value);
+  setTimeout(()=>search.focus(),50);
 }
 
 function verPedidoCompleto(orderId){
@@ -2718,6 +2776,10 @@ async function exportarXLSPedido(orderId){
   let rows=[];
   if((lineas||[]).length){
     rows=(lineas||[]).map(r=>({
+      'Pedido':pedidoRef,
+      'Fecha':fecha,
+      'Local Origen':o.origen_local||'',
+      'Local Destino':o.destino_local||'',
       'Código Solicitado':r.producto_solicitado_codigo||'',
       'Producto Solicitado':r.producto_solicitado_nombre||'',
       'Cantidad Solicitada':Number(r.cantidad_solicitada||0),
@@ -2734,6 +2796,10 @@ async function exportarXLSPedido(orderId){
     try{
       const data=JSON.parse(xlsMatch[1].trim());
       rows=data.map(r=>({
+        'Pedido':pedidoRef,
+        'Fecha':fecha,
+        'Local Origen':o.origen_local||'',
+        'Local Destino':o.destino_local||'',
         'Código Solicitado':r.codigo||'',
         'Producto Solicitado':r.nombre||'',
         'Cantidad Solicitada':r.enviado||0,
@@ -2748,6 +2814,10 @@ async function exportarXLSPedido(orderId){
   // Fallback: todos enviado=recibido (pedido completo sin diferencias)
   if(!rows.length){
     rows=productos.map(p=>({
+      'Pedido':pedidoRef,
+      'Fecha':fecha,
+      'Local Origen':o.origen_local||'',
+      'Local Destino':o.destino_local||'',
       'Código Solicitado':p.codigo||'',
       'Producto Solicitado':p.nombre||'',
       'Cantidad Solicitada':p.cantidad||0,
@@ -2764,11 +2834,11 @@ async function exportarXLSPedido(orderId){
     ['TransferApp — Reporte de pedido '+pedidoRef],
     ['Fecha: '+fecha+'   Origen: '+(o.origen_local||'')+'   Destino: '+(o.destino_local||'')+(o.cliente?'   Cliente: '+o.cliente:'')],
     [],
-    ['Código Solicitado','Producto Solicitado','Cantidad Solicitada','Código Recibido','Producto Recibido','Cantidad Recibida','Diferencia','Estado'],
-    ...rows.map(r=>[r['Código Solicitado'],r['Producto Solicitado'],r['Cantidad Solicitada'],r['Código Recibido'],r['Producto Recibido'],r['Cantidad Recibida'],r['Diferencia'],r['Estado']])
+    ['Pedido','Fecha','Local Origen','Local Destino','Código Solicitado','Producto Solicitado','Cantidad Solicitada','Código Recibido','Producto Recibido','Cantidad Recibida','Diferencia','Estado'],
+    ...rows.map(r=>[r['Pedido'],r['Fecha'],r['Local Origen'],r['Local Destino'],r['Código Solicitado'],r['Producto Solicitado'],r['Cantidad Solicitada'],r['Código Recibido'],r['Producto Recibido'],r['Cantidad Recibida'],r['Diferencia'],r['Estado']])
   ];
   const ws=XLSX.utils.aoa_to_sheet(wsData);
-  ws['!cols']=[{wch:18},{wch:35},{wch:12},{wch:18},{wch:35},{wch:12},{wch:12},{wch:20}];
+  ws['!cols']=[{wch:11},{wch:11},{wch:15},{wch:15},{wch:18},{wch:34},{wch:12},{wch:18},{wch:34},{wch:12},{wch:12},{wch:20}];
   XLSX.utils.book_append_sheet(wb,ws,'Reporte');
 
   const nombreArchivo='pedido_'+pedidoRef.replace('#','')+'_'+fecha.replace(/\//g,'-')+'.xlsx';
