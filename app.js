@@ -1421,80 +1421,29 @@ const itemRowHtml = (p, i) =>
   '<input type="number" class="incomp-qty" data-idx="'+i+'" data-original="'+(p.cantidad||1)+'" value="'+(p.cantidad||1)+'" min="0" style="width:60px;text-align:center;padding:3px 5px;border-radius:5px;border:1px solid var(--border);background:var(--bg1);color:var(--text1);font-size:13px">' +
   '<span style="font-size:11px;color:var(--text2)">ped: '+(p.cantidad||1)+'</span>' +
   '</div>' +
-  '<select class="form-input incomp-state" data-idx="'+i+'" style="max-width:185px;padding:5px 7px;font-size:12px"><option value="CORRECTO">✅ Correcto</option><option value="DIFERENCIA_CANTIDAD">⚠ Diferencia de cantidad</option><option value="NO_RECIBIDO">❌ No recibido</option><option value="SUSTITUIDO">🔄 Sustituido</option></select>' +
   '</div>' +
+  '<label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:var(--text2)"><input type="checkbox" class="incomp-subst-toggle" data-idx="'+i+'"> Cambiar producto</label>'+
   '<div class="incomp-subst" data-idx="'+i+'" style="display:none;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">' +
-  '<div style="font-size:11px;color:var(--text2);margin-bottom:6px">Producto solicitado: <strong>'+escHtml(p.nombre||'')+'</strong> · Cantidad solicitada: '+(p.cantidad||1)+'</div>' +
   '<div style="display:grid;grid-template-columns:1fr auto 110px;gap:6px;margin-bottom:6px"><select class="form-input incomp-subst-product" data-idx="'+i+'">'+recepcionProductOptions()+'</select><button class="btn btn-ghost btn-sm" type="button" onclick="abrirSelectorSustitucion('+i+')">Buscar</button><input type="number" class="form-input incomp-subst-qty" data-idx="'+i+'" min="0" value="'+(p.cantidad||1)+'"></div>' +
   '<div class="incomp-subst-manual" data-idx="'+i+'" style="display:none;grid-template-columns:120px 1fr;gap:6px;margin-bottom:6px"><input class="form-input incomp-subst-code" data-idx="'+i+'" placeholder="Código"><input class="form-input incomp-subst-name" data-idx="'+i+'" placeholder="Nombre producto recibido"></div>'+
   '</div>' +
   '</div>';
 
-let itemsHtml;
-if (esGrande) {
-  // Show first 5 + collapsed rest
-  const visible = items.slice(0,5).map((p,i)=>itemRowHtml(p,i)).join('');
-  const hidden = items.slice(5).map((p,i)=>itemRowHtml(p,i+5)).join('');
-  itemsHtml = visible +
-    '<div id="incomp-extra" style="display:none">' + hidden + '</div>' +
-    '<button class="btn btn-ghost btn-sm" id="incomp-ver-mas-btn" onclick="toggleIncompExtra()" style="width:100%;margin-top:6px;font-size:12px">👁 Ver los '+(items.length-5)+' ítems restantes</button>';
-} else {
-  itemsHtml = items.map((p,i)=>itemRowHtml(p,i)).join('');
-}
+const itemsHtml = items.map((p,i)=>itemRowHtml(p,i)).join('');
 
 el('modal-accion-title').textContent='⚠️ '+label;
 el('modal-accion-body').innerHTML=
-  '<div class="warning-box" style="margin-bottom:10px">Confirmá qué productos llegaron, ajustá cantidades y marcá sustituciones si llegó un producto distinto.</div>' +
-  '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">✅ Chequeado = llegó&nbsp;&nbsp;·&nbsp;&nbsp;❌ Desmarcado = no llegó. Podés ajustar la cantidad recibida y marcar sustitución.</div>' +
+  '<div class="warning-box" style="margin-bottom:10px">Usá la pestaña de productos para confirmar llegada, cantidades, sustituciones y extras.</div>' +
   '<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="btn btn-ghost btn-sm" type="button" onclick="abrirPestanaCompletaIncompleto()">📋 Abrir pestaña completa de productos</button></div>' +
-  '<div id="incomp-items-wrap">'+itemsHtml+'</div>' +
-  '<div style="margin-top:10px;padding:8px;border:1px dashed var(--border);border-radius:8px"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div style="font-size:12px;color:var(--text2)">Productos fuera del pedido (ajuste manual)</div><button class="btn btn-ghost btn-sm" type="button" onclick="agregarExtraIncompleto()">+ Agregar producto</button></div><div id="incomp-extras" style="margin-top:8px"></div></div>' +
-  '<div class="form-group" style="margin-top:12px"><label class="form-label">Observación (opcional)</label><textarea class="form-input" id="faltantes-det" rows="2" placeholder="Ej: Faltó 1 unidad de..."></textarea></div>' +
-  '<div class="form-group" style="margin-top:10px">' +
-  '<label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">' +
-  '<input type="checkbox" id="incomp-notif-local" checked> <span style="font-size:13px">Notificar al local solicitante sobre recepción con diferencias</span>' +
-  '</label>' +
-  '</div>' + renderResponsableField();
+  '<div style="font-size:12px;color:var(--text2);padding:8px;border:1px dashed var(--border);border-radius:8px">No se muestran líneas aquí. Gestioná todo desde la pestaña completa.</div>' +
+  '<div id="incomp-items-wrap" style="display:none">'+itemsHtml+'</div>' +
+  '<div id="incomp-extras-wrap" style="display:none;margin-top:10px;padding:8px;border:1px dashed var(--border);border-radius:8px"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div style="font-size:12px;color:var(--text2)">Productos fuera del pedido</div><button class="btn btn-ghost btn-sm" type="button" onclick="agregarExtraIncompleto()">+ Agregar producto</button></div><div id="incomp-extras" style="margin-top:8px"></div></div>' +
+  '<div class="form-group" style="margin-top:12px"><label class="form-label">Observación (opcional)</label><textarea class="form-input" id="faltantes-det" rows="2" placeholder="Ej: faltaron unidades"></textarea></div>' +
+  '<div class="form-group" style="margin-top:10px"><label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="incomp-notif-local" checked> <span style="font-size:13px">Notificar al local solicitante sobre recepción con diferencias</span></label></div>' + renderResponsableField();
 el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-warning btn-sm" onclick="confirmarAccion(\''+tipo+'\',\''+orderId+'\')">Confirmar llegada incompleta</button>';
 openModal('modal-accion');
 
-// Bind qty inputs: uncheck if qty=0, recheck if qty>0
-setTimeout(()=>{
-  document.querySelectorAll('.incomp-qty').forEach(input=>{
-    input.addEventListener('input', ()=>{
-      const idx = input.getAttribute('data-idx');
-      const cb = document.querySelector('.incomp-item[data-idx="'+idx+'"]');
-      if(!cb) return;
-      const v = parseInt(input.value)||0;
-      if(v===0){ cb.checked=false; input.style.borderColor='var(--accent2)'; }
-      else { cb.checked=true; input.style.borderColor='var(--border)'; }
-    });
-    const cb = document.querySelector('.incomp-item[data-idx="'+input.getAttribute('data-idx')+'"]');
-    if(cb) cb.addEventListener('change',()=>{
-      if(!cb.checked){ input.value=0; input.style.borderColor='var(--accent2)'; }
-      else { input.value=input.getAttribute('data-original')||1; input.style.borderColor='var(--border)'; }
-    });
-  });
-  document.querySelectorAll('.incomp-state').forEach(sel=>{
-    sel.addEventListener('change', ()=>{
-      const idx=sel.getAttribute('data-idx');
-      const sub=document.querySelector('.incomp-subst[data-idx="'+idx+'"]');
-      const qty=document.querySelector('.incomp-qty[data-idx="'+idx+'"]');
-      const cb=document.querySelector('.incomp-item[data-idx="'+idx+'"]');
-      if(sub) sub.style.display=sel.value==='SUSTITUIDO'?'block':'none';
-      if(sel.value==='NO_RECIBIDO' && qty && cb){ qty.value=0; cb.checked=false; }
-      if(sel.value==='CORRECTO' && qty && cb){ qty.value=qty.getAttribute('data-original')||1; cb.checked=true; }
-      if(sel.value==='SUSTITUIDO' && cb){ cb.checked=true; abrirSelectorSustitucion(idx); }
-    });
-  });
-  document.querySelectorAll('.incomp-subst-product').forEach(sel=>{
-    sel.addEventListener('change', ()=>{
-      const idx=sel.getAttribute('data-idx');
-      const manual=document.querySelector('.incomp-subst-manual[data-idx="'+idx+'"]');
-      if(manual) manual.style.display=sel.value==='__manual__'?'grid':'none';
-    });
-  });
-},100);
+setTimeout(()=>{ bindIncompletoInputs(); },100);
 
 return;
 }
@@ -1504,6 +1453,43 @@ el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclic
 openModal('modal-accion');
 }
 
+
+
+function bindIncompletoInputs(){
+  document.querySelectorAll('.incomp-qty').forEach(input=>{
+    input.addEventListener('input', ()=>{
+      const idx=input.getAttribute('data-idx');
+      const cb=document.querySelector('.incomp-item[data-idx="'+idx+'"]');
+      if(!cb) return;
+      const v=parseInt(input.value)||0;
+      cb.checked=v>0;
+    });
+  });
+  document.querySelectorAll('.incomp-item').forEach(cb=>{
+    cb.addEventListener('change', ()=>{
+      const idx=cb.getAttribute('data-idx');
+      const qty=document.querySelector('.incomp-qty[data-idx="'+idx+'"]');
+      if(!qty) return;
+      if(!cb.checked) qty.value=0;
+      else if((parseInt(qty.value)||0)===0) qty.value=qty.getAttribute('data-original')||1;
+    });
+  });
+  document.querySelectorAll('.incomp-subst-toggle').forEach(t=>{
+    t.addEventListener('change', ()=>{
+      const idx=t.getAttribute('data-idx');
+      const sub=document.querySelector('.incomp-subst[data-idx="'+idx+'"]');
+      if(sub) sub.style.display=t.checked?'block':'none';
+      if(t.checked) abrirSelectorSustitucion(idx);
+    });
+  });
+  document.querySelectorAll('.incomp-subst-product').forEach(sel=>{
+    sel.addEventListener('change', ()=>{
+      const idx=sel.getAttribute('data-idx');
+      const manual=document.querySelector('.incomp-subst-manual[data-idx="'+idx+'"]');
+      if(manual) manual.style.display=sel.value==='__manual__'?'grid':'none';
+    });
+  });
+}
 
 function toggleIncompExtra(){
   const extra=el('incomp-extra');
@@ -1590,8 +1576,13 @@ function abrirPestanaCompletaIncompleto(){
     document.body.appendChild(panel);
   }
   const body=el('incomp-full-body');
+  const extras=el('incomp-extras-wrap');
   body.innerHTML='';
-  body.appendChild(wrap.cloneNode(true));
+  body.appendChild(wrap);
+  if(extras) body.appendChild(extras);
+  wrap.style.display='block';
+  if(extras) extras.style.display='block';
+  bindIncompletoInputs();
   openModal(panelId);
 }
 
@@ -1601,7 +1592,13 @@ function agregarExtraIncompleto(){
   const div=document.createElement('div');
   div.className='incomp-extra-row';
   div.style.cssText='display:grid;grid-template-columns:120px 1fr 90px auto;gap:6px;margin-bottom:6px';
-  div.innerHTML='<input class="form-input incomp-extra-code" placeholder="Código"><input class="form-input incomp-extra-name" placeholder="Producto fuera del pedido"><input type="number" min="1" value="1" class="form-input incomp-extra-qty"><button class="btn btn-ghost btn-sm" type="button">Quitar</button>';
+  div.innerHTML='<select class="form-input incomp-extra-select">'+recepcionProductOptions()+'</select><input class="form-input incomp-extra-name" placeholder="Nombre producto fuera del pedido"><input type="number" min="1" value="1" class="form-input incomp-extra-qty"><button class="btn btn-ghost btn-sm" type="button">Quitar</button>';
+  const sel=div.querySelector('.incomp-extra-select');
+  const name=div.querySelector('.incomp-extra-name');
+  sel.addEventListener('change',()=>{
+    const opt=sel.selectedOptions&&sel.selectedOptions[0];
+    if(opt){ name.value=opt.getAttribute('data-name')||name.value; }
+  });
   div.querySelector('button').onclick=()=>div.remove();
   c.appendChild(div);
 }
@@ -1698,12 +1695,12 @@ let invalidSubstitution=false;
 checks.forEach(ch=>{
   const idx=parseInt(ch.getAttribute('data-idx'),10);
   const it=items[idx]; if(!it) return;
-  const estadoSel=document.querySelector('.incomp-state[data-idx="'+idx+'"]');
-  const estadoUI=(estadoSel&&estadoSel.value)||'DIFERENCIA_CANTIDAD';
+  const subToggle=document.querySelector('.incomp-subst-toggle[data-idx="'+idx+'"]');
+  const esSust=!!(subToggle&&subToggle.checked);
   const cantOriginal=it.cantidad||1;
   const cantAceptada=qtyMap[idx]!==undefined ? qtyMap[idx] : (ch.checked?cantOriginal:0);
   let codRec=it.codigo||'', nomRec=it.nombre||'', qtyRec=cantAceptada;
-  if(estadoUI==='SUSTITUIDO'){
+  if(esSust){
     const pSel=document.querySelector('.incomp-subst-product[data-idx="'+idx+'"]');
     const qSel=document.querySelector('.incomp-subst-qty[data-idx="'+idx+'"]');
     const opt=pSel&&pSel.selectedOptions?pSel.selectedOptions[0]:null;
@@ -1726,9 +1723,7 @@ checks.forEach(ch=>{
     faltantesItems.push((it.nombre||'')+' x'+cantOriginal);
     recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:0});
   }
-  const estadoLinea = estadoUI==='SUSTITUIDO'
-    ? 'SUSTITUIDO'
-    : (qtyRec===cantOriginal ? 'CORRECTO' : (qtyRec===0 ? 'NO_RECIBIDO' : 'DIFERENCIA_CANTIDAD'));
+  const estadoLinea = esSust ? 'SUSTITUIDO' : (qtyRec===cantOriginal ? 'CORRECTO' : (qtyRec===0 ? 'NO_RECIBIDO' : 'DIFERENCIA_CANTIDAD'));
   lineasRecepcion.push({
     pedido_id:orderId,
     linea_index:idx,
@@ -1751,10 +1746,12 @@ checks.forEach(ch=>{
 // Extras fuera del pedido
 Array.from(document.querySelectorAll('.incomp-extra-row')).forEach((row, exIdx)=>{
   const nameEl=row.querySelector('.incomp-extra-name');
-  const codeEl=row.querySelector('.incomp-extra-code');
+  const selEl=row.querySelector('.incomp-extra-select');
   const qtyEl=row.querySelector('.incomp-extra-qty');
   const nombre=(nameEl&&nameEl.value||'').trim();
-  const codigo=(codeEl&&codeEl.value||'').trim();
+  const opt=selEl&&selEl.selectedOptions?selEl.selectedOptions[0]:null;
+  const codigo=((selEl&&selEl.value)||'').trim();
+  if(!nombre && opt){}
   const qty=parseInt((qtyEl&&qtyEl.value)||'0',10)||0;
   if(!nombre || qty<=0) return;
   recibidos.push(nombre+' x'+qty+' (extra)');
