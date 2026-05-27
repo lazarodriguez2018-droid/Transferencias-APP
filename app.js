@@ -727,15 +727,202 @@ e.innerHTML=pedidos.map(o=>orderCard(o)).join('');
 //  DASHBOARD
 // ═══════════════════════════════════════════
 async function renderDashboard(){
-safeSet('dash-subtitle','Resumen de '+currentPerfil.local_nombre+' ('+currentPerfil.almacen+')');
+safeSet('dash-subtitle','Análisis operativo por local');
 await updateBadges();
-const local=currentPerfil.local_nombre;
-const {data}=await db.from('pedidos').select('*,pedido_productos(*)')
-.or('origen_local.eq.'+local+',destino_local.eq.'+local)
-.order('updated_at',{ascending:false}).limit(6);
-const e=el('dash-recent');
-e.innerHTML=(data&&data.length)?data.map(o=>orderCard(o)).join('')
-:'<div class="empty-state"><div class="icon">📦</div><p>No hay actividad reciente</p></div>';
+setupDashboardFilters();
+await runDashboardAnalysis();
+}
+
+function setupDashboardFilters(){
+  const sel=el('dash-local');
+  if(!sel || sel.dataset.ready==='1') return;
+  sel.innerHTML='<option value="">Seleccionar local...</option>'+localesCache.map(l=>'<option value="'+l.nombre+'">'+l.nombre+'</option>').join('');
+  if(currentPerfil?.local_nombre) sel.value=currentPerfil.local_nombre;
+  const today=new Date();
+  const d0=new Date(today.getFullYear(),today.getMonth(),1).toISOString().slice(0,10);
+  el('dash-desde').value=d0;
+  el('dash-hasta').value=today.toISOString().slice(0,10);
+  ['dash-local','dash-desde','dash-hasta'].forEach(id=>el(id)?.addEventListener('change',runDashboardAnalysis));
+  el('dash-export-csv')?.addEventListener('click',()=>exportDashboard('csv'));
+  el('dash-export-xls')?.addEventListener('click',()=>exportDashboard('xls'));
+  sel.dataset.ready='1';
+}
+
+function trendPct(curr,prev){ if(!prev && curr) return 100; if(!prev) return 0; return ((curr-prev)/prev)*100; }
+function fmtPct(v){ return (v>=0?'+':'')+v.toFixed(1)+'%'; }
+function trendArrow(v){ if(v>1) return '↑ '+fmtPct(v); if(v<-1) return '↓ '+fmtPct(v); return '→ Sin cambios'; }
+function toCsv(rows){
+  if(!rows?.length) return '';
+  const cols=Object.keys(rows[0]);
+  const esc=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+  return cols.map(esc).join(',')+'\n'+rows.map(r=>cols.map(c=>esc(r[c])).join(',')).join('\n');
+}
+
+async function runDashboardAnalysis(){
+  const local=el('dash-local')?.value;
+  const content=el('dash-content');
+  if(!local){ content.innerHTML='<div class="empty-state"><div class="icon">🏬</div><p>Seleccione un local para visualizar el análisis operativo.</p></div>'; return; }
+  const desde=el('dash-desde').value, hasta=el('dash-hasta').value;
+  let q=db.from('pedidos').select('*,pedido_productos(*)').eq('destino_local',local).order('created_at',{ascending:false});
+  if(desde) q=q.gte('created_at',desde+'T00:00:00');
+  if(hasta) q=q.lte('created_at',hasta+'T23:59:59');
+  const {data}=await q;
+  const orders=data||[];
+  const orderIds=orders.map(o=>o.id);
+  let recepRows=[];
+  if(orderIds.length){
+    const {data:rr}=await db.from('pedido_recepcion_lineas').select('*').in('pedido_id',orderIds);
+    recepRows=rr||[];
+  }
+  const dtDesde=desde?new Date(desde+'T00:00:00'):null;
+  const dtHasta=hasta?new Date(hasta+'T23:59:59'):null;
+  const spanDays=Math.max(1, Math.round(((dtHasta||new Date())-(dtDesde||new Date()))/86400000)+1);
+  const prevDesde=dtDesde?new Date(dtDesde.getTime()-spanDays*86400000):null;
+  const prevHasta=dtDesde?new Date(dtDesde.getTime()-86400000):null;
+  let qPrev=db.from('pedidos').select('id,created_at,pedido_productos(*)').eq('destino_local',local);
+  if(prevDesde) qPrev=qPrev.gte('created_at',prevDesde.toISOString());
+  if(prevHasta) qPrev=qPrev.lte('created_at',prevHasta.toISOString());
+  const {data:prevData}=await qPrev;
+  const prevMap={};
+  (prevData||[]).forEach(o=>(o.pedido_productos||[]).forEach(p=>{ const k=p.codigo||p.nombre; if(!k) return; prevMap[k]=(prevMap[k]||0)+Number(p.cantidad||0); }));
+  const totalOrders=orders.length;
+  const prodMap={}, incompleteRows=[];
+  let totalUnits=0, complete=0, incomplete=0;
+  orders.forEach(o=>{
+    const d=(o.created_at||'').slice(0,10);
+    const isInc=(o.estado==='incompleto')||(o.faltantes&&o.faltantes.includes('__xls__'));
+    if(isInc) incomplete++; else complete++;
+    let recData=[];
+    const m=(o.faltantes||'').match(/\n__xls__:(.*)/s); if(m){ try{ recData=JSON.parse(m[1]); }catch(_e){} }
+    (o.pedido_productos||[]).forEach(p=>{
+      const k=p.codigo||p.nombre; if(!k) return;
+      if(!prodMap[k]) prodMap[k]={codigo:k,producto:p.nombre||k,total:0,orders:0,days:new Set(),last:'',byOrder:[],faltVeces:0,faltQty:0};
+      const r=prodMap[k];
+      r.total+=Number(p.cantidad||0); totalUnits+=Number(p.cantidad||0); r.orders++; r.days.add(d); r.last = (!r.last||o.created_at>r.last)?o.created_at:r.last;
+      const rr=recData.find(x=>(x.codigo||x.nombre)===(p.codigo||p.nombre));
+      if(rr && rr.recibido<rr.enviado){ r.faltVeces++; r.faltQty+=(rr.enviado-rr.recibido); incompleteRows.push({pedido:o.id.slice(-8),fecha:fmtDate(o.created_at),producto:p.nombre,sol:rr.enviado,rec:rr.recibido,dif:rr.enviado-rr.recibido}); }
+    });
+  });
+  const arr=Object.values(prodMap).map(r=>{
+    const pct=totalOrders? (r.orders*100/totalOrders):0, avg=r.orders?r.total/r.orders:0;
+    const prev=prevMap[r.codigo||r.producto]||prevMap[r.producto]||0;
+    const trend=trendPct(r.total,prev);
+    let state='Normal'; if(pct>=60 && r.days.size>=8) state='Crítico'; else if(pct>=45) state='Recurrente'; else if(trend>=30) state='Tendencia Creciente'; else if(r.total>=200&&r.orders<=2) state='Pico Puntual'; else if(r.total>=120||r.orders>=10) state='Revisar Stock';
+    return Object.assign(r,{pct,avg,state,prev,trend,trendTxt:trendArrow(trend)});
+  }).sort((a,b)=>b.total-a.total);
+  const top=arr[0], recurrent=[...arr].sort((a,b)=>b.orders-a.orders)[0];
+  const alerts=[];
+  arr.slice(0,8).forEach(x=>{ if(x.pct>=65) alerts.push({lvl:'high',txt:'🔴 '+x.producto+' aparece en '+x.pct.toFixed(0)+'% de los pedidos.'}); if(x.days.size>=12) alerts.push({lvl:'med',txt:'🟡 '+x.producto+' fue solicitado en '+x.days.size+' días distintos.'}); if(x.faltVeces>=5) alerts.push({lvl:'high',txt:'🔴 '+x.producto+' tiene '+x.faltVeces+' incidencias de faltante.'}); if(x.trend>=45) alerts.push({lvl:'high',txt:'🔴 '+x.producto+' aumentó '+fmtPct(x.trend)+' vs período anterior.'}); });
+  const insights=[];
+  if(top) insights.push(top.producto+' lidera con '+top.total+' unidades y '+top.pct.toFixed(1)+'% de participación en pedidos.');
+  if(recurrent) insights.push(recurrent.producto+' es el producto más recurrente, presente en '+recurrent.orders+' pedidos.');
+  const heavyDays=arr.filter(x=>x.days.size>=8).slice(0,3); heavyDays.forEach(x=>insights.push(x.producto+' mantiene demanda constante en '+x.days.size+' días diferentes.'));
+  const growth=[...arr].filter(x=>x.trend>0).sort((a,b)=>b.trend-a.trend).slice(0,10);
+  const drop=[...arr].filter(x=>x.trend<0).sort((a,b)=>a.trend-b.trend).slice(0,10);
+  const totalLineas=recepRows.length;
+  const nCorrectas=recepRows.filter(x=>x.estado==='CORRECTO').length;
+  const nDif=recepRows.filter(x=>x.estado==='DIFERENCIA_CANTIDAD').length;
+  const nSust=recepRows.filter(x=>x.estado==='SUSTITUIDO').length;
+  const nNoRec=recepRows.filter(x=>x.estado==='NO_RECIBIDO').length;
+  const nIncid=nDif+nSust+nNoRec;
+  const byOrigen={}, byDestino={}, sustProd={}, sustPairs={}, difProd={};
+  const orderMap={}; orders.forEach(o=>orderMap[o.id]=o);
+  recepRows.forEach(r=>{
+    const o=orderMap[r.pedido_id]||{};
+    const ori=o.origen_local||'—', dst=o.destino_local||'—';
+    if(!byOrigen[ori]) byOrigen[ori]={local:ori,total:0,dif:0,sust:0,inc:0}; byOrigen[ori].total++; if(r.estado==='DIFERENCIA_CANTIDAD') byOrigen[ori].dif++; if(r.estado==='SUSTITUIDO') byOrigen[ori].sust++; if(r.estado!=='CORRECTO') byOrigen[ori].inc++;
+    if(!byDestino[dst]) byDestino[dst]={local:dst,total:0,inc:0}; byDestino[dst].total++; if(r.estado!=='CORRECTO') byDestino[dst].inc++;
+    if(r.estado==='SUSTITUIDO'){ const k=r.producto_solicitado_nombre||r.producto_solicitado_codigo||'—'; sustProd[k]=(sustProd[k]||0)+1; const k2=(r.producto_solicitado_nombre||'—')+' → '+(r.producto_recibido_nombre||'—'); sustPairs[k2]=(sustPairs[k2]||0)+1; }
+    if(r.estado==='DIFERENCIA_CANTIDAD' || r.estado==='NO_RECIBIDO'){ const kd=r.producto_solicitado_nombre||'—'; difProd[kd]=(difProd[kd]||0)+1; }
+  });
+  const origenRows=Object.values(byOrigen).map(x=>Object.assign(x,{pct:x.total?((x.inc*100)/x.total):0})).sort((a,b)=>b.pct-a.pct);
+  const destinoRows=Object.values(byDestino).map(x=>Object.assign(x,{pct:x.total?((x.inc*100)/x.total):0})).sort((a,b)=>b.pct-a.pct);
+  const sustProdRows=Object.entries(sustProd).map(([producto,veces])=>({producto,veces})).sort((a,b)=>b.veces-a.veces);
+  const sustPairRows=Object.entries(sustPairs).map(([pair,veces])=>({pair,veces})).sort((a,b)=>b.veces-a.veces);
+  const difProdRows=Object.entries(difProd).map(([producto,veces])=>({producto,veces})).sort((a,b)=>b.veces-a.veces);
+  window.__dash_export={ranking:arr,faltantes:arr.filter(x=>x.faltVeces>0),incompletos:incompleteRows,insights,alerts:alerts.map(a=>a.txt),crecieron:growth,disminuyeron:drop,calidad:{totalLineas,nCorrectas,nDif,nSust,nNoRec,nIncid},origenRows,destinoRows,sustProdRows,sustPairRows,difProdRows};
+  content.innerHTML=buildDashboardHtml({local,totalOrders,totalUnits,distinct:arr.length,top,recurrent,complete,incomplete,alerts,arr,insights,incompleteRows,growth,drop,calidad:{totalLineas,nCorrectas,nDif,nSust,nNoRec,nIncid},origenRows,destinoRows,sustProdRows,sustPairRows,difProdRows});
+}
+
+function buildDashboardHtml(m){
+  const compliance=(m.totalOrders? (m.complete*100/m.totalOrders):0).toFixed(1);
+  return '<div class="dashboard-alerts">'+(m.alerts.length?m.alerts.map(a=>'<div class="dash-alert '+a.lvl+'">'+escHtml(a.txt)+'</div>').join(''):'<div class="dash-alert">Sin alertas críticas para este período.</div>')+'</div>'+
+    '<div class="stats-grid">'+
+    '<div class="stat-card"><div class="stat-label">Total de pedidos</div><div class="stat-value">'+m.totalOrders+'</div></div>'+
+    '<div class="stat-card"><div class="stat-label">Unidades solicitadas</div><div class="stat-value">'+m.totalUnits+'</div></div>'+
+    '<div class="stat-card"><div class="stat-label">Productos distintos</div><div class="stat-value">'+m.distinct+'</div></div>'+
+    '<div class="stat-card"><div class="stat-label">Cumplimiento</div><div class="stat-value">'+compliance+'%</div><div class="stat-label">'+m.complete+' completos / '+m.incomplete+' incompletos</div></div></div>'+
+    '<div class="card dashboard-section"><div class="card-header"><h3>Ranking inteligente de productos</h3></div><div class="card-body">'+renderRankingTable(m.arr,m.totalOrders)+'</div></div>'+
+    '<div class="card dashboard-section"><div class="card-header"><h3>Insights automáticos</h3></div><div class="card-body insights-list">'+m.insights.map(t=>'<div class="insight-item">• '+escHtml(t)+'</div>').join('')+'</div></div>'+
+    '<div class="card dashboard-section"><div class="card-header"><h3>Análisis de faltantes</h3></div><div class="card-body">'+renderFaltantesTable(m.arr,m.totalOrders)+'</div></div>'+
+    '<div class="card dashboard-section"><div class="card-header"><h3>Recepciones incompletas</h3></div><div class="card-body">'+renderIncompletosTable(m.incompleteRows)+'</div></div>'+
+    '<div class="card dashboard-section"><div class="card-header"><h3>Análisis temporal</h3></div><div class="card-body"><h4>Productos que más crecieron</h4>'+renderTrendTable(m.growth,true)+'<h4 style="margin-top:12px">Productos que más disminuyeron</h4>'+renderTrendTable(m.drop,false)+'</div></div>'+
+    renderCalidadHtml(m);
+}
+function renderCalidadHtml(m){
+  const c=m.calidad||{totalLineas:0,nCorrectas:0,nDif:0,nSust:0,nIncid:0};
+  const pct=(n)=>c.totalLineas?((n*100)/c.totalLineas).toFixed(1):'0.0';
+  return '<div class="card dashboard-section"><div class="card-header"><h3>Calidad Operativa</h3></div><div class="card-body">'+
+  '<div class="stats-grid"><div class="stat-card"><div class="stat-label">Tasa recepción correcta</div><div class="stat-value">'+pct(c.nCorrectas)+'%</div></div>'+
+  '<div class="stat-card"><div class="stat-label">Tasa diferencias</div><div class="stat-value">'+pct(c.nDif)+'%</div></div>'+
+  '<div class="stat-card"><div class="stat-label">Tasa sustituciones</div><div class="stat-value">'+pct(c.nSust)+'%</div></div>'+
+  '<div class="stat-card"><div class="stat-label">Tasa incidencias</div><div class="stat-value">'+pct(c.nIncid)+'%</div></div></div>'+
+  '<h4>Locales con más errores de envío</h4>'+renderOrigenIncTable(m.origenRows||[])+
+  '<h4 style="margin-top:12px">Locales con más incidencias recibidas</h4>'+renderDestinoIncTable(m.destinoRows||[])+
+  '<h4 style="margin-top:12px">Productos más sustituidos</h4>'+renderSimpleProdTable(m.sustProdRows||[],'Cantidad de sustituciones')+
+  '<h4 style="margin-top:12px">Sustituciones más frecuentes</h4>'+renderPairTable(m.sustPairRows||[])+
+  '<h4 style="margin-top:12px">Productos con más diferencias</h4>'+renderSimpleProdTable(m.difProdRows||[],'Diferencias registradas')+
+  '</div></div>';
+}
+function renderOrigenIncTable(rows){ if(!rows.length) return '<div class="empty-state"><p>Sin datos.</p></div>'; return '<div class="table-wrap"><table class="dash-table"><thead><tr><th>Local</th><th>Líneas Enviadas</th><th>Diferencias</th><th>Sustituciones</th><th>% Incidencias</th></tr></thead><tbody>'+rows.slice(0,20).map(r=>'<tr><td>'+escHtml(r.local)+'</td><td>'+r.total+'</td><td>'+r.dif+'</td><td>'+r.sust+'</td><td>'+r.pct.toFixed(1)+'%</td></tr>').join('')+'</tbody></table></div>'; }
+function renderDestinoIncTable(rows){ if(!rows.length) return '<div class="empty-state"><p>Sin datos.</p></div>'; return '<div class="table-wrap"><table class="dash-table"><thead><tr><th>Local</th><th>Líneas Recibidas</th><th>Incidencias</th><th>% Incidencias</th></tr></thead><tbody>'+rows.slice(0,20).map(r=>'<tr><td>'+escHtml(r.local)+'</td><td>'+r.total+'</td><td>'+r.inc+'</td><td>'+r.pct.toFixed(1)+'%</td></tr>').join('')+'</tbody></table></div>'; }
+function renderSimpleProdTable(rows,label){ if(!rows.length) return '<div class="empty-state"><p>Sin datos.</p></div>'; return '<div class="table-wrap"><table class="dash-table"><thead><tr><th>Producto</th><th>'+label+'</th></tr></thead><tbody>'+rows.slice(0,20).map(r=>'<tr><td>'+escHtml(r.producto)+'</td><td>'+r.veces+'</td></tr>').join('')+'</tbody></table></div>'; }
+function renderPairTable(rows){ if(!rows.length) return '<div class="empty-state"><p>Sin datos.</p></div>'; return '<div class="table-wrap"><table class="dash-table"><thead><tr><th>Producto Solicitado → Recibido</th><th>Veces</th></tr></thead><tbody>'+rows.slice(0,20).map(r=>'<tr><td>'+escHtml(r.pair)+'</td><td>'+r.veces+'</td></tr>').join('')+'</tbody></table></div>'; }
+function renderRankingTable(rows,totalOrders){return '<div class="table-wrap"><table class="dash-table"><thead><tr><th>Producto</th><th>Cantidad Total</th><th>Cant. Pedidos</th><th>% Pedidos</th><th>Promedio</th><th>Días Distintos</th><th>Última Solicitud</th><th>Tendencia</th><th>Estado</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+escHtml(r.producto)+'</td><td>'+r.total+'</td><td>'+r.orders+'</td><td>'+r.pct.toFixed(1)+'%</td><td>'+r.avg.toFixed(1)+'</td><td>'+r.days.size+'</td><td>'+fmtDate(r.last)+'</td><td>'+r.trendTxt+'</td><td><span class="state-pill">'+r.state+'</span></td></tr>').join('')+'</tbody></table></div>';}
+function renderFaltantesTable(rows,totalOrders){const f=rows.filter(x=>x.faltVeces>0).sort((a,b)=>b.faltQty-a.faltQty); if(!f.length) return '<div class="empty-state"><p>Sin faltantes registrados.</p></div>'; return '<div class="table-wrap"><table class="dash-table"><thead><tr><th>Producto</th><th>Veces Incompleto</th><th>Cantidad Faltante</th><th>% Incidencia</th></tr></thead><tbody>'+f.map(r=>'<tr><td>'+escHtml(r.producto)+'</td><td>'+r.faltVeces+'</td><td>'+r.faltQty+'</td><td>'+((r.faltVeces*100)/Math.max(totalOrders,1)).toFixed(1)+'%</td></tr>').join('')+'</tbody></table></div>';}
+function renderIncompletosTable(rows){if(!rows.length) return '<div class="empty-state"><p>No hay recepciones incompletas.</p></div>'; return '<div class="table-wrap"><table class="dash-table"><thead><tr><th>Pedido</th><th>Fecha</th><th>Producto</th><th>Solicitado</th><th>Recibido</th><th>Diferencia</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+r.pedido+'</td><td>'+r.fecha+'</td><td>'+escHtml(r.producto)+'</td><td>'+r.sol+'</td><td>'+r.rec+'</td><td>-'+r.dif+'</td></tr>').join('')+'</tbody></table></div>';}
+function renderTrendTable(rows,isGrowth){ if(!rows.length) return '<div class="empty-state"><p>Sin datos.</p></div>'; return '<div class="table-wrap"><table class="dash-table"><thead><tr><th>Producto</th><th>'+(isGrowth?'Crecimiento':'Variación')+'</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+escHtml(r.producto)+'</td><td>'+r.trendTxt+'</td></tr>').join('')+'</tbody></table></div>'; }
+function exportDashboard(type){
+  const d=window.__dash_export; if(!d) return notify('No hay datos para exportar','error');
+  const rows=[
+    ...d.ranking.map(x=>({seccion:'ranking',producto:x.producto,total:x.total,pedidos:x.orders,pct_pedidos:x.pct.toFixed(1),promedio:x.avg.toFixed(1),dias:x.days?.size||'',ultima:x.last||'',tendencia:x.trendTxt,estado:x.state})),
+    ...d.faltantes.map(x=>({seccion:'faltantes',producto:x.producto,veces_incompleto:x.faltVeces,cantidad_faltante:x.faltQty})),
+    ...d.incompletos.map(x=>({seccion:'recepciones_incompletas',pedido:x.pedido,fecha:x.fecha,producto:x.producto,solicitado:x.sol,recibido:x.rec,diferencia:x.dif})),
+    ...d.insights.map(x=>({seccion:'insight',detalle:x})),
+    ...d.alerts.map(x=>({seccion:'alerta',detalle:x}))
+  ];
+  const stamp='dashboard_'+new Date().toISOString().slice(0,10);
+  let blob, filename;
+  if(type==='xls'){
+    if(typeof XLSX==='undefined'){
+      notify('No se pudo exportar Excel: librería XLSX no disponible.','error');
+      return;
+    }
+    const wb = XLSX.utils.book_new();
+    const rankingRows=(d.ranking||[]).map(x=>({
+      Producto:x.producto,'Cantidad Total':x.total,'Cantidad de Pedidos':x.orders,'% de Pedidos':Number(x.pct.toFixed(1)),
+      'Promedio por Pedido':Number(x.avg.toFixed(1)),'Días Distintos':x.days?.size||0,'Última Solicitud':x.last?fmtDate(x.last):'',
+      Tendencia:x.trendTxt,Estado:x.state
+    }));
+    const faltantesRows=(d.faltantes||[]).map(x=>({Producto:x.producto,'Veces Incompleto':x.faltVeces,'Cantidad Faltante':x.faltQty}));
+    const incompletosRows=(d.incompletos||[]).map(x=>({Pedido:x.pedido,Fecha:x.fecha,Producto:x.producto,Solicitado:x.sol,Recibido:x.rec,Diferencia:x.dif}));
+    const insightsRows=(d.insights||[]).map(x=>({Insight:x}));
+    const alertsRows=(d.alerts||[]).map(x=>({Alerta:x}));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rankingRows), 'Ranking');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(faltantesRows), 'Faltantes');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(incompletosRows), 'Incompletos');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(insightsRows), 'Insights');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(alertsRows), 'Alertas');
+    const out = XLSX.write(wb,{bookType:'xlsx',type:'array'});
+    blob = new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    filename=stamp+'.xlsx';
+  } else {
+    const csv=toCsv(rows);
+    blob = new Blob(['\ufeff', csv],{type:'text/csv;charset=utf-8;'});
+    filename=stamp+'.csv';
+  }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; a.click(); URL.revokeObjectURL(a.href);
+  notify(type==='xls'?'Excel exportado correctamente.':'CSV exportado correctamente.','success');
 }
 
 // ═══════════════════════════════════════════
@@ -1144,6 +1331,13 @@ function renderResponsableField(){
 const nom=((currentPerfil?.nombre||'')+' '+(currentPerfil?.apellido||'')).trim();
 return '<div class="form-group" style="margin-top:12px"><label class="form-label">👤 Responsable (obligatorio)</label><input class="form-input" id="accion-responsable" type="text" placeholder="Tu nombre" value="'+escHtml(nom)+'"></div>';
 }
+function recepcionProductOptions(selectedCode=''){
+  return '<option value="">Seleccionar producto...</option><option value="__manual__">✍️ Cargar producto manualmente</option>'+(productsCache||[]).map(p=>{
+    const code=p.codigo||'';
+    const name=p.nombre||'';
+    return '<option value="'+escHtml(code)+'" data-name="'+escHtml(name)+'"'+(selectedCode===code?' selected':'')+'>'+escHtml(code+' · '+name)+'</option>';
+  }).join('');
+}
 
 // ═══════════════════════════════════════════
 //  ACCIONES
@@ -1200,13 +1394,23 @@ openModal('modal-accion'); return;
 if(tipo==='incompleto' || tipo==='en_escala_incompleto' || tipo==='aceptar_incompleto'){
 const label = tipo==='en_escala_incompleto' ? 'Llegó incompleto a escala' : (tipo==='aceptar_incompleto'?'Aceptado incompleto':'Llegó incompleto');
 showSpinner();
+if(!productsCache.length){
+  try{
+    const [r1,r2]=await Promise.all([
+      db.from('productos').select('codigo,nombre,marca').limit(3000),
+      db.from('padron_extra').select('codigo,nombre,marca').limit(1000)
+    ]);
+    productsCache=[...(r1.data||[]),...(r2.data||[])];
+  }catch(_e){}
+}
 const {data:o}=await db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single();
 hideSpinner();
 const items=(o?.pedido_productos||[]);
 const esGrande = items.length > 5;
 
 const itemRowHtml = (p, i) =>
-  '<div class="incomp-row" data-idx="'+i+'" style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:7px;margin-bottom:5px;background:rgba(var(--bg2-rgb,40,40,60),0.5);border:1px solid var(--border)">' +
+  '<div class="incomp-row" data-idx="'+i+'" style="padding:8px 9px;border-radius:7px;margin-bottom:6px;background:rgba(var(--bg2-rgb,40,40,60),0.5);border:1px solid var(--border)">' +
+  '<div style="display:flex;align-items:center;gap:8px">' +
   '<input type="checkbox" class="incomp-item" data-idx="'+i+'" checked style="flex-shrink:0;width:16px;height:16px;accent-color:#22c55e">' +
   '<div style="flex:1;min-width:0">' +
   '<div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+escHtml(p.nombre||'')+'">'+escHtml(p.nombre||'')+'</div>' +
@@ -1216,6 +1420,15 @@ const itemRowHtml = (p, i) =>
   '<span style="font-size:11px;color:var(--text2)">Cant:</span>' +
   '<input type="number" class="incomp-qty" data-idx="'+i+'" data-original="'+(p.cantidad||1)+'" value="'+(p.cantidad||1)+'" min="0" style="width:60px;text-align:center;padding:3px 5px;border-radius:5px;border:1px solid var(--border);background:var(--bg1);color:var(--text1);font-size:13px">' +
   '<span style="font-size:11px;color:var(--text2)">ped: '+(p.cantidad||1)+'</span>' +
+  '</div>' +
+  '<select class="form-input incomp-state" data-idx="'+i+'" style="max-width:185px;padding:5px 7px;font-size:12px"><option value="CORRECTO">✅ Correcto</option><option value="DIFERENCIA_CANTIDAD">⚠ Diferencia de cantidad</option><option value="NO_RECIBIDO">❌ No recibido</option><option value="SUSTITUIDO">🔄 Sustituido</option></select>' +
+  '</div>' +
+  '<div class="incomp-subst" data-idx="'+i+'" style="display:none;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">' +
+  '<div style="font-size:11px;color:var(--text2);margin-bottom:6px">Producto solicitado: <strong>'+escHtml(p.nombre||'')+'</strong> · Cantidad solicitada: '+(p.cantidad||1)+'</div>' +
+  '<div style="display:grid;grid-template-columns:1fr auto 110px;gap:6px;margin-bottom:6px"><select class="form-input incomp-subst-product" data-idx="'+i+'">'+recepcionProductOptions()+'</select><button class="btn btn-ghost btn-sm" type="button" onclick="abrirSelectorSustitucion('+i+')">Buscar</button><input type="number" class="form-input incomp-subst-qty" data-idx="'+i+'" min="0" value="'+(p.cantidad||1)+'"></div>' +
+  '<div class="incomp-subst-manual" data-idx="'+i+'" style="display:none;grid-template-columns:120px 1fr;gap:6px;margin-bottom:6px"><input class="form-input incomp-subst-code" data-idx="'+i+'" placeholder="Código"><input class="form-input incomp-subst-name" data-idx="'+i+'" placeholder="Nombre producto recibido"></div>'+
+  '<input class="form-input incomp-subst-motivo" data-idx="'+i+'" placeholder="Motivo (opcional)" style="margin-bottom:6px">' +
+  '<input class="form-input incomp-subst-obs" data-idx="'+i+'" placeholder="Observaciones (opcional)">' +
   '</div>' +
   '</div>';
 
@@ -1233,16 +1446,16 @@ if (esGrande) {
 
 el('modal-accion-title').textContent='⚠️ '+label;
 el('modal-accion-body').innerHTML=
-  '<div class="warning-box" style="margin-bottom:10px">Seleccioná qué ítems van y ajustá las cantidades si es necesario.</div>' +
-  '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">✅ Chequeado = se envía&nbsp;&nbsp;·&nbsp;&nbsp;❌ Desmarcado = no se envía. Podés ajustar la cantidad (más o menos de lo pedido).</div>' +
+  '<div class="warning-box" style="margin-bottom:10px">Confirmá qué productos llegaron, ajustá cantidades y marcá sustituciones si llegó un producto distinto.</div>' +
+  '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">✅ Chequeado = llegó&nbsp;&nbsp;·&nbsp;&nbsp;❌ Desmarcado = no llegó. Podés ajustar la cantidad recibida y marcar sustitución.</div>' +
   '<div id="incomp-items-wrap">'+itemsHtml+'</div>' +
   '<div class="form-group" style="margin-top:12px"><label class="form-label">Observación (opcional)</label><textarea class="form-input" id="faltantes-det" rows="2" placeholder="Ej: Faltó 1 unidad de..."></textarea></div>' +
   '<div class="form-group" style="margin-top:10px">' +
   '<label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">' +
-  '<input type="checkbox" id="incomp-notif-local" checked> <span style="font-size:13px">Notificar al local solicitante sobre el envío parcial</span>' +
+  '<input type="checkbox" id="incomp-notif-local" checked> <span style="font-size:13px">Notificar al local solicitante sobre recepción con diferencias</span>' +
   '</label>' +
   '</div>' + renderResponsableField();
-el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-warning btn-sm" onclick="confirmarAccion(\''+tipo+'\',\''+orderId+'\')">Confirmar envío parcial</button>';
+el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-warning btn-sm" onclick="confirmarAccion(\''+tipo+'\',\''+orderId+'\')">Confirmar llegada incompleta</button>';
 openModal('modal-accion');
 
 // Bind qty inputs: uncheck if qty=0, recheck if qty>0
@@ -1260,6 +1473,25 @@ setTimeout(()=>{
     if(cb) cb.addEventListener('change',()=>{
       if(!cb.checked){ input.value=0; input.style.borderColor='var(--accent2)'; }
       else { input.value=input.getAttribute('data-original')||1; input.style.borderColor='var(--border)'; }
+    });
+  });
+  document.querySelectorAll('.incomp-state').forEach(sel=>{
+    sel.addEventListener('change', ()=>{
+      const idx=sel.getAttribute('data-idx');
+      const sub=document.querySelector('.incomp-subst[data-idx="'+idx+'"]');
+      const qty=document.querySelector('.incomp-qty[data-idx="'+idx+'"]');
+      const cb=document.querySelector('.incomp-item[data-idx="'+idx+'"]');
+      if(sub) sub.style.display=sel.value==='SUSTITUIDO'?'block':'none';
+      if(sel.value==='NO_RECIBIDO' && qty && cb){ qty.value=0; cb.checked=false; }
+      if(sel.value==='CORRECTO' && qty && cb){ qty.value=qty.getAttribute('data-original')||1; cb.checked=true; }
+      if(sel.value==='SUSTITUIDO' && cb){ cb.checked=true; abrirSelectorSustitucion(idx); }
+    });
+  });
+  document.querySelectorAll('.incomp-subst-product').forEach(sel=>{
+    sel.addEventListener('change', ()=>{
+      const idx=sel.getAttribute('data-idx');
+      const manual=document.querySelector('.incomp-subst-manual[data-idx="'+idx+'"]');
+      if(manual) manual.style.display=sel.value==='__manual__'?'grid':'none';
     });
   });
 },100);
@@ -1285,6 +1517,64 @@ function toggleIncompExtra(){
   } else {
     btn.textContent='▲ Ocultar ítems extra';
   }
+}
+
+
+
+function normalizeSearchTokens(v){
+  return String(v||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9\s]/g,' ').split(/\s+/).filter(Boolean);
+}
+
+function incompSmartFindProducts(q, limit=60){
+  const tokens=normalizeSearchTokens(q);
+  if(!tokens.length) return productsCache.slice(0,limit);
+  const withScore=productsCache.map(p=>{
+    const hay=normalizeSearchTokens((p.nombre||'')+' '+(p.codigo||'')+' '+(p.marca||'')).join(' ');
+    let score=0;
+    for(const t of tokens){ if(hay.includes(t)) score++; }
+    if(score===tokens.length) score+=2;
+    return {p,score};
+  }).filter(x=>x.score>0);
+  withScore.sort((a,b)=>b.score-a.score || String(a.p.nombre||'').localeCompare(String(b.p.nombre||'')));
+  return withScore.slice(0,limit).map(x=>x.p);
+}
+
+function abrirSelectorSustitucion(idx){
+  const panelId='incomp-sust-panel';
+  let panel=el(panelId);
+  if(!panel){
+    panel=document.createElement('div');
+    panel.id=panelId;
+    panel.className='modal-overlay';
+    panel.style.zIndex='10150';
+    panel.innerHTML=`<div class="modal" style="max-width:640px"><div class="modal-header"><h2>🔎 Seleccionar producto recibido</h2><div class="modal-close" onclick="closeModal('incomp-sust-panel')">✕</div></div><div class="modal-body"><input id="incomp-sust-search" class="form-input" placeholder="Buscar por nombre/código. Ej: biofresh adulto"><div id="incomp-sust-results" style="margin-top:10px;max-height:46vh;overflow:auto"></div></div><div class="modal-footer"><button class="btn btn-ghost btn-sm" onclick="closeModal('incomp-sust-panel')">Cerrar</button></div></div>`;
+    document.body.appendChild(panel);
+  }
+  panel.setAttribute('data-target-idx', String(idx));
+  openModal(panelId);
+  const search=el('incomp-sust-search');
+  const results=el('incomp-sust-results');
+  const render=(val)=>{
+    const list=incompSmartFindProducts(val);
+    results.innerHTML=list.map(p=>{
+      const nombre=escHtml(p.nombre||'');
+      const codigo=escHtml(p.codigo||'');
+      const marca=escHtml(p.marca||'');
+      return '<button class="btn btn-ghost btn-sm" style="display:block;width:100%;text-align:left;margin-bottom:6px;padding:8px 10px" data-code="'+codigo+'"><div style="font-weight:600">'+nombre+'</div><div style="font-size:12px;color:var(--text2)">'+codigo+(marca?' · '+marca:'')+'</div></button>';
+    }).join('') || '<div style="font-size:12px;color:var(--text2)">Sin resultados. Probá con menos palabras.</div>';
+    results.querySelectorAll('button[data-code]').forEach(btn=>{
+      btn.onclick=()=>{
+        const target=panel.getAttribute('data-target-idx');
+        const sel=document.querySelector('.incomp-subst-product[data-idx="'+target+'"]');
+        if(sel){ sel.value=btn.getAttribute('data-code'); sel.dispatchEvent(new Event('change')); }
+        closeModal(panelId);
+      };
+    });
+  };
+  search.value='';
+  render('');
+  search.oninput=()=>render(search.value);
+  setTimeout(()=>search.focus(),50);
 }
 
 function verPedidoCompleto(orderId){
@@ -1374,12 +1664,35 @@ qtyInputs.forEach(inp=>{
   qtyMap[idx]=v;
 });
 
-const recibidos=[], faltantesItems=[], recibidosData=[];
+const recibidos=[], faltantesItems=[], recibidosData=[], lineasRecepcion=[];
+let invalidSubstitution=false;
 checks.forEach(ch=>{
   const idx=parseInt(ch.getAttribute('data-idx'),10);
   const it=items[idx]; if(!it) return;
+  const estadoSel=document.querySelector('.incomp-state[data-idx="'+idx+'"]');
+  const estadoUI=(estadoSel&&estadoSel.value)||'DIFERENCIA_CANTIDAD';
   const cantOriginal=it.cantidad||1;
   const cantAceptada=qtyMap[idx]!==undefined ? qtyMap[idx] : (ch.checked?cantOriginal:0);
+  let codRec=it.codigo||'', nomRec=it.nombre||'', qtyRec=cantAceptada, motivoLinea=null, obsLinea=null;
+  if(estadoUI==='SUSTITUIDO'){
+    const pSel=document.querySelector('.incomp-subst-product[data-idx="'+idx+'"]');
+    const qSel=document.querySelector('.incomp-subst-qty[data-idx="'+idx+'"]');
+    const mSel=document.querySelector('.incomp-subst-motivo[data-idx="'+idx+'"]');
+    const oSel=document.querySelector('.incomp-subst-obs[data-idx="'+idx+'"]');
+    const opt=pSel&&pSel.selectedOptions?pSel.selectedOptions[0]:null;
+    codRec=(pSel&&pSel.value)||'';
+    nomRec=(opt&&opt.getAttribute('data-name'))||'';
+    if(codRec==='__manual__'){
+      const codeManual=document.querySelector('.incomp-subst-code[data-idx="'+idx+'"]');
+      const nameManual=document.querySelector('.incomp-subst-name[data-idx="'+idx+'"]');
+      codRec=(codeManual&&codeManual.value.trim())||'';
+      nomRec=(nameManual&&nameManual.value.trim())||'';
+    }
+    qtyRec=parseInt((qSel&&qSel.value)||'0',10)||0;
+    motivoLinea=(mSel&&mSel.value.trim())||null;
+    obsLinea=(oSel&&oSel.value.trim())||null;
+    if(!codRec || !nomRec){ invalidSubstitution=true; return; }
+  }
   if(ch.checked && cantAceptada>0){
     const diff=cantAceptada!==cantOriginal?' (ped:'+cantOriginal+')':'';
     recibidos.push((it.nombre||'')+' x'+cantAceptada+diff);
@@ -1388,7 +1701,28 @@ checks.forEach(ch=>{
     faltantesItems.push((it.nombre||'')+' x'+cantOriginal);
     recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:0});
   }
+  const estadoLinea = estadoUI==='SUSTITUIDO'
+    ? 'SUSTITUIDO'
+    : (qtyRec===cantOriginal ? 'CORRECTO' : (qtyRec===0 ? 'NO_RECIBIDO' : 'DIFERENCIA_CANTIDAD'));
+  lineasRecepcion.push({
+    pedido_id:orderId,
+    linea_index:idx,
+    producto_solicitado_codigo:it.codigo||'',
+    producto_solicitado_nombre:it.nombre||'',
+    cantidad_solicitada:cantOriginal,
+    producto_recibido_codigo:codRec,
+    producto_recibido_nombre:nomRec,
+    cantidad_recibida:qtyRec,
+    diferencia:qtyRec-cantOriginal,
+    estado:estadoLinea,
+    motivo:motivoLinea,
+    observaciones:obsLinea,
+    recepcion_usuario_id:currentPerfil.id,
+    recepcion_usuario_nombre:responsable,
+    recepcion_fecha:new Date().toISOString()
+  });
 });
+if(invalidSubstitution) return notify('En líneas sustituidas debés seleccionar el producto recibido.','error');
 // NO se toca pedido_productos.cantidad — queda como la cantidad originalmente enviada
 
 const hayDiferencia=recibidosData.some(r=>r.recibido!==r.enviado);
@@ -1485,6 +1819,11 @@ if(tipo==='aceptar'){
 
 const {error}=await db.from('pedidos').update(updates).eq('id',orderId);
 if(error) return notify('Error al actualizar: '+error.message,'error');
+if((tipo==='incompleto' || tipo==='en_escala_incompleto' || tipo==='aceptar_incompleto') && lineasRecepcion.length){
+  await db.from('pedido_recepcion_lineas').delete().eq('pedido_id',orderId);
+  const {error:errRec}=await db.from('pedido_recepcion_lineas').insert(lineasRecepcion);
+  if(errRec) notify('Aviso: no se guardó el detalle estructurado de recepción ('+errRec.message+').','info');
+}
 
 showSpinner();
 try{
@@ -2428,33 +2767,65 @@ async function exportarXLSPedido(orderId){
   if(!o){ notify('No se pudo cargar el pedido','error'); return; }
 
   const productos=o.pedido_productos||[];
+  const {data:lineas}=await db.from('pedido_recepcion_lineas').select('*').eq('pedido_id',orderId).order('linea_index',{ascending:true});
   const pedidoRef='#'+o.id.slice(-8,-2).toUpperCase();
   const fecha=new Date(o.updated_at||o.created_at).toLocaleDateString('es-UY');
   const faltantesRaw=o.faltantes||o.faltantes_escala||'';
 
-  // Usar datos estructurados __xls__ si existen
+  // Fuente primaria: tabla estructurada de recepción por línea
   let rows=[];
+  if((lineas||[]).length){
+    rows=(lineas||[]).map(r=>({
+      'Pedido':pedidoRef,
+      'Fecha':fecha,
+      'Local Origen':o.origen_local||'',
+      'Local Destino':o.destino_local||'',
+      'Código Solicitado':r.producto_solicitado_codigo||'',
+      'Producto Solicitado':r.producto_solicitado_nombre||'',
+      'Cantidad Solicitada':Number(r.cantidad_solicitada||0),
+      'Código Recibido':r.producto_recibido_codigo||'',
+      'Producto Recibido':r.producto_recibido_nombre||'',
+      'Cantidad Recibida':Number(r.cantidad_recibida||0),
+      'Diferencia':Number(r.diferencia||0),
+      'Estado':r.estado||''
+    }));
+  }
+  // Fallback legacy __xls__
   const xlsMatch=faltantesRaw.match(/\n__xls__:(.*)/s);
-  if(xlsMatch){
+  if(!rows.length && xlsMatch){
     try{
       const data=JSON.parse(xlsMatch[1].trim());
       rows=data.map(r=>({
-        'Código':    r.codigo||'',
-        'Nombre':    r.nombre||'',
-        'Enviado':   r.enviado||0,
-        'Recibido':  r.recibido||0,
-        'Diferencia':(r.recibido||0)-(r.enviado||0)
+        'Pedido':pedidoRef,
+        'Fecha':fecha,
+        'Local Origen':o.origen_local||'',
+        'Local Destino':o.destino_local||'',
+        'Código Solicitado':r.codigo||'',
+        'Producto Solicitado':r.nombre||'',
+        'Cantidad Solicitada':r.enviado||0,
+        'Código Recibido':r.codigo||'',
+        'Producto Recibido':r.nombre||'',
+        'Cantidad Recibida':r.recibido||0,
+        'Diferencia':(r.recibido||0)-(r.enviado||0),
+        'Estado':((r.recibido||0)===(r.enviado||0)?'CORRECTO':((r.recibido||0)===0?'NO_RECIBIDO':'DIFERENCIA_CANTIDAD'))
       }));
     }catch(e){ rows=[]; }
   }
   // Fallback: todos enviado=recibido (pedido completo sin diferencias)
   if(!rows.length){
     rows=productos.map(p=>({
-      'Código':    p.codigo||'',
-      'Nombre':    p.nombre||'',
-      'Enviado':   p.cantidad||0,
-      'Recibido':  p.cantidad||0,
-      'Diferencia':0
+      'Pedido':pedidoRef,
+      'Fecha':fecha,
+      'Local Origen':o.origen_local||'',
+      'Local Destino':o.destino_local||'',
+      'Código Solicitado':p.codigo||'',
+      'Producto Solicitado':p.nombre||'',
+      'Cantidad Solicitada':p.cantidad||0,
+      'Código Recibido':p.codigo||'',
+      'Producto Recibido':p.nombre||'',
+      'Cantidad Recibida':p.cantidad||0,
+      'Diferencia':0,
+      'Estado':'CORRECTO'
     }));
   }
 
@@ -2463,11 +2834,11 @@ async function exportarXLSPedido(orderId){
     ['TransferApp — Reporte de pedido '+pedidoRef],
     ['Fecha: '+fecha+'   Origen: '+(o.origen_local||'')+'   Destino: '+(o.destino_local||'')+(o.cliente?'   Cliente: '+o.cliente:'')],
     [],
-    ['Código','Nombre','Enviado','Recibido','Diferencia'],
-    ...rows.map(r=>[r['Código'],r['Nombre'],r['Enviado'],r['Recibido'],r['Diferencia']])
+    ['Pedido','Fecha','Local Origen','Local Destino','Código Solicitado','Producto Solicitado','Cantidad Solicitada','Código Recibido','Producto Recibido','Cantidad Recibida','Diferencia','Estado'],
+    ...rows.map(r=>[r['Pedido'],r['Fecha'],r['Local Origen'],r['Local Destino'],r['Código Solicitado'],r['Producto Solicitado'],r['Cantidad Solicitada'],r['Código Recibido'],r['Producto Recibido'],r['Cantidad Recibida'],r['Diferencia'],r['Estado']])
   ];
   const ws=XLSX.utils.aoa_to_sheet(wsData);
-  ws['!cols']=[{wch:16},{wch:45},{wch:10},{wch:10},{wch:12}];
+  ws['!cols']=[{wch:11},{wch:11},{wch:15},{wch:15},{wch:18},{wch:34},{wch:12},{wch:18},{wch:34},{wch:12},{wch:12},{wch:20}];
   XLSX.utils.book_append_sheet(wb,ws,'Reporte');
 
   const nombreArchivo='pedido_'+pedidoRef.replace('#','')+'_'+fecha.replace(/\//g,'-')+'.xlsx';
