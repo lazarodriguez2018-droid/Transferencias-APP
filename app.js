@@ -844,9 +844,22 @@ function exportDashboard(type){
     ...d.insights.map(x=>({seccion:'insight',detalle:x})),
     ...d.alerts.map(x=>({seccion:'alerta',detalle:x}))
   ];
-  const csv=toCsv(rows);
-  const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='dashboard_'+new Date().toISOString().slice(0,10)+(type==='xls'?'.xls':'.csv'); a.click(); URL.revokeObjectURL(a.href);
+  const stamp='dashboard_'+new Date().toISOString().slice(0,10);
+  let blob, filename;
+  if(type==='xls'){
+    const headers=Object.keys(rows[0]||{});
+    const th=headers.map(h=>'<th style="background:#f3f4f6;font-weight:700;border:1px solid #d1d5db;padding:6px;text-align:left">'+escHtml(h)+'</th>').join('');
+    const tr=rows.map(r=>'<tr>'+headers.map(h=>'<td style="border:1px solid #d1d5db;padding:6px;text-align:left;vertical-align:top">'+escHtml(r[h])+'</td>').join('')+'</tr>').join('');
+    const html='<!doctype html><html><head><meta charset="utf-8"></head><body><table>'+('<thead><tr>'+th+'</tr></thead><tbody>'+tr+'</tbody>')+'</table></body></html>';
+    blob = new Blob(['\ufeff', html],{type:'application/vnd.ms-excel;charset=utf-8;'});
+    filename=stamp+'.xls';
+  } else {
+    const csv=toCsv(rows);
+    blob = new Blob(['\ufeff', csv],{type:'text/csv;charset=utf-8;'});
+    filename=stamp+'.csv';
+  }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; a.click(); URL.revokeObjectURL(a.href);
+  notify(type==='xls'?'Excel exportado correctamente.':'CSV exportado correctamente.','success');
 }
 
 // ═══════════════════════════════════════════
