@@ -1204,6 +1204,7 @@ openModal('modal-accion'); return;
 if(tipo==='incompleto' || tipo==='en_escala_incompleto' || tipo==='aceptar_incompleto'){
 const label = tipo==='en_escala_incompleto' ? 'Llegó incompleto a escala' : (tipo==='aceptar_incompleto'?'Aceptado incompleto':'Llegó incompleto');
 window._sustSelections = {}; // reset selecciones de sustitutos
+await loadProductsCache();
 showSpinner();
 const {data:o}=await db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single();
 hideSpinner();
@@ -1224,7 +1225,7 @@ const itemRowHtml = (p, i) =>
   '<span style="font-size:11px;color:var(--text2)">ped: '+(p.cantidad||1)+'</span>' +
   '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;margin-left:4px;padding:2px 6px;border:1px solid rgba(245,158,11,0.35);border-radius:4px;background:rgba(245,158,11,0.08)" title="Llegó un producto diferente en su lugar">' +
   '<input type="checkbox" class="incomp-sust-cb" data-idx="'+i+'" onchange="onSustitutoCbChange('+i+',this.checked)" style="width:13px;height:13px;accent-color:#f59e0b;cursor:pointer">' +
-  '<span style="font-size:10px;color:#f59e0b;white-space:nowrap">🔄 sust.</span>' +
+  '<span style="font-size:10px;color:#f59e0b;white-space:nowrap">¿Llegó un producto incorrecto?</span>' +
   '</label>' +
   '</div>' +
   '</div>' +
@@ -1256,6 +1257,8 @@ if (esGrande) {
 
 const esLlegada = tipo==='incompleto' || tipo==='en_escala_incompleto';
 el('modal-accion-title').textContent='⚠️ '+label;
+const modalAccionEl = document.querySelector('#modal-accion .modal');
+if(modalAccionEl) modalAccionEl.style.maxWidth = esLlegada ? '920px' : '480px';
 el('modal-accion-body').innerHTML=
   '<div class="warning-box" style="margin-bottom:10px">'+(esLlegada ? 'Seleccioná qué ítems llegaron y ajustá las cantidades recibidas.' : 'Seleccioná qué ítems van y ajustá las cantidades si es necesario.')+'</div>' +
   '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">'+(esLlegada ? '✅ Chequeado = llegó&nbsp;&nbsp;·&nbsp;&nbsp;❌ Desmarcado = no llegó. Podés ajustar la cantidad recibida.' : '✅ Chequeado = se envía&nbsp;&nbsp;·&nbsp;&nbsp;❌ Desmarcado = no se envía. Podés ajustar la cantidad (más o menos de lo pedido).')+'</div>' +
@@ -1479,22 +1482,31 @@ checks.forEach(ch=>{
   const cantOriginal=it.cantidad||1;
   const cantAceptada=qtyMap[idx]!==undefined ? qtyMap[idx] : (ch.checked?cantOriginal:0);
   const sustituto=sustMap[idx]||null;
+
+  if(sustituto){
+    const cantSust=Math.max(1, parseInt(sustituto.cantidad)||1);
+    const diffCant=cantSust!==cantOriginal?' (ped:'+cantOriginal+')':'';
+    recibidos.push('INCORRECTO: '+(it.nombre||'')+' x'+cantOriginal+' → '+sustituto.nombre+' x'+cantSust+diffCant);
+    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:cantSust,sustituto:sustituto||null});
+    return;
+  }
+
   if(ch.checked && cantAceptada>0){
     const diff=cantAceptada!==cantOriginal?' (ped:'+cantOriginal+')':'';
-    recibidos.push((it.nombre||'')+' x'+cantAceptada+diff+(sustituto?' [sust: '+sustituto.nombre+' x'+sustituto.cantidad+']':''));
-    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:cantAceptada,sustituto:sustituto||null});
+    recibidos.push((it.nombre||'')+' x'+cantAceptada+diff);
+    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:cantAceptada,sustituto:null});
   } else {
-    faltantesItems.push((it.nombre||'')+' x'+cantOriginal+(sustituto?' → sust: '+sustituto.nombre:''));
-    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:0,sustituto:sustituto||null});
+    faltantesItems.push((it.nombre||'')+' x'+cantOriginal);
+    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:0,sustituto:null});
   }
 });
 // NO se toca pedido_productos.cantidad — queda como la cantidad originalmente enviada
 
-const hayDiferencia=recibidosData.some(r=>r.recibido!==r.enviado);
+const hayDiferencia=recibidosData.some(r=>r.recibido!==r.enviado || !!r.sustituto);
 if(!hayDiferencia){
-  return notify('Para marcar como incompleto, al menos 1 ítem debe tener una cantidad diferente a la pedida','error');
+  return notify('Para marcar como incompleto, al menos 1 ítem debe tener una cantidad diferente o producto incorrecto','error');
 }
-if(!recibidos.length) return notify('Marcá al menos 1 ítem que sí se recibe','error');
+if(!recibidos.length) return notify('Marcá al menos 1 ítem que sí se recibe o registrá un producto incorrecto','error');
 
 const obs=(el('faltantes-det')&&el('faltantes-det').value.trim())||'';
 const recibidosJson=JSON.stringify(recibidosData);
