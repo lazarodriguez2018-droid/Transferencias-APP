@@ -1432,9 +1432,10 @@ const itemRowHtml = (p, i) =>
 const itemsHtml = items.map((p,i)=>itemRowHtml(p,i)).join('');
 
 el('modal-accion-title').textContent='⚠️ '+label;
-el('modal-accion-body').innerHTML=
+  el('modal-accion-body').innerHTML=
   '<div class="warning-box" style="margin-bottom:10px">Usá la pestaña de productos para confirmar llegada, cantidades, sustituciones y extras.</div>' +
   '<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="btn btn-ghost btn-sm" type="button" onclick="abrirPestanaCompletaIncompleto()">📋 Abrir pestaña completa de productos</button></div>' +
+  '<div id="incomp-mini-summary" style="margin-bottom:8px;font-size:12px;color:var(--text2);padding:8px;border:1px solid var(--border);border-radius:8px;background:rgba(var(--bg2-rgb,40,40,60),0.35)">Resumen: sin cambios todavía.</div>' +
   '<div style="font-size:12px;color:var(--text2);padding:8px;border:1px dashed var(--border);border-radius:8px">No se muestran líneas aquí. Gestioná todo desde la pestaña completa.</div>' +
   '<div id="incomp-items-wrap" style="display:none">'+itemsHtml+'</div>' +
   '<div id="incomp-extras-wrap" style="display:none;margin-top:10px;padding:8px;border:1px dashed var(--border);border-radius:8px"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div style="font-size:12px;color:var(--text2)">Productos fuera del pedido</div><button class="btn btn-ghost btn-sm" type="button" onclick="agregarExtraIncompleto()">+ Agregar producto</button></div><div id="incomp-extras" style="margin-top:8px"></div></div>' +
@@ -1463,6 +1464,7 @@ function bindIncompletoInputs(){
       if(!cb) return;
       const v=parseInt(input.value)||0;
       cb.checked=v>0;
+      refreshIncompletoMiniSummary();
     });
   });
   document.querySelectorAll('.incomp-item').forEach(cb=>{
@@ -1472,6 +1474,7 @@ function bindIncompletoInputs(){
       if(!qty) return;
       if(!cb.checked) qty.value=0;
       else if((parseInt(qty.value)||0)===0) qty.value=qty.getAttribute('data-original')||1;
+      refreshIncompletoMiniSummary();
     });
   });
   document.querySelectorAll('.incomp-subst-toggle').forEach(t=>{
@@ -1480,15 +1483,45 @@ function bindIncompletoInputs(){
       const sub=document.querySelector('.incomp-subst[data-idx="'+idx+'"]');
       if(sub) sub.style.display=t.checked?'block':'none';
       if(t.checked) abrirSelectorSustitucion(idx);
+      refreshIncompletoMiniSummary();
     });
+  });
+  document.querySelectorAll('.incomp-subst-qty').forEach(input=>{
+    input.addEventListener('input', refreshIncompletoMiniSummary);
   });
   document.querySelectorAll('.incomp-subst-product').forEach(sel=>{
     sel.addEventListener('change', ()=>{
       const idx=sel.getAttribute('data-idx');
       const manual=document.querySelector('.incomp-subst-manual[data-idx="'+idx+'"]');
       if(manual) manual.style.display=sel.value==='__manual__'?'grid':'none';
+      refreshIncompletoMiniSummary();
     });
   });
+  document.querySelectorAll('.incomp-subst-code,.incomp-subst-name').forEach(input=>{
+    input.addEventListener('input', refreshIncompletoMiniSummary);
+  });
+  refreshIncompletoMiniSummary();
+}
+
+function refreshIncompletoMiniSummary(){
+  const box=el('incomp-mini-summary');
+  if(!box) return;
+  const rows=Array.from(document.querySelectorAll('.incomp-row'));
+  const total=rows.length;
+  let llegaron=0, noLlegaron=0, sustituidos=0, conDiferencia=0;
+  rows.forEach(row=>{
+    const idx=row.getAttribute('data-idx');
+    const cb=row.querySelector('.incomp-item');
+    const qty=row.querySelector('.incomp-qty');
+    const qOriginal=parseInt((qty&&qty.getAttribute('data-original'))||'0',10)||0;
+    const qRecibida=parseInt((qty&&qty.value)||'0',10)||0;
+    const esSust=!!(row.querySelector('.incomp-subst-toggle')&&row.querySelector('.incomp-subst-toggle').checked);
+    if(cb&&cb.checked&&qRecibida>0) llegaron++; else noLlegaron++;
+    if(esSust) sustituidos++;
+    if(qRecibida!==qOriginal || esSust) conDiferencia++;
+  });
+  const extras=document.querySelectorAll('.incomp-extra-row').length;
+  box.innerHTML='Resumen: <strong>'+total+'</strong> solicitados · <strong>'+llegaron+'</strong> llegan · <strong>'+noLlegaron+'</strong> no llegan · <strong>'+conDiferencia+'</strong> con diferencia · <strong>'+sustituidos+'</strong> sustituciones · <strong>'+extras+'</strong> extras';
 }
 
 function toggleIncompExtra(){
@@ -1563,6 +1596,49 @@ function abrirSelectorSustitucion(idx){
   setTimeout(()=>search.focus(),50);
 }
 
+function abrirSelectorExtraIncompleto(rowId){
+  const panelId='incomp-extra-panel';
+  let panel=el(panelId);
+  if(!panel){
+    panel=document.createElement('div');
+    panel.id=panelId;
+    panel.className='modal-overlay';
+    panel.style.zIndex='10155';
+    panel.innerHTML=`<div class="modal" style="max-width:640px"><div class="modal-header"><h2>🔎 Seleccionar producto extra</h2><div class="modal-close" onclick="closeModal('incomp-extra-panel')">✕</div></div><div class="modal-body"><input id="incomp-extra-search" class="form-input" placeholder="Buscar por nombre/código. Ej: biofresh adulto"><div id="incomp-extra-results" style="margin-top:10px;max-height:46vh;overflow:auto"></div></div><div class="modal-footer"><button class="btn btn-ghost btn-sm" onclick="closeModal('incomp-extra-panel')">Cerrar</button></div></div>`;
+    document.body.appendChild(panel);
+  }
+  panel.setAttribute('data-target-row', String(rowId));
+  openModal(panelId);
+  const search=el('incomp-extra-search');
+  const results=el('incomp-extra-results');
+  const render=(val)=>{
+    const list=incompSmartFindProducts(val);
+    results.innerHTML=list.map(p=>{
+      const nombre=escHtml(p.nombre||'');
+      const codigo=escHtml(p.codigo||'');
+      const marca=escHtml(p.marca||'');
+      return '<button class="btn btn-ghost btn-sm" style="display:block;width:100%;text-align:left;margin-bottom:6px;padding:8px 10px" data-code="'+codigo+'" data-name="'+nombre+'"><div style="font-weight:600">'+nombre+'</div><div style="font-size:12px;color:var(--text2)">'+codigo+(marca?' · '+marca:'')+'</div></button>';
+    }).join('') || '<div style="font-size:12px;color:var(--text2)">Sin resultados. Probá con menos palabras.</div>';
+    results.querySelectorAll('button[data-code]').forEach(btn=>{
+      btn.onclick=()=>{
+        const target=panel.getAttribute('data-target-row');
+        const row=document.querySelector('.incomp-extra-row[data-row-id="'+target+'"]');
+        if(!row) return closeModal(panelId);
+        const sel=row.querySelector('.incomp-extra-select');
+        const name=row.querySelector('.incomp-extra-name');
+        if(sel) sel.value=btn.getAttribute('data-code')||'';
+        if(name) name.value=btn.getAttribute('data-name')||'';
+        refreshIncompletoMiniSummary();
+        closeModal(panelId);
+      };
+    });
+  };
+  search.value='';
+  render('');
+  search.oninput=()=>render(search.value);
+  setTimeout(()=>search.focus(),50);
+}
+
 
 function abrirPestanaCompletaIncompleto(){
   const wrap=el('incomp-items-wrap');
@@ -1590,17 +1666,26 @@ function agregarExtraIncompleto(){
   const c=el('incomp-extras'); if(!c) return;
   const idx=Date.now();
   const div=document.createElement('div');
+  div.setAttribute('data-row-id', String(idx));
   div.className='incomp-extra-row';
-  div.style.cssText='display:grid;grid-template-columns:120px 1fr 90px auto;gap:6px;margin-bottom:6px';
-  div.innerHTML='<select class="form-input incomp-extra-select">'+recepcionProductOptions()+'</select><input class="form-input incomp-extra-name" placeholder="Nombre producto fuera del pedido"><input type="number" min="1" value="1" class="form-input incomp-extra-qty"><button class="btn btn-ghost btn-sm" type="button">Quitar</button>';
+  div.style.cssText='display:grid;grid-template-columns:120px 1fr auto 90px auto;gap:6px;margin-bottom:6px';
+  div.innerHTML='<select class="form-input incomp-extra-select">'+recepcionProductOptions()+'</select><input class="form-input incomp-extra-name" placeholder="Nombre producto fuera del pedido"><button class="btn btn-ghost btn-sm" type="button">Buscar</button><input type="number" min="1" value="1" class="form-input incomp-extra-qty"><button class="btn btn-ghost btn-sm" type="button">Quitar</button>';
   const sel=div.querySelector('.incomp-extra-select');
   const name=div.querySelector('.incomp-extra-name');
+  const btnBuscar=div.querySelectorAll('button')[0];
+  const btnQuitar=div.querySelectorAll('button')[1];
   sel.addEventListener('change',()=>{
     const opt=sel.selectedOptions&&sel.selectedOptions[0];
     if(opt){ name.value=opt.getAttribute('data-name')||name.value; }
+    refreshIncompletoMiniSummary();
   });
-  div.querySelector('button').onclick=()=>div.remove();
+  name.addEventListener('input',()=>refreshIncompletoMiniSummary());
+  btnBuscar.onclick=()=>abrirSelectorExtraIncompleto(idx);
+  btnQuitar.onclick=()=>{ div.remove(); refreshIncompletoMiniSummary(); };
+  div.querySelectorAll('input,select').forEach(inp=>inp.addEventListener('input',refreshIncompletoMiniSummary));
+  div.querySelectorAll('input,select').forEach(inp=>inp.addEventListener('change',refreshIncompletoMiniSummary));
   c.appendChild(div);
+  refreshIncompletoMiniSummary();
 }
 
 function verPedidoCompleto(orderId){
@@ -1715,13 +1800,21 @@ checks.forEach(ch=>{
     qtyRec=parseInt((qSel&&qSel.value)||'0',10)||0;
     if(!codRec || !nomRec){ invalidSubstitution=true; return; }
   }
-  if(ch.checked && cantAceptada>0){
-    const diff=cantAceptada!==cantOriginal?' (ped:'+cantOriginal+')':'';
-    recibidos.push((it.nombre||'')+' x'+cantAceptada+diff);
-    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:cantAceptada});
+  if(ch.checked && qtyRec>0){
+    const diff=qtyRec!==cantOriginal?' (ped:'+cantOriginal+')':'';
+    recibidos.push((esSust?(nomRec||it.nombre):(it.nombre||''))+' x'+qtyRec+diff+(esSust?' (sustitución)':''));
+    recibidosData.push({
+      codigo:esSust?(codRec||''):(it.codigo||''),
+      nombre:esSust?(nomRec||''):(it.nombre||''),
+      enviado:cantOriginal,
+      recibido:qtyRec,
+      sustituido:esSust,
+      codigo_solicitado:it.codigo||'',
+      nombre_solicitado:it.nombre||''
+    });
   } else {
     faltantesItems.push((it.nombre||'')+' x'+cantOriginal);
-    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:0});
+    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:0,sustituido:false,codigo_solicitado:it.codigo||'',nombre_solicitado:it.nombre||''});
   }
   const estadoLinea = esSust ? 'SUSTITUIDO' : (qtyRec===cantOriginal ? 'CORRECTO' : (qtyRec===0 ? 'NO_RECIBIDO' : 'DIFERENCIA_CANTIDAD'));
   lineasRecepcion.push({
@@ -1778,7 +1871,7 @@ Array.from(document.querySelectorAll('.incomp-extra-row')).forEach((row, exIdx)=
 if(invalidSubstitution) return notify('En líneas sustituidas debés seleccionar el producto recibido.','error');
 // NO se toca pedido_productos.cantidad — queda como la cantidad originalmente enviada
 
-const hayDiferencia=recibidosData.some(r=>r.recibido!==r.enviado);
+const hayDiferencia=recibidosData.some(r=>r.recibido!==r.enviado || !!r.sustituido);
 if(!hayDiferencia){
   return notify('Para marcar como incompleto, al menos 1 ítem debe tener una cantidad diferente a la pedida','error');
 }
