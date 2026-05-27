@@ -1427,8 +1427,6 @@ const itemRowHtml = (p, i) =>
   '<div style="font-size:11px;color:var(--text2);margin-bottom:6px">Producto solicitado: <strong>'+escHtml(p.nombre||'')+'</strong> · Cantidad solicitada: '+(p.cantidad||1)+'</div>' +
   '<div style="display:grid;grid-template-columns:1fr auto 110px;gap:6px;margin-bottom:6px"><select class="form-input incomp-subst-product" data-idx="'+i+'">'+recepcionProductOptions()+'</select><button class="btn btn-ghost btn-sm" type="button" onclick="abrirSelectorSustitucion('+i+')">Buscar</button><input type="number" class="form-input incomp-subst-qty" data-idx="'+i+'" min="0" value="'+(p.cantidad||1)+'"></div>' +
   '<div class="incomp-subst-manual" data-idx="'+i+'" style="display:none;grid-template-columns:120px 1fr;gap:6px;margin-bottom:6px"><input class="form-input incomp-subst-code" data-idx="'+i+'" placeholder="Código"><input class="form-input incomp-subst-name" data-idx="'+i+'" placeholder="Nombre producto recibido"></div>'+
-  '<input class="form-input incomp-subst-motivo" data-idx="'+i+'" placeholder="Motivo (opcional)" style="margin-bottom:6px">' +
-  '<input class="form-input incomp-subst-obs" data-idx="'+i+'" placeholder="Observaciones (opcional)">' +
   '</div>' +
   '</div>';
 
@@ -1448,7 +1446,9 @@ el('modal-accion-title').textContent='⚠️ '+label;
 el('modal-accion-body').innerHTML=
   '<div class="warning-box" style="margin-bottom:10px">Confirmá qué productos llegaron, ajustá cantidades y marcá sustituciones si llegó un producto distinto.</div>' +
   '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">✅ Chequeado = llegó&nbsp;&nbsp;·&nbsp;&nbsp;❌ Desmarcado = no llegó. Podés ajustar la cantidad recibida y marcar sustitución.</div>' +
+  '<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="btn btn-ghost btn-sm" type="button" onclick="abrirPestanaCompletaIncompleto()">📋 Abrir pestaña completa de productos</button></div>' +
   '<div id="incomp-items-wrap">'+itemsHtml+'</div>' +
+  '<div style="margin-top:10px;padding:8px;border:1px dashed var(--border);border-radius:8px"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div style="font-size:12px;color:var(--text2)">Productos fuera del pedido (ajuste manual)</div><button class="btn btn-ghost btn-sm" type="button" onclick="agregarExtraIncompleto()">+ Agregar producto</button></div><div id="incomp-extras" style="margin-top:8px"></div></div>' +
   '<div class="form-group" style="margin-top:12px"><label class="form-label">Observación (opcional)</label><textarea class="form-input" id="faltantes-det" rows="2" placeholder="Ej: Faltó 1 unidad de..."></textarea></div>' +
   '<div class="form-group" style="margin-top:10px">' +
   '<label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">' +
@@ -1577,6 +1577,35 @@ function abrirSelectorSustitucion(idx){
   setTimeout(()=>search.focus(),50);
 }
 
+
+function abrirPestanaCompletaIncompleto(){
+  const wrap=el('incomp-items-wrap');
+  if(!wrap) return;
+  const panelId='incomp-full-panel';
+  let panel=el(panelId);
+  if(!panel){
+    panel=document.createElement('div');
+    panel.id=panelId; panel.className='modal-overlay'; panel.style.zIndex='10120';
+    panel.innerHTML=`<div class="modal" style="max-width:920px"><div class="modal-header"><h2>📋 Recepción completa de productos</h2><div class="modal-close" onclick="closeModal('incomp-full-panel')">✕</div></div><div class="modal-body" id="incomp-full-body" style="max-height:70vh;overflow:auto"></div><div class="modal-footer"><button class="btn btn-ghost btn-sm" onclick="closeModal('incomp-full-panel')">Cerrar</button></div></div>`;
+    document.body.appendChild(panel);
+  }
+  const body=el('incomp-full-body');
+  body.innerHTML='';
+  body.appendChild(wrap.cloneNode(true));
+  openModal(panelId);
+}
+
+function agregarExtraIncompleto(){
+  const c=el('incomp-extras'); if(!c) return;
+  const idx=Date.now();
+  const div=document.createElement('div');
+  div.className='incomp-extra-row';
+  div.style.cssText='display:grid;grid-template-columns:120px 1fr 90px auto;gap:6px;margin-bottom:6px';
+  div.innerHTML='<input class="form-input incomp-extra-code" placeholder="Código"><input class="form-input incomp-extra-name" placeholder="Producto fuera del pedido"><input type="number" min="1" value="1" class="form-input incomp-extra-qty"><button class="btn btn-ghost btn-sm" type="button">Quitar</button>';
+  div.querySelector('button').onclick=()=>div.remove();
+  c.appendChild(div);
+}
+
 function verPedidoCompleto(orderId){
   // Load and show full product list from an already-open detail
   db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single().then(({data:o})=>{
@@ -1673,12 +1702,10 @@ checks.forEach(ch=>{
   const estadoUI=(estadoSel&&estadoSel.value)||'DIFERENCIA_CANTIDAD';
   const cantOriginal=it.cantidad||1;
   const cantAceptada=qtyMap[idx]!==undefined ? qtyMap[idx] : (ch.checked?cantOriginal:0);
-  let codRec=it.codigo||'', nomRec=it.nombre||'', qtyRec=cantAceptada, motivoLinea=null, obsLinea=null;
+  let codRec=it.codigo||'', nomRec=it.nombre||'', qtyRec=cantAceptada;
   if(estadoUI==='SUSTITUIDO'){
     const pSel=document.querySelector('.incomp-subst-product[data-idx="'+idx+'"]');
     const qSel=document.querySelector('.incomp-subst-qty[data-idx="'+idx+'"]');
-    const mSel=document.querySelector('.incomp-subst-motivo[data-idx="'+idx+'"]');
-    const oSel=document.querySelector('.incomp-subst-obs[data-idx="'+idx+'"]');
     const opt=pSel&&pSel.selectedOptions?pSel.selectedOptions[0]:null;
     codRec=(pSel&&pSel.value)||'';
     nomRec=(opt&&opt.getAttribute('data-name'))||'';
@@ -1689,8 +1716,6 @@ checks.forEach(ch=>{
       nomRec=(nameManual&&nameManual.value.trim())||'';
     }
     qtyRec=parseInt((qSel&&qSel.value)||'0',10)||0;
-    motivoLinea=(mSel&&mSel.value.trim())||null;
-    obsLinea=(oSel&&oSel.value.trim())||null;
     if(!codRec || !nomRec){ invalidSubstitution=true; return; }
   }
   if(ch.checked && cantAceptada>0){
@@ -1715,13 +1740,44 @@ checks.forEach(ch=>{
     cantidad_recibida:qtyRec,
     diferencia:qtyRec-cantOriginal,
     estado:estadoLinea,
-    motivo:motivoLinea,
-    observaciones:obsLinea,
+    motivo:null,
+    observaciones:null,
     recepcion_usuario_id:currentPerfil.id,
     recepcion_usuario_nombre:responsable,
     recepcion_fecha:new Date().toISOString()
   });
 });
+
+// Extras fuera del pedido
+Array.from(document.querySelectorAll('.incomp-extra-row')).forEach((row, exIdx)=>{
+  const nameEl=row.querySelector('.incomp-extra-name');
+  const codeEl=row.querySelector('.incomp-extra-code');
+  const qtyEl=row.querySelector('.incomp-extra-qty');
+  const nombre=(nameEl&&nameEl.value||'').trim();
+  const codigo=(codeEl&&codeEl.value||'').trim();
+  const qty=parseInt((qtyEl&&qtyEl.value)||'0',10)||0;
+  if(!nombre || qty<=0) return;
+  recibidos.push(nombre+' x'+qty+' (extra)');
+  recibidosData.push({codigo:codigo||'',nombre:nombre,enviado:0,recibido:qty});
+  lineasRecepcion.push({
+    pedido_id:orderId,
+    linea_index:10000+exIdx,
+    producto_solicitado_codigo:'',
+    producto_solicitado_nombre:'[EXTRA FUERA DE PEDIDO]',
+    cantidad_solicitada:0,
+    producto_recibido_codigo:codigo||'',
+    producto_recibido_nombre:nombre,
+    cantidad_recibida:qty,
+    diferencia:qty,
+    estado:'SUSTITUIDO',
+    motivo:'EXTRA_FUERA_PEDIDO',
+    observaciones:null,
+    recepcion_usuario_id:currentPerfil.id,
+    recepcion_usuario_nombre:responsable,
+    recepcion_fecha:new Date().toISOString()
+  });
+});
+
 if(invalidSubstitution) return notify('En líneas sustituidas debés seleccionar el producto recibido.','error');
 // NO se toca pedido_productos.cantidad — queda como la cantidad originalmente enviada
 
