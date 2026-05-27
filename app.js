@@ -1153,6 +1153,8 @@ return '<div class="form-group" style="margin-top:12px"><label class="form-label
 //  ACCIONES
 // ═══════════════════════════════════════════
 async function accion(tipo, orderId){
+const modalAccionElBase = document.querySelector('#modal-accion .modal');
+if(modalAccionElBase) modalAccionElBase.style.maxWidth='480px';
 const labels={aceptar:'Aceptar el pedido',transito:'Marcar en viaje',transito_escala:'Marcar en viaje a escala',listo_escala:'Recibido en escala y listo para enviar a destino',llegado:'Confirmar llegada final',completo:'Marcar como completo'};
 if(tipo==='aceptar'){
 el('modal-accion-title').textContent='✅ Aceptar el pedido';
@@ -1204,6 +1206,7 @@ openModal('modal-accion'); return;
 if(tipo==='incompleto' || tipo==='en_escala_incompleto' || tipo==='aceptar_incompleto'){
 const label = tipo==='en_escala_incompleto' ? 'Llegó incompleto a escala' : (tipo==='aceptar_incompleto'?'Aceptado incompleto':'Llegó incompleto');
 window._sustSelections = {}; // reset selecciones de sustitutos
+await loadProductsCache();
 showSpinner();
 const {data:o}=await db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single();
 hideSpinner();
@@ -1224,7 +1227,7 @@ const itemRowHtml = (p, i) =>
   '<span style="font-size:11px;color:var(--text2)">ped: '+(p.cantidad||1)+'</span>' +
   '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;margin-left:4px;padding:2px 6px;border:1px solid rgba(245,158,11,0.35);border-radius:4px;background:rgba(245,158,11,0.08)" title="Llegó un producto diferente en su lugar">' +
   '<input type="checkbox" class="incomp-sust-cb" data-idx="'+i+'" onchange="onSustitutoCbChange('+i+',this.checked)" style="width:13px;height:13px;accent-color:#f59e0b;cursor:pointer">' +
-  '<span style="font-size:10px;color:#f59e0b;white-space:nowrap">🔄 sust.</span>' +
+  '<span style="font-size:10px;color:#f59e0b;white-space:nowrap">¿Llegó un producto incorrecto?</span>' +
   '</label>' +
   '</div>' +
   '</div>' +
@@ -1256,6 +1259,8 @@ if (esGrande) {
 
 const esLlegada = tipo==='incompleto' || tipo==='en_escala_incompleto';
 el('modal-accion-title').textContent='⚠️ '+label;
+const modalAccionEl = document.querySelector('#modal-accion .modal');
+if(modalAccionEl) modalAccionEl.style.maxWidth = esLlegada ? '920px' : '480px';
 el('modal-accion-body').innerHTML=
   '<div class="warning-box" style="margin-bottom:10px">'+(esLlegada ? 'Seleccioná qué ítems llegaron y ajustá las cantidades recibidas.' : 'Seleccioná qué ítems van y ajustá las cantidades si es necesario.')+'</div>' +
   '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">'+(esLlegada ? '✅ Chequeado = llegó&nbsp;&nbsp;·&nbsp;&nbsp;❌ Desmarcado = no llegó. Podés ajustar la cantidad recibida.' : '✅ Chequeado = se envía&nbsp;&nbsp;·&nbsp;&nbsp;❌ Desmarcado = no se envía. Podés ajustar la cantidad (más o menos de lo pedido).')+'</div>' +
@@ -1471,6 +1476,12 @@ qtyInputs.forEach(inp=>{
 
 // Leer sustitutos desde selecciones del buscador de padrón
 const sustMap=window._sustSelections||{};
+const sustTildadosSinSeleccion = Array.from(document.querySelectorAll('.incomp-sust-cb:checked'))
+  .map(cb=>parseInt(cb.getAttribute('data-idx'),10))
+  .filter(idx=>!sustMap[idx]);
+if(sustTildadosSinSeleccion.length){
+  return notify('Marcaste producto incorrecto pero falta elegir el reemplazo en algunos ítems','error');
+}
 
 const recibidos=[], faltantesItems=[], recibidosData=[];
 checks.forEach(ch=>{
@@ -1479,22 +1490,31 @@ checks.forEach(ch=>{
   const cantOriginal=it.cantidad||1;
   const cantAceptada=qtyMap[idx]!==undefined ? qtyMap[idx] : (ch.checked?cantOriginal:0);
   const sustituto=sustMap[idx]||null;
+
+  if(sustituto){
+    const cantSust=Math.max(1, parseInt(sustituto.cantidad)||1);
+    const diffCant=cantSust!==cantOriginal?' (ped:'+cantOriginal+')':'';
+    recibidos.push('INCORRECTO: '+(it.nombre||'')+' x'+cantOriginal+' → '+sustituto.nombre+' x'+cantSust+diffCant);
+    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:cantSust,sustituto:sustituto||null});
+    return;
+  }
+
   if(ch.checked && cantAceptada>0){
     const diff=cantAceptada!==cantOriginal?' (ped:'+cantOriginal+')':'';
-    recibidos.push((it.nombre||'')+' x'+cantAceptada+diff+(sustituto?' [sust: '+sustituto.nombre+' x'+sustituto.cantidad+']':''));
-    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:cantAceptada,sustituto:sustituto||null});
+    recibidos.push((it.nombre||'')+' x'+cantAceptada+diff);
+    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:cantAceptada,sustituto:null});
   } else {
-    faltantesItems.push((it.nombre||'')+' x'+cantOriginal+(sustituto?' → sust: '+sustituto.nombre:''));
-    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:0,sustituto:sustituto||null});
+    faltantesItems.push((it.nombre||'')+' x'+cantOriginal);
+    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:0,sustituto:null});
   }
 });
 // NO se toca pedido_productos.cantidad — queda como la cantidad originalmente enviada
 
-const hayDiferencia=recibidosData.some(r=>r.recibido!==r.enviado);
+const hayDiferencia=recibidosData.some(r=>r.recibido!==r.enviado || !!r.sustituto);
 if(!hayDiferencia){
-  return notify('Para marcar como incompleto, al menos 1 ítem debe tener una cantidad diferente a la pedida','error');
+  return notify('Para marcar como incompleto, al menos 1 ítem debe tener una cantidad diferente o producto incorrecto','error');
 }
-if(!recibidos.length) return notify('Marcá al menos 1 ítem que sí se recibe','error');
+if(!recibidos.length) return notify('Marcá al menos 1 ítem que sí se recibe o registrá un producto incorrecto','error');
 
 const obs=(el('faltantes-det')&&el('faltantes-det').value.trim())||'';
 const recibidosJson=JSON.stringify(recibidosData);
@@ -2535,47 +2555,110 @@ async function exportarXLSPedido(orderId){
   const fecha=new Date(o.updated_at||o.created_at).toLocaleDateString('es-UY');
   const faltantesRaw=o.faltantes||o.faltantes_escala||'';
 
-  // Usar datos estructurados __xls__ si existen
-  let rows=[];
+  let dataRows=[];
   const xlsMatch=faltantesRaw.match(/\n__xls__:(.*)/s);
   if(xlsMatch){
-    try{
-      const data=JSON.parse(xlsMatch[1].trim());
-      rows=data.map(r=>({
-        'Código':    r.codigo||'',
-        'Nombre':    r.nombre||'',
-        'Enviado':   r.enviado||0,
-        'Recibido':  r.recibido||0,
-        'Diferencia':(r.recibido||0)-(r.enviado||0),
-        'Sustituto': r.sustituto ? (typeof r.sustituto==='object' ? (r.sustituto.nombre||'')+(r.sustituto.cantidad>1?' x'+r.sustituto.cantidad:'') : String(r.sustituto)) : ''
-      }));
-    }catch(e){ rows=[]; }
+    try{ dataRows=JSON.parse(xlsMatch[1].trim())||[]; }catch(_e){ dataRows=[]; }
   }
-  // Fallback: todos enviado=recibido (pedido completo sin diferencias)
-  if(!rows.length){
-    rows=productos.map(p=>({
-      'Código':    p.codigo||'',
-      'Nombre':    p.nombre||'',
-      'Enviado':   p.cantidad||0,
-      'Recibido':  p.cantidad||0,
-      'Diferencia':0
+
+  if(!dataRows.length){
+    dataRows=productos.map(p=>({
+      codigo:p.codigo||'', nombre:p.nombre||'', pedido:p.cantidad||0, enviado:p.cantidad||0, recibido:p.cantidad||0, sustituto:null
+    }));
+  } else {
+    dataRows=dataRows.map(r=>({
+      codigo:r.codigo||'',
+      nombre:r.nombre||'',
+      pedido:r.enviado||0,
+      enviado:r.enviado||0,
+      recibido:r.recibido||0,
+      sustituto:r.sustituto||null
     }));
   }
 
-  const wb=XLSX.utils.book_new();
-  const wsData=[
-    ['TransferApp — Reporte de pedido '+pedidoRef],
-    ['Fecha: '+fecha+'   Origen: '+(o.origen_local||'')+'   Destino: '+(o.destino_local||'')+(o.cliente?'   Cliente: '+o.cliente:'')],
-    [],
-    ['Código','Nombre','Enviado','Recibido','Diferencia','Sustituto recibido'],
-    ...rows.map(r=>[r['Código'],r['Nombre'],r['Enviado'],r['Recibido'],r['Diferencia'],r['Sustituto']||''])
-  ];
+  const rowsPedidos=dataRows.map(r=>({
+    codigo:r.codigo,
+    nombre:r.nombre,
+    pedido:r.pedido,
+    enviado:r.enviado,
+    recibido:r.recibido,
+    diferencia:(r.enviado||0)-(r.recibido||0)
+  }));
+
+  const rowsSust=dataRows.filter(r=>!!r.sustituto).map(r=>{
+    const s=(typeof r.sustituto==='object')?r.sustituto:{codigo:'',nombre:String(r.sustituto||''),cantidad:r.recibido||0};
+    return {
+      codigoOriginal:r.codigo||'',
+      productoPedido:r.nombre||'',
+      codigoSust:s.codigo||'',
+      productoRecibido:s.nombre||'',
+      cantidadRecibida:Math.max(0, parseInt(s.cantidad ?? r.recibido ?? 0,10) || 0)
+    };
+  });
+
+  const wsData=[];
+  wsData.push(['TransferApp — Reporte de pedido '+pedidoRef]);
+  wsData.push(['Fecha: '+fecha+'   Origen: '+(o.origen_local||'')+'   Destino: '+(o.destino_local||'')+(o.cliente?'   Cliente: '+o.cliente:'')]);
+  wsData.push([]);
+
+  wsData.push(['Productos pedidos']);
+  wsData.push(['Código','Nombre','Pedido','Enviado','Recibido','Diferencia']);
+  rowsPedidos.forEach(r=>wsData.push([r.codigo,r.nombre,r.pedido,r.enviado,r.recibido,r.diferencia]));
+
+  wsData.push([]);
+  wsData.push([]);
+
+  wsData.push(['Productos fuera de pedido (Sustituciones)']);
+  wsData.push(['Código Original','Producto Pedido','Código Sustituto','Producto Recibido (Sustituto)','Cantidad Recibida']);
+  if(rowsSust.length){
+    rowsSust.forEach(r=>wsData.push([r.codigoOriginal,r.productoPedido,r.codigoSust,r.productoRecibido,r.cantidadRecibida]));
+  } else {
+    wsData.push(['','','','','']);
+  }
+
   const ws=XLSX.utils.aoa_to_sheet(wsData);
-  ws['!cols']=[{wch:16},{wch:45},{wch:10},{wch:10},{wch:12},{wch:35}];
+
+  const sec1TitleRow=4, sec1HeaderRow=5;
+  const sec1StartRow=6, sec1EndRow=sec1StartRow+rowsPedidos.length-1;
+  const sec2TitleRow=sec1EndRow+3;
+  const sec2HeaderRow=sec2TitleRow+1;
+  const sec2StartRow=sec2HeaderRow+1;
+  const sec2EndRow=Math.max(sec2StartRow, sec2StartRow+rowsSust.length-1);
+
+  function cellRef(c,r){ return XLSX.utils.encode_cell({c,r:r-1}); }
+  function ensureCell(c,r){ const ref=cellRef(c,r); if(!ws[ref]) ws[ref]={t:'s',v:''}; return ws[ref]; }
+  function setBoldRange(cFrom,cTo,row){ for(let c=cFrom;c<=cTo;c++){ const cell=ensureCell(c,row); cell.s=cell.s||{}; cell.s.font=Object.assign({},cell.s.font,{bold:true}); } }
+  function setBorderRange(cFrom,cTo,rFrom,rTo){
+    const border={top:{style:'thin',color:{rgb:'BFBFBF'}},bottom:{style:'thin',color:{rgb:'BFBFBF'}},left:{style:'thin',color:{rgb:'BFBFBF'}},right:{style:'thin',color:{rgb:'BFBFBF'}}};
+    for(let r=rFrom;r<=rTo;r++) for(let c=cFrom;c<=cTo;c++){ const cell=ensureCell(c,r); cell.s=cell.s||{}; cell.s.border=border; }
+  }
+  function setNumFmtCol(col,rFrom,rTo){ for(let r=rFrom;r<=rTo;r++){ const cell=ensureCell(col,r); cell.t='n'; cell.v=Number(cell.v||0); cell.z='0'; } }
+
+  setBoldRange(0,0,1);
+  setBoldRange(0,0,sec1TitleRow);
+  setBoldRange(0,5,sec1HeaderRow);
+  setBoldRange(0,0,sec2TitleRow);
+  setBoldRange(0,4,sec2HeaderRow);
+
+  setBorderRange(0,5,sec1HeaderRow,Math.max(sec1HeaderRow,sec1EndRow));
+  setBorderRange(0,4,sec2HeaderRow,Math.max(sec2HeaderRow,sec2EndRow));
+
+  setNumFmtCol(2,sec1StartRow,Math.max(sec1StartRow,sec1EndRow));
+  setNumFmtCol(3,sec1StartRow,Math.max(sec1StartRow,sec1EndRow));
+  setNumFmtCol(4,sec1StartRow,Math.max(sec1StartRow,sec1EndRow));
+  setNumFmtCol(5,sec1StartRow,Math.max(sec1StartRow,sec1EndRow));
+  setNumFmtCol(4,sec2StartRow,Math.max(sec2StartRow,sec2EndRow));
+
+  const colWidths=[16,45,14,14,14,14];
+  const updateWidth=(idx,val)=>{ const l=String(val??'').length+2; colWidths[idx]=Math.max(colWidths[idx]||10, Math.min(65,l)); };
+  rowsPedidos.forEach(r=>{ updateWidth(0,r.codigo); updateWidth(1,r.nombre); });
+  rowsSust.forEach(r=>{ updateWidth(0,r.codigoOriginal); updateWidth(1,r.productoPedido); updateWidth(2,r.codigoSust); updateWidth(3,r.productoRecibido); });
+  ws['!cols']=colWidths.map(w=>({wch:w}));
+
+  const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'Reporte');
 
   const nombreArchivo='pedido_'+pedidoRef.replace('#','')+'_'+fecha.replace(/\//g,'-')+'.xlsx';
-  // Usar Blob + <a> para forzar descarga en cualquier navegador
   try {
     const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
     const blob = new Blob([wbout], {type:'application/octet-stream'});
@@ -2589,6 +2672,7 @@ async function exportarXLSPedido(orderId){
     notify('Error al generar XLS: '+err.message,'error');
   }
 }
+
 
 async function generarEtiqueta(orderId){
 const {data:o}=await db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single();
