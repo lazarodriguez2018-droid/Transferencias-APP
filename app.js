@@ -768,6 +768,12 @@ async function runDashboardAnalysis(){
   if(hasta) q=q.lte('created_at',hasta+'T23:59:59');
   const {data}=await q;
   const orders=data||[];
+  const orderIds=orders.map(o=>o.id);
+  let recepRows=[];
+  if(orderIds.length){
+    const {data:rr}=await db.from('pedido_recepcion_lineas').select('*').in('pedido_id',orderIds);
+    recepRows=rr||[];
+  }
   const dtDesde=desde?new Date(desde+'T00:00:00'):null;
   const dtHasta=hasta?new Date(hasta+'T23:59:59'):null;
   const spanDays=Math.max(1, Math.round(((dtHasta||new Date())-(dtDesde||new Date()))/86400000)+1);
@@ -813,8 +819,29 @@ async function runDashboardAnalysis(){
   const heavyDays=arr.filter(x=>x.days.size>=8).slice(0,3); heavyDays.forEach(x=>insights.push(x.producto+' mantiene demanda constante en '+x.days.size+' días diferentes.'));
   const growth=[...arr].filter(x=>x.trend>0).sort((a,b)=>b.trend-a.trend).slice(0,10);
   const drop=[...arr].filter(x=>x.trend<0).sort((a,b)=>a.trend-b.trend).slice(0,10);
-  window.__dash_export={ranking:arr,faltantes:arr.filter(x=>x.faltVeces>0),incompletos:incompleteRows,insights,alerts:alerts.map(a=>a.txt),crecieron:growth,disminuyeron:drop};
-  content.innerHTML=buildDashboardHtml({local,totalOrders,totalUnits,distinct:arr.length,top,recurrent,complete,incomplete,alerts,arr,insights,incompleteRows,growth,drop});
+  const totalLineas=recepRows.length;
+  const nCorrectas=recepRows.filter(x=>x.estado==='CORRECTO').length;
+  const nDif=recepRows.filter(x=>x.estado==='DIFERENCIA_CANTIDAD').length;
+  const nSust=recepRows.filter(x=>x.estado==='SUSTITUIDO').length;
+  const nNoRec=recepRows.filter(x=>x.estado==='NO_RECIBIDO').length;
+  const nIncid=nDif+nSust+nNoRec;
+  const byOrigen={}, byDestino={}, sustProd={}, sustPairs={}, difProd={};
+  const orderMap={}; orders.forEach(o=>orderMap[o.id]=o);
+  recepRows.forEach(r=>{
+    const o=orderMap[r.pedido_id]||{};
+    const ori=o.origen_local||'—', dst=o.destino_local||'—';
+    if(!byOrigen[ori]) byOrigen[ori]={local:ori,total:0,dif:0,sust:0,inc:0}; byOrigen[ori].total++; if(r.estado==='DIFERENCIA_CANTIDAD') byOrigen[ori].dif++; if(r.estado==='SUSTITUIDO') byOrigen[ori].sust++; if(r.estado!=='CORRECTO') byOrigen[ori].inc++;
+    if(!byDestino[dst]) byDestino[dst]={local:dst,total:0,inc:0}; byDestino[dst].total++; if(r.estado!=='CORRECTO') byDestino[dst].inc++;
+    if(r.estado==='SUSTITUIDO'){ const k=r.producto_solicitado_nombre||r.producto_solicitado_codigo||'—'; sustProd[k]=(sustProd[k]||0)+1; const k2=(r.producto_solicitado_nombre||'—')+' → '+(r.producto_recibido_nombre||'—'); sustPairs[k2]=(sustPairs[k2]||0)+1; }
+    if(r.estado==='DIFERENCIA_CANTIDAD' || r.estado==='NO_RECIBIDO'){ const kd=r.producto_solicitado_nombre||'—'; difProd[kd]=(difProd[kd]||0)+1; }
+  });
+  const origenRows=Object.values(byOrigen).map(x=>Object.assign(x,{pct:x.total?((x.inc*100)/x.total):0})).sort((a,b)=>b.pct-a.pct);
+  const destinoRows=Object.values(byDestino).map(x=>Object.assign(x,{pct:x.total?((x.inc*100)/x.total):0})).sort((a,b)=>b.pct-a.pct);
+  const sustProdRows=Object.entries(sustProd).map(([producto,veces])=>({producto,veces})).sort((a,b)=>b.veces-a.veces);
+  const sustPairRows=Object.entries(sustPairs).map(([pair,veces])=>({pair,veces})).sort((a,b)=>b.veces-a.veces);
+  const difProdRows=Object.entries(difProd).map(([producto,veces])=>({producto,veces})).sort((a,b)=>b.veces-a.veces);
+  window.__dash_export={ranking:arr,faltantes:arr.filter(x=>x.faltVeces>0),incompletos:incompleteRows,insights,alerts:alerts.map(a=>a.txt),crecieron:growth,disminuyeron:drop,calidad:{totalLineas,nCorrectas,nDif,nSust,nNoRec,nIncid},origenRows,destinoRows,sustProdRows,sustPairRows,difProdRows};
+  content.innerHTML=buildDashboardHtml({local,totalOrders,totalUnits,distinct:arr.length,top,recurrent,complete,incomplete,alerts,arr,insights,incompleteRows,growth,drop,calidad:{totalLineas,nCorrectas,nDif,nSust,nNoRec,nIncid},origenRows,destinoRows,sustProdRows,sustPairRows,difProdRows});
 }
 
 function buildDashboardHtml(m){
@@ -829,8 +856,28 @@ function buildDashboardHtml(m){
     '<div class="card dashboard-section"><div class="card-header"><h3>Insights automáticos</h3></div><div class="card-body insights-list">'+m.insights.map(t=>'<div class="insight-item">• '+escHtml(t)+'</div>').join('')+'</div></div>'+
     '<div class="card dashboard-section"><div class="card-header"><h3>Análisis de faltantes</h3></div><div class="card-body">'+renderFaltantesTable(m.arr,m.totalOrders)+'</div></div>'+
     '<div class="card dashboard-section"><div class="card-header"><h3>Recepciones incompletas</h3></div><div class="card-body">'+renderIncompletosTable(m.incompleteRows)+'</div></div>'+
-    '<div class="card dashboard-section"><div class="card-header"><h3>Análisis temporal</h3></div><div class="card-body"><h4>Productos que más crecieron</h4>'+renderTrendTable(m.growth,true)+'<h4 style="margin-top:12px">Productos que más disminuyeron</h4>'+renderTrendTable(m.drop,false)+'</div></div>';
+    '<div class="card dashboard-section"><div class="card-header"><h3>Análisis temporal</h3></div><div class="card-body"><h4>Productos que más crecieron</h4>'+renderTrendTable(m.growth,true)+'<h4 style="margin-top:12px">Productos que más disminuyeron</h4>'+renderTrendTable(m.drop,false)+'</div></div>'+
+    renderCalidadHtml(m);
 }
+function renderCalidadHtml(m){
+  const c=m.calidad||{totalLineas:0,nCorrectas:0,nDif:0,nSust:0,nIncid:0};
+  const pct=(n)=>c.totalLineas?((n*100)/c.totalLineas).toFixed(1):'0.0';
+  return '<div class="card dashboard-section"><div class="card-header"><h3>Calidad Operativa</h3></div><div class="card-body">'+
+  '<div class="stats-grid"><div class="stat-card"><div class="stat-label">Tasa recepción correcta</div><div class="stat-value">'+pct(c.nCorrectas)+'%</div></div>'+
+  '<div class="stat-card"><div class="stat-label">Tasa diferencias</div><div class="stat-value">'+pct(c.nDif)+'%</div></div>'+
+  '<div class="stat-card"><div class="stat-label">Tasa sustituciones</div><div class="stat-value">'+pct(c.nSust)+'%</div></div>'+
+  '<div class="stat-card"><div class="stat-label">Tasa incidencias</div><div class="stat-value">'+pct(c.nIncid)+'%</div></div></div>'+
+  '<h4>Locales con más errores de envío</h4>'+renderOrigenIncTable(m.origenRows||[])+
+  '<h4 style="margin-top:12px">Locales con más incidencias recibidas</h4>'+renderDestinoIncTable(m.destinoRows||[])+
+  '<h4 style="margin-top:12px">Productos más sustituidos</h4>'+renderSimpleProdTable(m.sustProdRows||[],'Cantidad de sustituciones')+
+  '<h4 style="margin-top:12px">Sustituciones más frecuentes</h4>'+renderPairTable(m.sustPairRows||[])+
+  '<h4 style="margin-top:12px">Productos con más diferencias</h4>'+renderSimpleProdTable(m.difProdRows||[],'Diferencias registradas')+
+  '</div></div>';
+}
+function renderOrigenIncTable(rows){ if(!rows.length) return '<div class="empty-state"><p>Sin datos.</p></div>'; return '<div class="table-wrap"><table class="dash-table"><thead><tr><th>Local</th><th>Líneas Enviadas</th><th>Diferencias</th><th>Sustituciones</th><th>% Incidencias</th></tr></thead><tbody>'+rows.slice(0,20).map(r=>'<tr><td>'+escHtml(r.local)+'</td><td>'+r.total+'</td><td>'+r.dif+'</td><td>'+r.sust+'</td><td>'+r.pct.toFixed(1)+'%</td></tr>').join('')+'</tbody></table></div>'; }
+function renderDestinoIncTable(rows){ if(!rows.length) return '<div class="empty-state"><p>Sin datos.</p></div>'; return '<div class="table-wrap"><table class="dash-table"><thead><tr><th>Local</th><th>Líneas Recibidas</th><th>Incidencias</th><th>% Incidencias</th></tr></thead><tbody>'+rows.slice(0,20).map(r=>'<tr><td>'+escHtml(r.local)+'</td><td>'+r.total+'</td><td>'+r.inc+'</td><td>'+r.pct.toFixed(1)+'%</td></tr>').join('')+'</tbody></table></div>'; }
+function renderSimpleProdTable(rows,label){ if(!rows.length) return '<div class="empty-state"><p>Sin datos.</p></div>'; return '<div class="table-wrap"><table class="dash-table"><thead><tr><th>Producto</th><th>'+label+'</th></tr></thead><tbody>'+rows.slice(0,20).map(r=>'<tr><td>'+escHtml(r.producto)+'</td><td>'+r.veces+'</td></tr>').join('')+'</tbody></table></div>'; }
+function renderPairTable(rows){ if(!rows.length) return '<div class="empty-state"><p>Sin datos.</p></div>'; return '<div class="table-wrap"><table class="dash-table"><thead><tr><th>Producto Solicitado → Recibido</th><th>Veces</th></tr></thead><tbody>'+rows.slice(0,20).map(r=>'<tr><td>'+escHtml(r.pair)+'</td><td>'+r.veces+'</td></tr>').join('')+'</tbody></table></div>'; }
 function renderRankingTable(rows,totalOrders){return '<div class="table-wrap"><table class="dash-table"><thead><tr><th>Producto</th><th>Cantidad Total</th><th>Cant. Pedidos</th><th>% Pedidos</th><th>Promedio</th><th>Días Distintos</th><th>Última Solicitud</th><th>Tendencia</th><th>Estado</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+escHtml(r.producto)+'</td><td>'+r.total+'</td><td>'+r.orders+'</td><td>'+r.pct.toFixed(1)+'%</td><td>'+r.avg.toFixed(1)+'</td><td>'+r.days.size+'</td><td>'+fmtDate(r.last)+'</td><td>'+r.trendTxt+'</td><td><span class="state-pill">'+r.state+'</span></td></tr>').join('')+'</tbody></table></div>';}
 function renderFaltantesTable(rows,totalOrders){const f=rows.filter(x=>x.faltVeces>0).sort((a,b)=>b.faltQty-a.faltQty); if(!f.length) return '<div class="empty-state"><p>Sin faltantes registrados.</p></div>'; return '<div class="table-wrap"><table class="dash-table"><thead><tr><th>Producto</th><th>Veces Incompleto</th><th>Cantidad Faltante</th><th>% Incidencia</th></tr></thead><tbody>'+f.map(r=>'<tr><td>'+escHtml(r.producto)+'</td><td>'+r.faltVeces+'</td><td>'+r.faltQty+'</td><td>'+((r.faltVeces*100)/Math.max(totalOrders,1)).toFixed(1)+'%</td></tr>').join('')+'</tbody></table></div>';}
 function renderIncompletosTable(rows){if(!rows.length) return '<div class="empty-state"><p>No hay recepciones incompletas.</p></div>'; return '<div class="table-wrap"><table class="dash-table"><thead><tr><th>Pedido</th><th>Fecha</th><th>Producto</th><th>Solicitado</th><th>Recibido</th><th>Diferencia</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+r.pedido+'</td><td>'+r.fecha+'</td><td>'+escHtml(r.producto)+'</td><td>'+r.sol+'</td><td>'+r.rec+'</td><td>-'+r.dif+'</td></tr>').join('')+'</tbody></table></div>';}
@@ -1514,7 +1561,7 @@ qtyInputs.forEach(inp=>{
   qtyMap[idx]=v;
 });
 
-const recibidos=[], faltantesItems=[], recibidosData=[];
+const recibidos=[], faltantesItems=[], recibidosData=[], lineasRecepcion=[];
 checks.forEach(ch=>{
   const idx=parseInt(ch.getAttribute('data-idx'),10);
   const it=items[idx]; if(!it) return;
@@ -1528,6 +1575,24 @@ checks.forEach(ch=>{
     faltantesItems.push((it.nombre||'')+' x'+cantOriginal);
     recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:0});
   }
+  const estadoLinea = (cantAceptada===cantOriginal) ? 'CORRECTO' : (cantAceptada===0 ? 'NO_RECIBIDO' : 'DIFERENCIA_CANTIDAD');
+  lineasRecepcion.push({
+    pedido_id:orderId,
+    linea_index:idx,
+    producto_solicitado_codigo:it.codigo||'',
+    producto_solicitado_nombre:it.nombre||'',
+    cantidad_solicitada:cantOriginal,
+    producto_recibido_codigo:it.codigo||'',
+    producto_recibido_nombre:it.nombre||'',
+    cantidad_recibida:cantAceptada,
+    diferencia:cantAceptada-cantOriginal,
+    estado:estadoLinea,
+    motivo:null,
+    observaciones:null,
+    recepcion_usuario_id:currentPerfil.id,
+    recepcion_usuario_nombre:responsable,
+    recepcion_fecha:new Date().toISOString()
+  });
 });
 // NO se toca pedido_productos.cantidad — queda como la cantidad originalmente enviada
 
@@ -1625,6 +1690,11 @@ if(tipo==='aceptar'){
 
 const {error}=await db.from('pedidos').update(updates).eq('id',orderId);
 if(error) return notify('Error al actualizar: '+error.message,'error');
+if((tipo==='incompleto' || tipo==='en_escala_incompleto' || tipo==='aceptar_incompleto') && lineasRecepcion.length){
+  await db.from('pedido_recepcion_lineas').delete().eq('pedido_id',orderId);
+  const {error:errRec}=await db.from('pedido_recepcion_lineas').insert(lineasRecepcion);
+  if(errRec) notify('Aviso: no se guardó el detalle estructurado de recepción ('+errRec.message+').','info');
+}
 
 showSpinner();
 try{
@@ -2568,33 +2638,53 @@ async function exportarXLSPedido(orderId){
   if(!o){ notify('No se pudo cargar el pedido','error'); return; }
 
   const productos=o.pedido_productos||[];
+  const {data:lineas}=await db.from('pedido_recepcion_lineas').select('*').eq('pedido_id',orderId).order('linea_index',{ascending:true});
   const pedidoRef='#'+o.id.slice(-8,-2).toUpperCase();
   const fecha=new Date(o.updated_at||o.created_at).toLocaleDateString('es-UY');
   const faltantesRaw=o.faltantes||o.faltantes_escala||'';
 
-  // Usar datos estructurados __xls__ si existen
+  // Fuente primaria: tabla estructurada de recepción por línea
   let rows=[];
+  if((lineas||[]).length){
+    rows=(lineas||[]).map(r=>({
+      'Código Solicitado':r.producto_solicitado_codigo||'',
+      'Producto Solicitado':r.producto_solicitado_nombre||'',
+      'Cantidad Solicitada':Number(r.cantidad_solicitada||0),
+      'Código Recibido':r.producto_recibido_codigo||'',
+      'Producto Recibido':r.producto_recibido_nombre||'',
+      'Cantidad Recibida':Number(r.cantidad_recibida||0),
+      'Diferencia':Number(r.diferencia||0),
+      'Estado':r.estado||''
+    }));
+  }
+  // Fallback legacy __xls__
   const xlsMatch=faltantesRaw.match(/\n__xls__:(.*)/s);
-  if(xlsMatch){
+  if(!rows.length && xlsMatch){
     try{
       const data=JSON.parse(xlsMatch[1].trim());
       rows=data.map(r=>({
-        'Código':    r.codigo||'',
-        'Nombre':    r.nombre||'',
-        'Enviado':   r.enviado||0,
-        'Recibido':  r.recibido||0,
-        'Diferencia':(r.recibido||0)-(r.enviado||0)
+        'Código Solicitado':r.codigo||'',
+        'Producto Solicitado':r.nombre||'',
+        'Cantidad Solicitada':r.enviado||0,
+        'Código Recibido':r.codigo||'',
+        'Producto Recibido':r.nombre||'',
+        'Cantidad Recibida':r.recibido||0,
+        'Diferencia':(r.recibido||0)-(r.enviado||0),
+        'Estado':((r.recibido||0)===(r.enviado||0)?'CORRECTO':((r.recibido||0)===0?'NO_RECIBIDO':'DIFERENCIA_CANTIDAD'))
       }));
     }catch(e){ rows=[]; }
   }
   // Fallback: todos enviado=recibido (pedido completo sin diferencias)
   if(!rows.length){
     rows=productos.map(p=>({
-      'Código':    p.codigo||'',
-      'Nombre':    p.nombre||'',
-      'Enviado':   p.cantidad||0,
-      'Recibido':  p.cantidad||0,
-      'Diferencia':0
+      'Código Solicitado':p.codigo||'',
+      'Producto Solicitado':p.nombre||'',
+      'Cantidad Solicitada':p.cantidad||0,
+      'Código Recibido':p.codigo||'',
+      'Producto Recibido':p.nombre||'',
+      'Cantidad Recibida':p.cantidad||0,
+      'Diferencia':0,
+      'Estado':'CORRECTO'
     }));
   }
 
@@ -2603,11 +2693,11 @@ async function exportarXLSPedido(orderId){
     ['TransferApp — Reporte de pedido '+pedidoRef],
     ['Fecha: '+fecha+'   Origen: '+(o.origen_local||'')+'   Destino: '+(o.destino_local||'')+(o.cliente?'   Cliente: '+o.cliente:'')],
     [],
-    ['Código','Nombre','Enviado','Recibido','Diferencia'],
-    ...rows.map(r=>[r['Código'],r['Nombre'],r['Enviado'],r['Recibido'],r['Diferencia']])
+    ['Código Solicitado','Producto Solicitado','Cantidad Solicitada','Código Recibido','Producto Recibido','Cantidad Recibida','Diferencia','Estado'],
+    ...rows.map(r=>[r['Código Solicitado'],r['Producto Solicitado'],r['Cantidad Solicitada'],r['Código Recibido'],r['Producto Recibido'],r['Cantidad Recibida'],r['Diferencia'],r['Estado']])
   ];
   const ws=XLSX.utils.aoa_to_sheet(wsData);
-  ws['!cols']=[{wch:16},{wch:45},{wch:10},{wch:10},{wch:12}];
+  ws['!cols']=[{wch:18},{wch:35},{wch:12},{wch:18},{wch:35},{wch:12},{wch:12},{wch:20}];
   XLSX.utils.book_append_sheet(wb,ws,'Reporte');
 
   const nombreArchivo='pedido_'+pedidoRef.replace('#','')+'_'+fecha.replace(/\//g,'-')+'.xlsx';
