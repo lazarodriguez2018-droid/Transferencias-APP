@@ -1331,6 +1331,13 @@ function renderResponsableField(){
 const nom=((currentPerfil?.nombre||'')+' '+(currentPerfil?.apellido||'')).trim();
 return '<div class="form-group" style="margin-top:12px"><label class="form-label">👤 Responsable (obligatorio)</label><input class="form-input" id="accion-responsable" type="text" placeholder="Tu nombre" value="'+escHtml(nom)+'"></div>';
 }
+function recepcionProductOptions(selectedCode=''){
+  return '<option value="">Seleccionar producto...</option><option value="__manual__">✍️ Cargar producto manualmente</option>'+(productsCache||[]).map(p=>{
+    const code=p.codigo||'';
+    const name=p.nombre||'';
+    return '<option value="'+escHtml(code)+'" data-name="'+escHtml(name)+'"'+(selectedCode===code?' selected':'')+'>'+escHtml(code+' · '+name)+'</option>';
+  }).join('');
+}
 
 // ═══════════════════════════════════════════
 //  ACCIONES
@@ -1387,13 +1394,23 @@ openModal('modal-accion'); return;
 if(tipo==='incompleto' || tipo==='en_escala_incompleto' || tipo==='aceptar_incompleto'){
 const label = tipo==='en_escala_incompleto' ? 'Llegó incompleto a escala' : (tipo==='aceptar_incompleto'?'Aceptado incompleto':'Llegó incompleto');
 showSpinner();
+if(!productsCache.length){
+  try{
+    const [r1,r2]=await Promise.all([
+      db.from('productos').select('codigo,nombre,marca').limit(3000),
+      db.from('padron_extra').select('codigo,nombre,marca').limit(1000)
+    ]);
+    productsCache=[...(r1.data||[]),...(r2.data||[])];
+  }catch(_e){}
+}
 const {data:o}=await db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single();
 hideSpinner();
 const items=(o?.pedido_productos||[]);
 const esGrande = items.length > 5;
 
 const itemRowHtml = (p, i) =>
-  '<div class="incomp-row" data-idx="'+i+'" style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:7px;margin-bottom:5px;background:rgba(var(--bg2-rgb,40,40,60),0.5);border:1px solid var(--border)">' +
+  '<div class="incomp-row" data-idx="'+i+'" style="padding:8px 9px;border-radius:7px;margin-bottom:6px;background:rgba(var(--bg2-rgb,40,40,60),0.5);border:1px solid var(--border)">' +
+  '<div style="display:flex;align-items:center;gap:8px">' +
   '<input type="checkbox" class="incomp-item" data-idx="'+i+'" checked style="flex-shrink:0;width:16px;height:16px;accent-color:#22c55e">' +
   '<div style="flex:1;min-width:0">' +
   '<div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+escHtml(p.nombre||'')+'">'+escHtml(p.nombre||'')+'</div>' +
@@ -1403,6 +1420,15 @@ const itemRowHtml = (p, i) =>
   '<span style="font-size:11px;color:var(--text2)">Cant:</span>' +
   '<input type="number" class="incomp-qty" data-idx="'+i+'" data-original="'+(p.cantidad||1)+'" value="'+(p.cantidad||1)+'" min="0" style="width:60px;text-align:center;padding:3px 5px;border-radius:5px;border:1px solid var(--border);background:var(--bg1);color:var(--text1);font-size:13px">' +
   '<span style="font-size:11px;color:var(--text2)">ped: '+(p.cantidad||1)+'</span>' +
+  '</div>' +
+  '<select class="form-input incomp-state" data-idx="'+i+'" style="max-width:185px;padding:5px 7px;font-size:12px"><option value="CORRECTO">✅ Correcto</option><option value="DIFERENCIA_CANTIDAD">⚠ Diferencia de cantidad</option><option value="NO_RECIBIDO">❌ No recibido</option><option value="SUSTITUIDO">🔄 Sustituido</option></select>' +
+  '</div>' +
+  '<div class="incomp-subst" data-idx="'+i+'" style="display:none;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">' +
+  '<div style="font-size:11px;color:var(--text2);margin-bottom:6px">Producto solicitado: <strong>'+escHtml(p.nombre||'')+'</strong> · Cantidad solicitada: '+(p.cantidad||1)+'</div>' +
+  '<div style="display:grid;grid-template-columns:1fr 110px;gap:6px;margin-bottom:6px"><select class="form-input incomp-subst-product" data-idx="'+i+'">'+recepcionProductOptions()+'</select><input type="number" class="form-input incomp-subst-qty" data-idx="'+i+'" min="0" value="'+(p.cantidad||1)+'"></div>' +
+  '<div class="incomp-subst-manual" data-idx="'+i+'" style="display:none;grid-template-columns:120px 1fr;gap:6px;margin-bottom:6px"><input class="form-input incomp-subst-code" data-idx="'+i+'" placeholder="Código"><input class="form-input incomp-subst-name" data-idx="'+i+'" placeholder="Nombre producto recibido"></div>'+
+  '<input class="form-input incomp-subst-motivo" data-idx="'+i+'" placeholder="Motivo (opcional)" style="margin-bottom:6px">' +
+  '<input class="form-input incomp-subst-obs" data-idx="'+i+'" placeholder="Observaciones (opcional)">' +
   '</div>' +
   '</div>';
 
@@ -1420,16 +1446,16 @@ if (esGrande) {
 
 el('modal-accion-title').textContent='⚠️ '+label;
 el('modal-accion-body').innerHTML=
-  '<div class="warning-box" style="margin-bottom:10px">Seleccioná qué ítems van y ajustá las cantidades si es necesario.</div>' +
-  '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">✅ Chequeado = se envía&nbsp;&nbsp;·&nbsp;&nbsp;❌ Desmarcado = no se envía. Podés ajustar la cantidad (más o menos de lo pedido).</div>' +
+  '<div class="warning-box" style="margin-bottom:10px">Confirmá qué productos llegaron, ajustá cantidades y marcá sustituciones si llegó un producto distinto.</div>' +
+  '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">✅ Chequeado = llegó&nbsp;&nbsp;·&nbsp;&nbsp;❌ Desmarcado = no llegó. Podés ajustar la cantidad recibida y marcar sustitución.</div>' +
   '<div id="incomp-items-wrap">'+itemsHtml+'</div>' +
   '<div class="form-group" style="margin-top:12px"><label class="form-label">Observación (opcional)</label><textarea class="form-input" id="faltantes-det" rows="2" placeholder="Ej: Faltó 1 unidad de..."></textarea></div>' +
   '<div class="form-group" style="margin-top:10px">' +
   '<label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">' +
-  '<input type="checkbox" id="incomp-notif-local" checked> <span style="font-size:13px">Notificar al local solicitante sobre el envío parcial</span>' +
+  '<input type="checkbox" id="incomp-notif-local" checked> <span style="font-size:13px">Notificar al local solicitante sobre recepción con diferencias</span>' +
   '</label>' +
   '</div>' + renderResponsableField();
-el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-warning btn-sm" onclick="confirmarAccion(\''+tipo+'\',\''+orderId+'\')">Confirmar envío parcial</button>';
+el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-warning btn-sm" onclick="confirmarAccion(\''+tipo+'\',\''+orderId+'\')">Confirmar llegada incompleta</button>';
 openModal('modal-accion');
 
 // Bind qty inputs: uncheck if qty=0, recheck if qty>0
@@ -1447,6 +1473,25 @@ setTimeout(()=>{
     if(cb) cb.addEventListener('change',()=>{
       if(!cb.checked){ input.value=0; input.style.borderColor='var(--accent2)'; }
       else { input.value=input.getAttribute('data-original')||1; input.style.borderColor='var(--border)'; }
+    });
+  });
+  document.querySelectorAll('.incomp-state').forEach(sel=>{
+    sel.addEventListener('change', ()=>{
+      const idx=sel.getAttribute('data-idx');
+      const sub=document.querySelector('.incomp-subst[data-idx="'+idx+'"]');
+      const qty=document.querySelector('.incomp-qty[data-idx="'+idx+'"]');
+      const cb=document.querySelector('.incomp-item[data-idx="'+idx+'"]');
+      if(sub) sub.style.display=sel.value==='SUSTITUIDO'?'block':'none';
+      if(sel.value==='NO_RECIBIDO' && qty && cb){ qty.value=0; cb.checked=false; }
+      if(sel.value==='CORRECTO' && qty && cb){ qty.value=qty.getAttribute('data-original')||1; cb.checked=true; }
+      if(sel.value==='SUSTITUIDO' && cb) cb.checked=true;
+    });
+  });
+  document.querySelectorAll('.incomp-subst-product').forEach(sel=>{
+    sel.addEventListener('change', ()=>{
+      const idx=sel.getAttribute('data-idx');
+      const manual=document.querySelector('.incomp-subst-manual[data-idx="'+idx+'"]');
+      if(manual) manual.style.display=sel.value==='__manual__'?'grid':'none';
     });
   });
 },100);
@@ -1562,11 +1607,34 @@ qtyInputs.forEach(inp=>{
 });
 
 const recibidos=[], faltantesItems=[], recibidosData=[], lineasRecepcion=[];
+let invalidSubstitution=false;
 checks.forEach(ch=>{
   const idx=parseInt(ch.getAttribute('data-idx'),10);
   const it=items[idx]; if(!it) return;
+  const estadoSel=document.querySelector('.incomp-state[data-idx="'+idx+'"]');
+  const estadoUI=(estadoSel&&estadoSel.value)||'DIFERENCIA_CANTIDAD';
   const cantOriginal=it.cantidad||1;
   const cantAceptada=qtyMap[idx]!==undefined ? qtyMap[idx] : (ch.checked?cantOriginal:0);
+  let codRec=it.codigo||'', nomRec=it.nombre||'', qtyRec=cantAceptada, motivoLinea=null, obsLinea=null;
+  if(estadoUI==='SUSTITUIDO'){
+    const pSel=document.querySelector('.incomp-subst-product[data-idx="'+idx+'"]');
+    const qSel=document.querySelector('.incomp-subst-qty[data-idx="'+idx+'"]');
+    const mSel=document.querySelector('.incomp-subst-motivo[data-idx="'+idx+'"]');
+    const oSel=document.querySelector('.incomp-subst-obs[data-idx="'+idx+'"]');
+    const opt=pSel&&pSel.selectedOptions?pSel.selectedOptions[0]:null;
+    codRec=(pSel&&pSel.value)||'';
+    nomRec=(opt&&opt.getAttribute('data-name'))||'';
+    if(codRec==='__manual__'){
+      const codeManual=document.querySelector('.incomp-subst-code[data-idx="'+idx+'"]');
+      const nameManual=document.querySelector('.incomp-subst-name[data-idx="'+idx+'"]');
+      codRec=(codeManual&&codeManual.value.trim())||'';
+      nomRec=(nameManual&&nameManual.value.trim())||'';
+    }
+    qtyRec=parseInt((qSel&&qSel.value)||'0',10)||0;
+    motivoLinea=(mSel&&mSel.value.trim())||null;
+    obsLinea=(oSel&&oSel.value.trim())||null;
+    if(!codRec || !nomRec){ invalidSubstitution=true; return; }
+  }
   if(ch.checked && cantAceptada>0){
     const diff=cantAceptada!==cantOriginal?' (ped:'+cantOriginal+')':'';
     recibidos.push((it.nombre||'')+' x'+cantAceptada+diff);
@@ -1575,25 +1643,28 @@ checks.forEach(ch=>{
     faltantesItems.push((it.nombre||'')+' x'+cantOriginal);
     recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:0});
   }
-  const estadoLinea = (cantAceptada===cantOriginal) ? 'CORRECTO' : (cantAceptada===0 ? 'NO_RECIBIDO' : 'DIFERENCIA_CANTIDAD');
+  const estadoLinea = estadoUI==='SUSTITUIDO'
+    ? 'SUSTITUIDO'
+    : (qtyRec===cantOriginal ? 'CORRECTO' : (qtyRec===0 ? 'NO_RECIBIDO' : 'DIFERENCIA_CANTIDAD'));
   lineasRecepcion.push({
     pedido_id:orderId,
     linea_index:idx,
     producto_solicitado_codigo:it.codigo||'',
     producto_solicitado_nombre:it.nombre||'',
     cantidad_solicitada:cantOriginal,
-    producto_recibido_codigo:it.codigo||'',
-    producto_recibido_nombre:it.nombre||'',
-    cantidad_recibida:cantAceptada,
-    diferencia:cantAceptada-cantOriginal,
+    producto_recibido_codigo:codRec,
+    producto_recibido_nombre:nomRec,
+    cantidad_recibida:qtyRec,
+    diferencia:qtyRec-cantOriginal,
     estado:estadoLinea,
-    motivo:null,
-    observaciones:null,
+    motivo:motivoLinea,
+    observaciones:obsLinea,
     recepcion_usuario_id:currentPerfil.id,
     recepcion_usuario_nombre:responsable,
     recepcion_fecha:new Date().toISOString()
   });
 });
+if(invalidSubstitution) return notify('En líneas sustituidas debés seleccionar el producto recibido.','error');
 // NO se toca pedido_productos.cantidad — queda como la cantidad originalmente enviada
 
 const hayDiferencia=recibidosData.some(r=>r.recibido!==r.enviado);
