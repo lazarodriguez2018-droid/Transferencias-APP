@@ -1153,6 +1153,8 @@ return '<div class="form-group" style="margin-top:12px"><label class="form-label
 //  ACCIONES
 // ═══════════════════════════════════════════
 async function accion(tipo, orderId){
+const modalAccionElBase = document.querySelector('#modal-accion .modal');
+if(modalAccionElBase) modalAccionElBase.style.maxWidth='480px';
 const labels={aceptar:'Aceptar el pedido',transito:'Marcar en viaje',transito_escala:'Marcar en viaje a escala',listo_escala:'Recibido en escala y listo para enviar a destino',llegado:'Confirmar llegada final',completo:'Marcar como completo'};
 if(tipo==='aceptar'){
 el('modal-accion-title').textContent='✅ Aceptar el pedido';
@@ -1474,6 +1476,12 @@ qtyInputs.forEach(inp=>{
 
 // Leer sustitutos desde selecciones del buscador de padrón
 const sustMap=window._sustSelections||{};
+const sustTildadosSinSeleccion = Array.from(document.querySelectorAll('.incomp-sust-cb:checked'))
+  .map(cb=>parseInt(cb.getAttribute('data-idx'),10))
+  .filter(idx=>!sustMap[idx]);
+if(sustTildadosSinSeleccion.length){
+  return notify('Marcaste producto incorrecto pero falta elegir el reemplazo en algunos ítems','error');
+}
 
 const recibidos=[], faltantesItems=[], recibidosData=[];
 checks.forEach(ch=>{
