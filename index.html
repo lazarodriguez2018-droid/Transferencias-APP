@@ -289,18 +289,32 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
     <div id="view-dashboard" style="display:none">
       <div class="page-header"><div>
         <h1>Dashboard</h1>
-        <p id="dash-subtitle">Análisis operativo por local</p>
+        <p id="dash-subtitle">Resumen general</p>
       </div></div>
-      <div class="card">
-        <div class="card-body dashboard-filters">
-          <select id="dash-local" class="filter-select"></select>
-          <input type="date" id="dash-desde" class="filter-select">
-          <input type="date" id="dash-hasta" class="filter-select">
-          <button class="btn btn-secondary" id="dash-export-csv">Exportar CSV</button>
-          <button class="btn btn-ghost" id="dash-export-xls">Exportar Excel</button>
+      <div class="stats-grid">
+        <div class="stat-card purple" onclick="navigateTo('paraEnviar')">
+          <div class="stat-label">Pedidos a despachar</div>
+          <div class="stat-value" id="stat-pendientes">0</div><div class="stat-icon">🔧</div>
+        </div>
+        <div class="stat-card orange" onclick="navigateTo('misPedidos')">
+          <div class="stat-label">Mis pedidos activos</div>
+          <div class="stat-value" id="stat-activos">0</div><div class="stat-icon">📤</div>
+        </div>
+        <div class="stat-card green">
+          <div class="stat-label">Listos para enviar</div>
+          <div class="stat-value" id="stat-listos">0</div><div class="stat-icon">✅</div>
+        </div>
+        <div class="stat-card red" onclick="navigateTo('historial')">
+          <div class="stat-label">Completados este mes</div>
+          <div class="stat-value" id="stat-completados">0</div><div class="stat-icon">📊</div>
         </div>
       </div>
-      <div id="dash-content"></div>
+      <div class="card">
+        <div class="card-header"><h3>Actividad reciente</h3></div>
+        <div class="card-body" id="dash-recent">
+          <div class="empty-state"><div class="icon">📦</div><p>No hay actividad reciente</p></div>
+        </div>
+      </div>
     </div>
 
     <!-- MIS PEDIDOS -->
