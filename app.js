@@ -9,29 +9,39 @@ const db = createClient(SUPABASE_URL, SUPABASE_KEY);
 // ═══════════════════════════════════════════
 //  STATE
 // ═══════════════════════════════════════════
-let currentUser   = null;   // auth user
-let currentPerfil = null;   // perfil row
-let localesCache  = [];
-let transportesCache = [];
-let selectedProductTemp = null;
-let newOrderProducts    = [];
-let fotoBase64 = null;
-let despachoTab = 'pendientes';
-let currentChatOrderId = null;
-let currentSugId = null;
-let productsCache = [];
-let agendaCache = [];
-let clienteDesdePedido = false;
+const appState = {
+currentUser: null,
+currentPerfil: null,
+localesCache: [],
+transportesCache: [],
+selectedProductTemp: null,
+newOrderProducts: [],
+fotoBase64: null,
+productsCache: [],
+agendaCache: [],
+clienteDesdePedido: false,
+currentChatOrderId: null,
+currentSugId: null,
+despachoTab: 'pendientes',
+realtimeChannels: [],
+idle: {
+intervalId: null,
+warned: false,
+activityListenersBound: false,
+lastActivityWriteMs: 0,
+config: {
+timeoutMs: window.IDLE_TIMEOUT_MS || (60 * 60 * 1000),
+warningMs: window.IDLE_WARNING_MS || (5 * 60 * 1000),
+checkIntervalMs: window.IDLE_CHECK_INTERVAL_MS || (30 * 1000)
+}
+}
+};
 
-var IDLE_TIMEOUT_MS = window.IDLE_TIMEOUT_MS || (60 * 60 * 1000); // 1 hora
-var IDLE_WARNING_MS = window.IDLE_WARNING_MS || (5 * 60 * 1000); // aviso 5 min antes
-var IDLE_CHECK_INTERVAL_MS = window.IDLE_CHECK_INTERVAL_MS || (30 * 1000);
-let idleIntervalId = null;
-let idleWarned = false;
-let activityListenersBound = false;
-let lastActivityWriteMs = 0;
-let realtimeChannels = [];
-
+/**
+ * Normaliza registros de productos externos a una estructura estándar de catálogo.
+ * @param {Record<string, any>} row
+ * @returns {{id:string|null,codigo:string,nombre:string,marca:string}}
+ */
 function normalizeExtraProduct(row){
 return {
 id: row?.id || null,
@@ -122,30 +132,30 @@ localStorage.removeItem(getActivityStorageKey(userId));
 }
 
 function recordActivity(force=false){
-if(!currentUser?.id) return;
-if(isExpiredByInactivity(currentUser.id)){
+if(!appState.currentUser?.id) return;
+if(isExpiredByInactivity(appState.currentUser.id)){
 forceIdleLogout();
 return;
 }
 const now = Date.now();
-if(!force && now - lastActivityWriteMs < 15000) return;
-lastActivityWriteMs = now;
-setLastActivityMs(currentUser.id, now);
-idleWarned = false;
+if(!force && now - appState.idle.lastActivityWriteMs < 15000) return;
+appState.idle.lastActivityWriteMs = now;
+setLastActivityMs(appState.currentUser.id, now);
+appState.idle.warned = false;
 }
 
 function stopIdleWatcher(){
-if(idleIntervalId){ clearInterval(idleIntervalId); idleIntervalId = null; }
-idleWarned = false;
+if(appState.idle.intervalId){ clearInterval(appState.idle.intervalId); appState.idle.intervalId = null; }
+appState.idle.warned = false;
 }
 
 async function forceIdleLogout(){
 stopIdleWatcher();
 teardownRealtime();
 try{ await db.auth.signOut(); }catch(_e){}
-clearLastActivityMs(currentUser?.id);
-currentUser=null;
-currentPerfil=null;
+clearLastActivityMs(appState.currentUser?.id);
+appState.currentUser=null;
+appState.currentPerfil=null;
 clearAuthMessages();
 showPage('auth-page');
 checkEmpresaClave();
@@ -153,14 +163,14 @@ notify('Sesión cerrada por inactividad (más de 1 hora).','info');
 }
 
 function bindActivityListeners(){
-if(activityListenersBound) return;
-activityListenersBound = true;
+if(appState.idle.activityListenersBound) return;
+appState.idle.activityListenersBound = true;
 ['click','keydown','touchstart','scroll','mousemove'].forEach(evt=>{
 window.addEventListener(evt, ()=>recordActivity(false), {passive:true});
 });
 document.addEventListener('visibilitychange', ()=>{
 if(document.visibilityState!=='visible') return;
-if(currentUser?.id && isExpiredByInactivity(currentUser.id)){
+if(appState.currentUser?.id && isExpiredByInactivity(appState.currentUser.id)){
 forceIdleLogout();
 return;
 }
@@ -169,33 +179,33 @@ recordActivity(true);
 }
 
 function startIdleWatcher(){
-if(!currentUser?.id) return;
+if(!appState.currentUser?.id) return;
 bindActivityListeners();
 recordActivity(true);
-if(idleIntervalId) clearInterval(idleIntervalId);
-idleIntervalId = setInterval(async ()=>{
-if(!currentUser?.id) return;
-const last = getLastActivityMs(currentUser.id);
+if(appState.idle.intervalId) clearInterval(appState.idle.intervalId);
+appState.idle.intervalId = setInterval(async ()=>{
+if(!appState.currentUser?.id) return;
+const last = getLastActivityMs(appState.currentUser.id);
 if(!last) return;
 const now = Date.now();
 const idleMs = now - last;
-const remainingMs = IDLE_TIMEOUT_MS - idleMs;
+const remainingMs = appState.idle.config.timeoutMs - idleMs;
 if(remainingMs <= 0){
 await forceIdleLogout();
 return;
 }
-if(remainingMs <= IDLE_WARNING_MS && !idleWarned){
-idleWarned = true;
+if(remainingMs <= appState.idle.config.warningMs && !appState.idle.warned){
+appState.idle.warned = true;
 const mins = Math.max(1, Math.ceil(remainingMs / 60000));
 notify('⚠️ Tu sesión se cerrará en '+mins+' min por inactividad.','info');
 }
-}, IDLE_CHECK_INTERVAL_MS);
+}, appState.idle.config.checkIntervalMs);
 }
 
 function isExpiredByInactivity(userId){
 const last = getLastActivityMs(userId);
 if(!last) return false;
-return (Date.now() - last) > IDLE_TIMEOUT_MS;
+return (Date.now() - last) > appState.idle.config.timeoutMs;
 }
 
 // ═══════════════════════════════════════════
@@ -236,10 +246,10 @@ function showSuc(id,msg){ const e=el(id); e.textContent=msg; e.classList.add('sh
 
 async function populateRegisterLocales(){
 const {data}=await db.from('locales').select('*').order('nombre');
-localesCache = data||[];
+appState.localesCache = data||[];
 const sel=el('reg-local');
 sel.innerHTML='<option value="">Seleccionar local...</option>'+
-localesCache.map(l=>'<option value="'+l.nombre+'|'+l.almacen+'">'+l.nombre+' ('+l.almacen+')</option>').join('');
+appState.localesCache.map(l=>'<option value="'+l.nombre+'|'+l.almacen+'">'+l.nombre+' ('+l.almacen+')</option>').join('');
 }
 
 async function doLogin(){
@@ -331,8 +341,8 @@ async function doLogout(){
 await db.auth.signOut();
 stopIdleWatcher();
 teardownRealtime();
-clearLastActivityMs(currentUser?.id);
-currentUser=null; currentPerfil=null;
+clearLastActivityMs(appState.currentUser?.id);
+appState.currentUser=null; appState.currentPerfil=null;
 sessionStorage.removeItem('empresa_validada');
 sessionStorage.removeItem('empresa_nombre');
 // Reset UI completamente para evitar que persistan opciones de admin
@@ -345,21 +355,21 @@ checkEmpresaClave();
 }
 
 async function afterLogin(user){
-currentUser=user;
+appState.currentUser=user;
 try{
 const {data:perfil,error}=await db.from('perfiles').select('*').eq('id',user.id).single();
 if(error) throw error;
 if(!perfil){ showErr('login-error','No se encontró tu perfil. Contactá al administrador.'); return; }
-currentPerfil=perfil;
+appState.currentPerfil=perfil;
 if(!perfil.approved){ showPage('pending-page'); return; }
 setLastActivityMs(user.id, Date.now());
 await loadApp();
 startIdleWatcher();
 }catch(err){
-console.error('Error durante login:', err);
+notify('Error durante el inicio de sesión.','error');
 await db.auth.signOut();
-currentUser=null;
-currentPerfil=null;
+appState.currentUser=null;
+appState.currentPerfil=null;
 showErr('login-error','No se pudo iniciar sesión. Reintentá en unos segundos.');
 showPage('auth-page');
 }
@@ -368,8 +378,8 @@ showPage('auth-page');
 async function checkSession(){
 const {data:{session}}=await db.auth.getSession();
 if(!session){
-currentUser=null;
-currentPerfil=null;
+appState.currentUser=null;
+appState.currentPerfil=null;
 clearAuthMessages();
 showPage('auth-page');
 return;
@@ -392,29 +402,29 @@ try{
 showPage('app-page');
 // Siempre resetear nav antes de aplicar rol
 el('admin-nav').style.display='none';
-const isAdmin = currentPerfil.role==='admin';
-safeSet('sidebar-name', currentPerfil.nombre_display||(currentPerfil.nombre+' '+currentPerfil.apellido));
-safeSet('sidebar-role', roleLabel(currentPerfil.role));
+const isAdmin = appState.currentPerfil.role==='admin';
+safeSet('sidebar-name', appState.currentPerfil.nombre_display||(appState.currentPerfil.nombre+' '+appState.currentPerfil.apellido));
+safeSet('sidebar-role', roleLabel(appState.currentPerfil.role));
 // Avatar: foto o iniciales
 const avatarEl = el('sidebar-avatar');
-if(currentPerfil.foto_url){
-avatarEl.style.backgroundImage='url('+currentPerfil.foto_url+')';
+if(appState.currentPerfil.foto_url){
+avatarEl.style.backgroundImage='url('+appState.currentPerfil.foto_url+')';
 avatarEl.style.backgroundSize='cover';
 avatarEl.style.backgroundPosition='center';
 avatarEl.textContent='';
 } else {
 avatarEl.style.backgroundImage='';
-avatarEl.textContent = currentPerfil.nombre[0]+currentPerfil.apellido[0];
+avatarEl.textContent = appState.currentPerfil.nombre[0]+appState.currentPerfil.apellido[0];
 }
-safeSet('sidebar-local-badge', currentPerfil.local_nombre+' ('+currentPerfil.almacen+')');
+safeSet('sidebar-local-badge', appState.currentPerfil.local_nombre+' ('+appState.currentPerfil.almacen+')');
 if(isAdmin) el('admin-nav').style.display='block';
 // Load caches
 const [{data:locs},{data:trans}]=await Promise.all([
 db.from('locales').select('*').order('nombre'),
 db.from('transportes').select('*').order('nombre'),
 ]);
-localesCache     = locs||[];
-transportesCache = trans||[];
+appState.localesCache     = locs||[];
+appState.transportesCache = trans||[];
 navigateTo('misPedidos');
 setupRealtime();
 } finally {
@@ -425,8 +435,8 @@ hideSpinner();
 function setupRealtime(){
 teardownRealtime();
 // Listen for new notifications for current user
-const notifsChannel = db.channel('notifs-'+currentPerfil.id)
-.on('postgres_changes',{event:'INSERT',schema:'public',table:'notificaciones',filter:'usuario_id=eq.'+currentPerfil.id},
+const notifsChannel = db.channel('notifs-'+appState.currentPerfil.id)
+.on('postgres_changes',{event:'INSERT',schema:'public',table:'notificaciones',filter:'usuario_id=eq.'+appState.currentPerfil.id},
 payload=>{
 updateNotifBadge();
 const n=payload.new;
@@ -434,28 +444,28 @@ notify('🔔 '+n.titulo,'info');
 })
 .subscribe();
 // Listen for pedido changes in my locals
-const pedidosChannel = db.channel('pedidos-changes-'+currentPerfil.id)
+const pedidosChannel = db.channel('pedidos-changes-'+appState.currentPerfil.id)
 .on('postgres_changes',{event:'UPDATE',schema:'public',table:'pedidos'},
 ()=>{ refreshView(); updateBadges(); })
 .on('postgres_changes',{event:'INSERT',schema:'public',table:'pedidos'},
 ()=>{ refreshView(); updateBadges(); })
 .subscribe();
-realtimeChannels=[notifsChannel,pedidosChannel];
+appState.realtimeChannels=[notifsChannel,pedidosChannel];
 }
 
 function teardownRealtime(){
-if(!realtimeChannels.length) return;
-realtimeChannels.forEach(ch=>{ try{ db.removeChannel(ch); }catch(_e){} });
-realtimeChannels=[];
+if(!appState.realtimeChannels.length) return;
+appState.realtimeChannels.forEach(ch=>{ try{ db.removeChannel(ch); }catch(_e){} });
+appState.realtimeChannels=[];
 }
 
 async function updateBadges(){
-if(!currentPerfil) return;
-const local   = currentPerfil.local_nombre;
-const isAdmin = currentPerfil.role==='admin';
+if(!appState.currentPerfil) return;
+const local   = appState.currentPerfil.local_nombre;
+const isAdmin = appState.currentPerfil.role==='admin';
 const countOrZero = async (q)=>{
 const {count,error}=await q;
-if(error){ console.error('Badge query error:', error.message); return 0; }
+if(error){ return 0; }
 return count||0;
 };
 
@@ -474,14 +484,14 @@ qPara = qPara.eq('origen_local',local);
 const [mp,pe,no]=await Promise.all([
 countOrZero(qMis),
 countOrZero(qPara),
-countOrZero(db.from('notificaciones').select('id',{count:'exact',head:true}).eq('usuario_id',currentPerfil.id).eq('leida',false)),
+countOrZero(db.from('notificaciones').select('id',{count:'exact',head:true}).eq('usuario_id',appState.currentPerfil.id).eq('leida',false)),
 ]);
 
 el('badge-misPedidos').textContent=mp; el('badge-misPedidos').style.display=mp>0?'flex':'none';
 el('badge-paraEnviar').textContent=pe; el('badge-paraEnviar').style.display=pe>0?'flex':'none';
 updateNotifBadgeCount(no);
 
-if(currentPerfil.role==='admin'){
+if(appState.currentPerfil.role==='admin'){
 const [pu,su]=await Promise.all([
 countOrZero(db.from('perfiles').select('id',{count:'exact',head:true}).eq('approved',false)),
 countOrZero(db.from('sugerencias').select('id',{count:'exact',head:true}).eq('leida',false)),
@@ -504,7 +514,7 @@ safeSet('stat-listos', listosCount);
 safeSet('stat-completados', completadosCount);
 
 // Mis consultas badge
-const mr=await countOrZero(db.from('sugerencias').select('id',{count:'exact',head:true}).eq('usuario_id',currentPerfil.id).eq('respuesta_leida',false).not('respuesta','is',null));
+const mr=await countOrZero(db.from('sugerencias').select('id',{count:'exact',head:true}).eq('usuario_id',appState.currentPerfil.id).eq('respuesta_leida',false).not('respuesta','is',null));
 el('badge-misConsultas').textContent=mr; el('badge-misConsultas').style.display=mr>0?'flex':'none';
 }
 
@@ -633,7 +643,7 @@ return (role==='admin' || role==='supervisor_general') ? 'Supervisor' : 'Local';
 
 // Carga todos los productos del padrón paginando de a 1000 (límite real de Supabase/PostgREST)
 async function loadProductsCache(){
-  if(productsCache.length) return;
+  if(appState.productsCache.length) return;
   const PAGE = 1000;
   let base = [], extra = [];
 
@@ -657,7 +667,7 @@ async function loadProductsCache(){
     from += PAGE;
   }
 
-  productsCache = [...base, ...extra];
+  appState.productsCache = [...base, ...extra];
 }
 
 function normalizeText(v){
@@ -686,7 +696,7 @@ if(filters.estado)       q=q.eq('estado',filters.estado);
 if(filters.notEstados)   q=q.not('estado','in','('+filters.notEstados.map(s=>'"'+s+'"').join(',')+')');
 if(filters.inEstados)    q=q.in('estado',filters.inEstados);
 const {data,error}=await q;
-if(error){ console.error(error); return []; }
+if(error){ return []; }
 return data||[];
 }
 
@@ -697,8 +707,8 @@ const pn=prods.slice(0,2).map(p=>escHtml((p.nombre||'').substring(0,28))).join('
 const fecha=fmtDate(o.created_at);
 const urgente=o.urgente?' <span class="priority-badge">🔴 URGENTE</span>':'';
 const viejo=o._viejo?' <span class="priority-badge" style="color:#f7971e">⏰ +24hs</span>':'';
-const isMio=o.destino_local===currentPerfil.local_nombre;
-const isAdmin=currentPerfil.role==='admin';
+const isMio=o.destino_local===appState.currentPerfil.local_nombre;
+const isAdmin=appState.currentPerfil.role==='admin';
 const rol=isMio
 ?'<span style="font-size:10px;font-weight:700;color:var(--text3)">YO PEDÍ</span>'
 :'<span style="font-size:10px;font-weight:700;color:var(--accent4)">ME PIDIERON</span>';
@@ -727,9 +737,9 @@ e.innerHTML=pedidos.map(o=>orderCard(o)).join('');
 //  DASHBOARD
 // ═══════════════════════════════════════════
 async function renderDashboard(){
-safeSet('dash-subtitle','Resumen de '+currentPerfil.local_nombre+' ('+currentPerfil.almacen+')');
+safeSet('dash-subtitle','Resumen de '+appState.currentPerfil.local_nombre+' ('+appState.currentPerfil.almacen+')');
 await updateBadges();
-const local=currentPerfil.local_nombre;
+const local=appState.currentPerfil.local_nombre;
 const {data}=await db.from('pedidos').select('*,pedido_productos(*)')
 .or('origen_local.eq.'+local+',destino_local.eq.'+local)
 .order('updated_at',{ascending:false}).limit(6);
@@ -742,14 +752,14 @@ e.innerHTML=(data&&data.length)?data.map(o=>orderCard(o)).join('')
 //  MIS PEDIDOS (yo soy destino)
 // ═══════════════════════════════════════════
 async function renderMisPedidos(){
-const isAdmin = currentPerfil.role==='admin';
-const local   = currentPerfil.local_nombre;
+const isAdmin = appState.currentPerfil.role==='admin';
+const local   = appState.currentPerfil.local_nombre;
 
 // Populate filtro origen
 const selOrigen = el('filter-mis-origen');
 const cvOrigen  = selOrigen.value;
 selOrigen.innerHTML='<option value="">Todos los orígenes</option>'+
-localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvOrigen===l.nombre?' selected':'')+'>'+l.nombre+'</option>').join('');
+appState.localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvOrigen===l.nombre?' selected':'')+'>'+l.nombre+'</option>').join('');
 
 // Filtro destino — visible para admins
 const selDestino = el('filter-mis-destino');
@@ -758,7 +768,7 @@ if(isAdmin){
 selDestino.style.display='';
 const cvDest=selDestino.value;
 selDestino.innerHTML='<option value="">Todos los destinos</option>'+
-localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvDest===l.nombre?' selected':'')+'>'+l.nombre+'</option>').join('');
+appState.localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvDest===l.nombre?' selected':'')+'>'+l.nombre+'</option>').join('');
 } else {
 selDestino.style.display='none';
 if(selCreador) selCreador.style.display='none';
@@ -827,7 +837,7 @@ renderList('list-misPedidos',list,'📤',isAdmin?'No hay pedidos activos':'No te
 //  PARA ENVIAR (yo soy origen)
 // ═══════════════════════════════════════════
 async function switchDespachoTab(tab){
-despachoTab=tab;
+appState.despachoTab=tab;
 el('tab-pendientes').classList.toggle('active',tab==='pendientes');
 el('tab-completados').classList.toggle('active',tab==='completados');
 el('filter-env-estado').style.display=tab==='pendientes'?'block':'none';
@@ -835,8 +845,8 @@ await renderParaEnviar();
 }
 
 async function renderParaEnviar(){
-const isAdmin = currentPerfil.role==='admin';
-const local   = currentPerfil.local_nombre;
+const isAdmin = appState.currentPerfil.role==='admin';
+const local   = appState.currentPerfil.local_nombre;
 
 // Filtros de local — visibles para admins
 const selOrigen  = el('filter-para-origen');
@@ -847,9 +857,9 @@ selOrigen.style.display='';
 selDestino.style.display='';
 const cvO=selOrigen.value, cvD=selDestino.value;
 selOrigen.innerHTML='<option value="">Todos los orígenes</option>'+
-localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvO===l.nombre?' selected':'')+'>'+l.nombre+'</option>').join('');
+appState.localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvO===l.nombre?' selected':'')+'>'+l.nombre+'</option>').join('');
 selDestino.innerHTML='<option value="">Todos los destinos</option>'+
-localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvD===l.nombre?' selected':'')+'>'+l.nombre+'</option>').join('');
+appState.localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvD===l.nombre?' selected':'')+'>'+l.nombre+'</option>').join('');
 } else {
 selOrigen.style.display='none';
 selDestino.style.display='none';
@@ -884,7 +894,7 @@ if(selCreador?.value) q=q.eq('creado_por',selCreador.value);
 
 const estadoFiltroEnv=el('filter-env-estado').value;
 const estadoEnv=(estadoFiltroEnv==='aceptado_incompleto')?'aceptado':estadoFiltroEnv;
-if(despachoTab==='pendientes'){
+if(appState.despachoTab==='pendientes'){
 q=q.in('estado',['pendiente','aceptado','listo','transito_escala','en_escala','listo_escala']);
 if(estadoEnv) q=q.eq('estado',estadoEnv);
 q=q.order('created_at',{ascending:true});
@@ -909,16 +919,16 @@ list.forEach(o=>{
 if(['pendiente','aceptado'].includes(o.estado))
 o._viejo=(Date.now()-new Date(o.created_at).getTime())/3600000>24;
 });
-renderList('list-paraEnviar',list,despachoTab==='pendientes'?'📭':'✅',
-despachoTab==='pendientes'?'No hay pedidos pendientes':'No hay pedidos completados aún');
+renderList('list-paraEnviar',list,appState.despachoTab==='pendientes'?'📭':'✅',
+appState.despachoTab==='pendientes'?'No hay pedidos pendientes':'No hay pedidos completados aún');
 }
 
 // ═══════════════════════════════════════════
 //  HISTORIAL
 // ═══════════════════════════════════════════
 async function renderHistorial(){
-const local=currentPerfil.local_nombre;
-const isAdmin=currentPerfil.role==='admin';
+const local=appState.currentPerfil.local_nombre;
+const isAdmin=appState.currentPerfil.role==='admin';
 const tipo=el('filter-hist-tipo').value;
 const estado=el('filter-hist-estado').value;
 const selOrigen=el('filter-hist-origen');
@@ -926,11 +936,11 @@ const selDestino=el('filter-hist-destino');
 const selCreador=el('filter-hist-creador');
 const cvO=selOrigen?.value||'', cvD=selDestino?.value||'', cvC=selCreador?.value||'';
 if(selOrigen){
-selOrigen.innerHTML='<option value="">Todos los orígenes</option>'+localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvO===l.nombre?' selected':'')+'>'+escHtml(l.nombre)+'</option>').join('');
+selOrigen.innerHTML='<option value="">Todos los orígenes</option>'+appState.localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvO===l.nombre?' selected':'')+'>'+escHtml(l.nombre)+'</option>').join('');
 }
 if(isAdmin && selDestino){
 selDestino.style.display='';
-selDestino.innerHTML='<option value="">Todos los destinos</option>'+localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvD===l.nombre?' selected':'')+'>'+escHtml(l.nombre)+'</option>').join('');
+selDestino.innerHTML='<option value="">Todos los destinos</option>'+appState.localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvD===l.nombre?' selected':'')+'>'+escHtml(l.nombre)+'</option>').join('');
 } else if(selDestino) selDestino.style.display='none';
 if(isAdmin && selCreador){
 selCreador.style.display='';
@@ -973,8 +983,8 @@ const historialPorEstado={};
   historialPorEstado[h.estado]=h;
 });
 const [icon,label,cls]=estadoInfo(o.estado);
-const isOrigen  = o.origen_local===currentPerfil.local_nombre;
-const isDestino = o.destino_local===currentPerfil.local_nombre;
+const isOrigen  = o.origen_local===appState.currentPerfil.local_nombre;
+const isDestino = o.destino_local===appState.currentPerfil.local_nombre;
 el('modal-detalle-title').textContent='Pedido #'+o.id.slice(-8,-2).toUpperCase();
 
 const prods=(o.pedido_productos||[]).map(p=>
@@ -1077,11 +1087,11 @@ if(o.faltantes){
 if(o.notas) extra+='<div class="detail-row"><span class="label">Notas:</span><span class="value">'+escHtml(o.notas)+'</span></div>';
 if(o.faltantes_escala) extra+='<div class="detail-row"><span class="label">Diferencias en escala:</span><span class="value" style="color:#a855f7">'+escHtml(o.faltantes_escala.split('\n__xls__:')[0])+'</span></div>';
 
-const canOrigen  = isOrigen  || currentPerfil.role==='admin';
-const canDestino = isDestino || currentPerfil.role==='admin';
+const canOrigen  = isOrigen  || appState.currentPerfil.role==='admin';
+const canDestino = isDestino || appState.currentPerfil.role==='admin';
 const esEscala   = escalaInfo !== null;
-const isEscalaLocal = escalaInfo && currentPerfil.local_nombre === escalaInfo.escala;
-const canEscala  = isEscalaLocal || currentPerfil.role==='admin';
+const isEscalaLocal = escalaInfo && appState.currentPerfil.local_nombre === escalaInfo.escala;
+const canEscala  = isEscalaLocal || appState.currentPerfil.role==='admin';
 const colaEscalas=parseEscalaQueue(o);
 const proxParada=(colaEscalas[0]&&colaEscalas[0].nombre)||o.destino_local;
 let actions='';
@@ -1135,7 +1145,7 @@ actions+
 (o.telefono?'<button class="btn btn-success btn-sm" onclick="abrirWhatsApp(\''+escJsStr(o.telefono)+'\',\''+escJsStr(o.cliente||'')+'\')" style="background:#25d366;border-color:#25d366;color:#fff">💬 WhatsApp cliente</button>':'')+
 '<button class="btn btn-ghost btn-sm" onclick="generarEtiqueta(\''+o.id+'\')">🖨️ Etiqueta de envío</button>'+
 (['completo','incompleto'].includes(o.estado)?'<button class="btn btn-ghost btn-sm" onclick="exportarXLSPedido(\''+o.id+'\')" style="color:#22c55e;border-color:rgba(34,197,94,0.35)">📊 Exportar XLS comparativo</button>':'')+
-(currentPerfil.role==='admin'?
+(appState.currentPerfil.role==='admin'?
 '<button class="btn btn-warning btn-sm" onclick="retrocederEstado(\''+o.id+'\')">↩️ Retroceder estado</button>'+
 '<button class="btn btn-danger btn-sm" onclick="eliminarPedido(\''+o.id+'\')">🗑️ Eliminar pedido</button>':'')+
 '</div>';
@@ -1145,7 +1155,7 @@ openModal('modal-detalle');
 
 
 function renderResponsableField(){
-const nom=((currentPerfil?.nombre||'')+' '+(currentPerfil?.apellido||'')).trim();
+const nom=((appState.currentPerfil?.nombre||'')+' '+(appState.currentPerfil?.apellido||'')).trim();
 return '<div class="form-group" style="margin-top:12px"><label class="form-label">👤 Responsable (obligatorio)</label><input class="form-input" id="accion-responsable" type="text" placeholder="Tu nombre" value="'+escHtml(nom)+'"></div>';
 }
 
@@ -1160,7 +1170,7 @@ if(tipo==='aceptar'){
 el('modal-accion-title').textContent='✅ Aceptar el pedido';
 const {data:ord}=await db.from('pedidos').select('destino_local,escala_local').eq('id',orderId).single();
 const escSugerida=(ord&&getEscala(ord.destino_local,ord))||null;
-const opciones=localesCache.map(l=>'<option value="'+l.nombre+'|'+l.almacen+'"'+(escSugerida&&escSugerida.escala===l.nombre?' selected':'')+'>'+l.nombre+' ('+l.almacen+')</option>').join('');
+const opciones=appState.localesCache.map(l=>'<option value="'+l.nombre+'|'+l.almacen+'"'+(escSugerida&&escSugerida.escala===l.nombre?' selected':'')+'>'+l.nombre+' ('+l.almacen+')</option>').join('');
 const rutasDobleEscala = [
   {id:'cda_pde',label:'CDA → PDE',escalas:[{nombre:'Centro de Distribución y Almacenaje',almacen:'CDA'},{nombre:'Punta del Este',almacen:'PDE'}]}
 ];
@@ -1182,18 +1192,18 @@ openModal('modal-accion'); return;
 }
 if(tipo==='agregar_escala'){
 el('modal-accion-title').textContent='🔎➕ Agregar otra escala';
-const opciones=localesCache.map(l=>'<option value="'+l.nombre+'|'+l.almacen+'">'+l.nombre+' ('+l.almacen+')</option>').join('');
+const opciones=appState.localesCache.map(l=>'<option value="'+l.nombre+'|'+l.almacen+'">'+l.nombre+' ('+l.almacen+')</option>').join('');
 el('modal-accion-body').innerHTML='<div class="warning-box">Seleccioná la próxima escala para este pedido.</div><div class="form-group" style="margin-top:12px"><label class="form-label">Nueva escala</label><select class="form-input" id="nueva-escala-local"><option value="">Seleccionar...</option>'+opciones+'</select></div>'+renderResponsableField();
 el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclick="closeModal(\'modal-accion\')">Cancelar</button><button class="btn btn-primary btn-sm" onclick="confirmarAccion(\'agregar_escala\',\''+orderId+'\')">Agregar escala</button>';
 openModal('modal-accion'); return;
 }
 if(tipo==='listo' || tipo==='transito' || tipo==='transito_escala'){
-fotoBase64=null;
+appState.fotoBase64=null;
 el('modal-accion-title').textContent='🚚 Confirmar salida de envío';
 el('modal-accion-body').innerHTML='<div class="warning-box">⚠️ Esta acción es <strong>irreversible</strong>.</div>'+
 '<div class="form-group" style="margin-top:14px"><label class="form-label">Método de transporte (obligatorio)</label>'+
 '<select class="form-input" id="accion-transporte"><option value="">Seleccionar...</option>'+
-transportesCache.map(t=>'<option value="'+t.nombre+'">'+t.nombre+'</option>').join('')+
+appState.transportesCache.map(t=>'<option value="'+t.nombre+'">'+t.nombre+'</option>').join('')+
 '<option value="__otro__">Otro (especificar)...</option></select></div>'+
 '<div class="form-group" id="transporte-otro-wrap" style="display:none"><label class="form-label">Especificar</label><input class="form-input" id="transporte-otro-input" type="text" placeholder="Ej: FedEx..."></div>'+
 '<div class="form-group"><label class="form-label">N° Remito (opcional)</label><input class="form-input" id="num-remito" type="text" placeholder="Ej: 000123" style="font-family:\'DM Mono\',monospace"></div>'+
@@ -1341,7 +1351,7 @@ function buscarSustituto(i, query){
   const q=query.trim();
   if(q.length<2){ resultsEl.style.display='none'; resultsEl.innerHTML=''; return; }
   const tokens=tokenizeSearch(q);
-  const matches=productsCache.filter(p=>productMatchesTokens(p,tokens)).slice(0,8);
+  const matches=appState.productsCache.filter(p=>productMatchesTokens(p,tokens)).slice(0,8);
   if(!matches.length){
     resultsEl.innerHTML='<div style="padding:9px 12px;font-size:12px;color:var(--text2)">Sin resultados en el padrón</div>';
   } else {
@@ -1428,7 +1438,7 @@ async function verProcesoCompleto(orderId){
 function previewFoto(e){
 const f=e.target.files[0]; if(!f) return;
 const r=new FileReader();
-r.onload=ev=>{fotoBase64=ev.target.result; const p=el('foto-preview'); p.src=fotoBase64; p.style.display='block';};
+r.onload=ev=>{appState.fotoBase64=ev.target.result; const p=el('foto-preview'); p.src=appState.fotoBase64; p.style.display='block';};
 r.readAsDataURL(f);
 }
 
@@ -1458,8 +1468,8 @@ if(tipo==='transito'){
 updates.estado=estadoTx; updates.transporte=transp;
 updates.remito=(el('num-remito')&&el('num-remito').value.trim())||null;
 updates.tracking=(el('num-tracking')&&el('num-tracking').value.trim())||null;
-if(fotoBase64) updates.foto_url=fotoBase64;
-fotoBase64=null;
+if(appState.fotoBase64) updates.foto_url=appState.fotoBase64;
+appState.fotoBase64=null;
 } else if(tipo==='incompleto' || tipo==='en_escala_incompleto' || tipo==='aceptar_incompleto'){
 const {data:o}=await db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single();
 const items=(o?.pedido_productos||[]);
@@ -1541,7 +1551,7 @@ if(notifCheck&&notifCheck.checked&&faltantesItems.length>0){
   // Para llegada: notificar al origen. Para envío parcial: notificar al destino.
   const localNotif = esLlegadaNotif ? o.origen_local : o.destino_local;
   const {data:users2}=await db.from('perfiles').select('id,local_nombre').eq('approved',true);
-  const destinatariosLocal=(users2||[]).filter(u=>u.local_nombre===localNotif&&u.id!==currentPerfil.id);
+  const destinatariosLocal=(users2||[]).filter(u=>u.local_nombre===localNotif&&u.id!==appState.currentPerfil.id);
   if(destinatariosLocal.length){
     await db.from('notificaciones').insert(destinatariosLocal.map(u=>({
       usuario_id:u.id,
@@ -1612,7 +1622,7 @@ if(error) return notify('Error al actualizar: '+error.message,'error');
 showSpinner();
 try{
 // Historial
-await db.from('pedido_historial').insert({pedido_id:orderId,estado:updates.estado,usuario_id:currentPerfil.id,persona_nombre:responsable});
+await db.from('pedido_historial').insert({pedido_id:orderId,estado:updates.estado,usuario_id:appState.currentPerfil.id,persona_nombre:responsable});
 
 // Notificar a los otros participantes
 await notificarCambioEstado(orderId, updates.estado);
@@ -1640,7 +1650,7 @@ const cuerpo='#'+orderId.slice(-8,-2).toUpperCase()+' · '+o.origen_local+' → 
 // Incluir local de escala si aplica
 const escalaLocal = getEscala(o.destino_local)?.escala || null;
 const destinatarios=users.filter(u=>
-u.id!==currentPerfil.id &&
+u.id!==appState.currentPerfil.id &&
 (u.local_nombre===o.origen_local || u.local_nombre===o.destino_local || (escalaLocal && u.local_nombre===escalaLocal))
 );
 if(destinatarios.length){
@@ -1696,12 +1706,12 @@ if(error){
 tbody.innerHTML='<tr><td colspan="4" style="color:var(--danger)">No se pudo cargar agenda: '+escHtml(error.message)+'</td></tr>';
 return;
 }
-agendaCache=data||[];
-if(!agendaCache.length){
+appState.agendaCache=data||[];
+if(!appState.agendaCache.length){
 tbody.innerHTML='<tr><td colspan="4" style="color:var(--text3)">Sin clientes en agenda</td></tr>';
 return;
 }
-tbody.innerHTML=agendaCache.map(c=>'<tr>'+
+tbody.innerHTML=appState.agendaCache.map(c=>'<tr>'+
 '<td>'+escHtml(c.nombre||'')+'</td>'+
 '<td>'+escHtml(c.telefono||'')+'</td>'+
 '<td>'+escHtml(c.direccion||'')+'</td>'+
@@ -1711,7 +1721,7 @@ tbody.innerHTML=agendaCache.map(c=>'<tr>'+
 }
 
 function abrirModalNuevoClienteAgenda(desdePedido=false){
-clienteDesdePedido=!!desdePedido;
+appState.clienteDesdePedido=!!desdePedido;
 el('cliente-agenda-id').value='';
 el('cliente-agenda-nombre').value=el('new-cliente')?.value||'';
 el('cliente-agenda-telefono').value=el('new-telefono')?.value||'';
@@ -1721,9 +1731,9 @@ openModal('modal-cliente-agenda');
 }
 
 function editarClienteAgenda(id){
-const c=agendaCache.find(x=>x.id===id);
+const c=appState.agendaCache.find(x=>x.id===id);
 if(!c) return;
-clienteDesdePedido=false;
+appState.clienteDesdePedido=false;
 el('cliente-agenda-id').value=c.id;
 el('cliente-agenda-nombre').value=c.nombre||'';
 el('cliente-agenda-telefono').value=c.telefono||'';
@@ -1746,9 +1756,9 @@ const {data,error}=await req;
 if(error) return notify('No se pudo guardar cliente: '+error.message,'error');
 closeModal('modal-cliente-agenda');
 notify(id?'Cliente actualizado':'Cliente agregado','success');
-if(clienteDesdePedido){
+if(appState.clienteDesdePedido){
 seleccionarClienteAgendaPedido(data);
-clienteDesdePedido=false;
+appState.clienteDesdePedido=false;
 }
 if(el('view-agenda')?.style.display!=='none') await renderAgendaClientes();
 }
@@ -1821,7 +1831,7 @@ safeSet('cliente-selected-display', n ? ('Cliente seleccionado: '+n+(t?' · '+t:
 async function openNuevoPedido(){
 showSpinner();
 try{
-newOrderProducts=[]; fotoBase64=null; selectedProductTemp=null; xlsParsedItems=[];
+appState.newOrderProducts=[]; appState.fotoBase64=null; appState.selectedProductTemp=null; xlsParsedItems=[];
 if(el('xls-import-banner')) el('xls-import-banner').style.display='none';
 el('new-cliente').value=''; el('new-telefono').value='';
 el('cliente-search-input').value='';
@@ -1832,13 +1842,13 @@ if(el('new-escala-auto-choice')) el('new-escala-auto-choice').value='si';
 el('new-notas').value=''; el('new-urgente').checked=false;
 el('product-search-input').value=''; el('product-qty').value='1';
 renderSelectedProducts();
-const opts=localesCache.map(l=>'<option value="'+l.nombre+'|'+l.almacen+'">'+l.nombre+' ('+l.almacen+')</option>').join('');
+const opts=appState.localesCache.map(l=>'<option value="'+l.nombre+'|'+l.almacen+'">'+l.nombre+' ('+l.almacen+')</option>').join('');
 el('new-origen').innerHTML=opts; el('new-destino').innerHTML=opts;
 // Default destino = mi local, origen = primer local distinto
 const dest=el('new-destino');
-for(let i=0;i<dest.options.length;i++){ if(dest.options[i].value.startsWith(currentPerfil.local_nombre+'|')){dest.selectedIndex=i;break;} }
+for(let i=0;i<dest.options.length;i++){ if(dest.options[i].value.startsWith(appState.currentPerfil.local_nombre+'|')){dest.selectedIndex=i;break;} }
 const orig=el('new-origen');
-for(let i=0;i<orig.options.length;i++){ if(!orig.options[i].value.startsWith(currentPerfil.local_nombre+'|')){orig.selectedIndex=i;break;} }
+for(let i=0;i<orig.options.length;i++){ if(!orig.options[i].value.startsWith(appState.currentPerfil.local_nombre+'|')){orig.selectedIndex=i;break;} }
 const escSel=el('new-con-escala'); if(escSel) escSel.value='auto';
 updateRoutePreview();
 // Load products if not cached (paginated to bypass Supabase 1000-row limit)
@@ -1876,7 +1886,7 @@ clearTimeout(_searchTimeout);
 _searchTimeout=setTimeout(async()=>{
 await loadProductsCache();
 const tokens=tokenizeSearch(q);
-const merged=productsCache.filter(p=>productMatchesTokens(p,tokens)).slice(0,120);
+const merged=appState.productsCache.filter(p=>productMatchesTokens(p,tokens)).slice(0,120);
 const map=new Map();
 merged.forEach(p=>{
 const k=(p.codigo||'')+'|'+(p.nombre||'');
@@ -1895,29 +1905,29 @@ res.classList.add('show');
 
 function selProd(idx){
 const p=window._sr&&window._sr[idx]; if(!p) return;
-selectedProductTemp=p;
+appState.selectedProductTemp=p;
 el('product-search-input').value=p.nombre;
 el('product-search-results').classList.remove('show');
 el('product-qty').focus();
 }
 
 function addSelectedProduct(){
-if(!selectedProductTemp) return notify('Seleccioná un producto','error');
+if(!appState.selectedProductTemp) return notify('Seleccioná un producto','error');
 const qty=parseInt(el('product-qty').value)||1;
 if(qty<1) return notify('Cantidad inválida','error');
-const ex=newOrderProducts.find(p=>p.codigo===selectedProductTemp.codigo);
-if(ex) ex.cantidad+=qty; else newOrderProducts.push(Object.assign({},selectedProductTemp,{cantidad:qty}));
-selectedProductTemp=null;
+const ex=appState.newOrderProducts.find(p=>p.codigo===appState.selectedProductTemp.codigo);
+if(ex) ex.cantidad+=qty; else appState.newOrderProducts.push(Object.assign({},appState.selectedProductTemp,{cantidad:qty}));
+appState.selectedProductTemp=null;
 el('product-search-input').value=''; el('product-qty').value='1';
 renderSelectedProducts();
 }
 
-function removeProduct(idx){newOrderProducts.splice(idx,1);renderSelectedProducts();}
+function removeProduct(idx){appState.newOrderProducts.splice(idx,1);renderSelectedProducts();}
 
 function renderSelectedProducts(){
 const e=el('selected-products');
-e.innerHTML=newOrderProducts.length
-?newOrderProducts.map((p,i)=>'<div class="product-item"><div class="p-info"><div class="p-name">'+p.nombre+'</div><div class="p-code">'+p.codigo+'</div></div><div class="p-qty">x'+p.cantidad+'</div><div class="remove-btn" onclick="removeProduct('+i+')">✕</div></div>').join(''):'';
+e.innerHTML=appState.newOrderProducts.length
+?appState.newOrderProducts.map((p,i)=>'<div class="product-item"><div class="p-info"><div class="p-name">'+p.nombre+'</div><div class="p-code">'+p.codigo+'</div></div><div class="p-qty">x'+p.cantidad+'</div><div class="remove-btn" onclick="removeProduct('+i+')">✕</div></div>').join(''):'';
 }
 
 
@@ -1992,10 +2002,10 @@ async function handleXLSImport(event) {
       return;
     }
 
-    // Match codes with productsCache
+    // Match codes with appState.productsCache
     // Build a map for fast lookup
     const codeMap = new Map();
-    productsCache.forEach(p => {
+    appState.productsCache.forEach(p => {
       if (p.codigo) codeMap.set(String(p.codigo).trim().toLowerCase(), p);
     });
 
@@ -2053,7 +2063,7 @@ function resetXLSImport() {
   xlsParsedItems = [];
   el('xls-import-banner').style.display = 'none';
   // Remove XLS-imported products (those with xlsImported flag)
-  newOrderProducts = newOrderProducts.filter(p => !p.xlsImported);
+  appState.newOrderProducts = appState.newOrderProducts.filter(p => !p.xlsImported);
   renderSelectedProducts();
 }
 
@@ -2061,11 +2071,11 @@ function confirmarXLSImport() {
   const soloEncontrados = xlsParsedItems.filter(i => i.encontrado);
   const noEncontrados = xlsParsedItems.filter(i => !i.encontrado);
 
-  // Add to newOrderProducts (merge if already exists)
+  // Add to appState.newOrderProducts (merge if already exists)
   soloEncontrados.forEach(it => {
-    const ex = newOrderProducts.find(p => p.codigo === it.codigo);
+    const ex = appState.newOrderProducts.find(p => p.codigo === it.codigo);
     if (ex) { ex.cantidad += it.cantidad; }
-    else { newOrderProducts.push({ codigo: it.codigo, nombre: it.nombre, marca: it.marca, cantidad: it.cantidad, xlsImported: true }); }
+    else { appState.newOrderProducts.push({ codigo: it.codigo, nombre: it.nombre, marca: it.marca, cantidad: it.cantidad, xlsImported: true }); }
   });
 
   renderSelectedProducts();
@@ -2087,7 +2097,7 @@ function confirmarXLSImport() {
 }
 
 async function crearPedido(){
-if(!newOrderProducts.length) return notify('Agregá al menos un producto','error');
+if(!appState.newOrderProducts.length) return notify('Agregá al menos un producto','error');
 const ov=el('new-origen').value, dv=el('new-destino').value;
 if(!ov||!dv) return notify('Seleccioná origen y destino','error');
 if(ov===dv) return notify('Origen y destino no pueden ser iguales','error');
@@ -2102,16 +2112,16 @@ urgente:el('new-urgente').checked,
 notas:el('new-notas').value.trim()||null,
 escala_local:usarEscalaAuto?escAuto.escala:null,
 escala_almacen:usarEscalaAuto?(escAuto.almacen||null):null,
-estado:'pendiente',creado_por:currentPerfil.id
+estado:'pendiente',creado_por:appState.currentPerfil.id
 }).select().single();
 if(error) return notify('Error al crear pedido: '+error.message,'error');
 // Insert products
-await db.from('pedido_productos').insert(newOrderProducts.map(p=>({pedido_id:pedido.id,codigo:p.codigo,nombre:p.nombre,marca:p.marca,cantidad:p.cantidad})));
-await db.from('pedido_historial').insert({pedido_id:pedido.id,estado:'pendiente',usuario_id:currentPerfil.id,persona_nombre:((currentPerfil?.nombre||'')+' '+(currentPerfil?.apellido||'')).trim()||null});
+await db.from('pedido_productos').insert(appState.newOrderProducts.map(p=>({pedido_id:pedido.id,codigo:p.codigo,nombre:p.nombre,marca:p.marca,cantidad:p.cantidad})));
+await db.from('pedido_historial').insert({pedido_id:pedido.id,estado:'pendiente',usuario_id:appState.currentPerfil.id,persona_nombre:((appState.currentPerfil?.nombre||'')+' '+(appState.currentPerfil?.apellido||'')).trim()||null});
 // Notify origen local users
 const {data:users}=await db.from('perfiles').select('id,local_nombre,role').eq('approved',true);
 // Notificar solo al origen. La escala se decide al aceptar el pedido.
-const dest=users?.filter(u=>u.id!==currentPerfil.id&&u.local_nombre===oNom)||[];
+const dest=users?.filter(u=>u.id!==appState.currentPerfil.id&&u.local_nombre===oNom)||[];
 if(dest.length) await db.from('notificaciones').insert(dest.map(u=>({usuario_id:u.id,titulo:'📦 Nuevo pedido de '+dNom,cuerpo:'#'+pedido.id.slice(-8,-2).toUpperCase()+(pedido.cliente?' · '+pedido.cliente:''),pedido_id:pedido.id})));
 closeModal('modal-nuevo-pedido');
 notify('¡Pedido creado exitosamente!','success');
@@ -2122,7 +2132,7 @@ await updateBadges(); navigateTo('misPedidos');
 //  CHAT
 // ═══════════════════════════════════════════
 async function openChat(orderId){
-currentChatOrderId=orderId;
+appState.currentChatOrderId=orderId;
 el('chat-title').textContent='💬 Chat — Pedido #'+orderId.slice(-8,-2).toUpperCase();
 await renderChatMessages();
 openModal('modal-chat');
@@ -2133,11 +2143,11 @@ db.channel('chat-'+orderId)
 }
 
 async function renderChatMessages(){
-const {data:msgs}=await db.from('chat_mensajes').select('*').eq('pedido_id',currentChatOrderId).order('created_at');
+const {data:msgs}=await db.from('chat_mensajes').select('*').eq('pedido_id',appState.currentChatOrderId).order('created_at');
 const e=el('chat-messages');
 if(!msgs||!msgs.length){e.innerHTML='<div style="text-align:center;color:var(--text3);font-size:13px;padding:20px">No hay mensajes aún</div>';return;}
 e.innerHTML=msgs.map(m=>{
-const isOwn=m.usuario_id===currentPerfil.id;
+const isOwn=m.usuario_id===appState.currentPerfil.id;
 const initials=(m.usuario_nombre||'').split(' ').map(w=>w[0]||'').join('').slice(0,2);
 const hora=new Date(m.created_at).toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'});
 return '<div class="chat-msg '+(isOwn?'own':'other')+'">'+
@@ -2150,7 +2160,7 @@ e.scrollTop=e.scrollHeight;
 async function sendChatMsg(){
 const inp=el('chat-input');
 const txt=inp.value.trim(); if(!txt) return;
-await db.from('chat_mensajes').insert({pedido_id:currentChatOrderId,usuario_id:currentPerfil.id,usuario_nombre:currentPerfil.nombre+' '+currentPerfil.apellido,local_nombre:currentPerfil.local_nombre,texto:txt});
+await db.from('chat_mensajes').insert({pedido_id:appState.currentChatOrderId,usuario_id:appState.currentPerfil.id,usuario_nombre:appState.currentPerfil.nombre+' '+appState.currentPerfil.apellido,local_nombre:appState.currentPerfil.local_nombre,texto:txt});
 inp.value=''; await renderChatMessages();
 }
 
@@ -2163,7 +2173,7 @@ e.textContent=count; e.style.display=count>0?'flex':'none';
 });
 }
 async function updateNotifBadge(){
-const {count}=await db.from('notificaciones').select('*',{count:'exact',head:true}).eq('usuario_id',currentPerfil.id).eq('leida',false);
+const {count}=await db.from('notificaciones').select('*',{count:'exact',head:true}).eq('usuario_id',appState.currentPerfil.id).eq('leida',false);
 updateNotifBadgeCount(count||0);
 }
 
@@ -2176,7 +2186,7 @@ function cerrarNotifPanel(){
 el('notif-panel').style.display='none'; el('notif-overlay').style.display='none';
 }
 async function renderNotifPanel(){
-const {data:notifs}=await db.from('notificaciones').select('*').eq('usuario_id',currentPerfil.id).order('created_at',{ascending:false}).limit(30);
+const {data:notifs}=await db.from('notificaciones').select('*').eq('usuario_id',appState.currentPerfil.id).order('created_at',{ascending:false}).limit(30);
 const listEl=el('notif-list');
 if(!notifs||!notifs.length){listEl.innerHTML='<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">Sin notificaciones</div>';return;}
 listEl.innerHTML=notifs.map(n=>{
@@ -2194,12 +2204,12 @@ cerrarNotifPanel();
 if(orderId&&orderId!=='null'&&orderId!=='') openDetalle(orderId);
 }
 async function marcarTodasLeidas(){
-await db.from('notificaciones').update({leida:true}).eq('usuario_id',currentPerfil.id);
+await db.from('notificaciones').update({leida:true}).eq('usuario_id',appState.currentPerfil.id);
 await updateNotifBadge(); await renderNotifPanel();
 }
 
 async function limpiarNotificacionesViejas(){
-const {error}=await db.from('notificaciones').delete().eq('usuario_id',currentPerfil.id).eq('leida',true);
+const {error}=await db.from('notificaciones').delete().eq('usuario_id',appState.currentPerfil.id).eq('leida',true);
 if(error) return notify('No se pudieron limpiar notificaciones: '+error.message,'error');
 notify('Notificaciones leídas eliminadas','info');
 await renderNotifPanel();
@@ -2210,9 +2220,9 @@ await updateNotifBadge();
 //  MIS CONSULTAS
 // ═══════════════════════════════════════════
 async function renderMisConsultas(){
-const {data:sugs}=await db.from('sugerencias').select('*').eq('usuario_id',currentPerfil.id).order('created_at',{ascending:false});
+const {data:sugs}=await db.from('sugerencias').select('*').eq('usuario_id',appState.currentPerfil.id).order('created_at',{ascending:false});
 // Mark responses as read
-await db.from('sugerencias').update({respuesta_leida:true}).eq('usuario_id',currentPerfil.id).not('respuesta','is',null);
+await db.from('sugerencias').update({respuesta_leida:true}).eq('usuario_id',appState.currentPerfil.id).not('respuesta','is',null);
 const e=el('list-misConsultas');
 if(!sugs||!sugs.length){
 e.innerHTML='<div class="empty-state"><div class="icon">💬</div><p>No enviaste ninguna consulta aún.</p></div>'; return;
@@ -2231,7 +2241,7 @@ await updateBadges();
 }
 
 async function limpiarConsultasRespondidas(){
-const {error}=await db.from('sugerencias').delete().eq('usuario_id',currentPerfil.id).not('respuesta','is',null);
+const {error}=await db.from('sugerencias').delete().eq('usuario_id',appState.currentPerfil.id).not('respuesta','is',null);
 if(error) return notify('No se pudieron limpiar consultas: '+error.message,'error');
 notify('Consultas respondidas eliminadas','info');
 await renderMisConsultas();
@@ -2240,11 +2250,11 @@ await renderMisConsultas();
 async function enviarSugerencia(){
 const asunto=el('sug-asunto').value.trim(), texto=el('sug-texto').value.trim();
 if(!asunto||!texto) return notify('Completá asunto y mensaje','error');
-const {error}=await db.from('sugerencias').insert({usuario_id:currentPerfil.id,usuario_nombre:currentPerfil.nombre+' '+currentPerfil.apellido,local_nombre:currentPerfil.local_nombre,email:currentUser.email,asunto,texto});
+const {error}=await db.from('sugerencias').insert({usuario_id:appState.currentPerfil.id,usuario_nombre:appState.currentPerfil.nombre+' '+appState.currentPerfil.apellido,local_nombre:appState.currentPerfil.local_nombre,email:appState.currentUser.email,asunto,texto});
 if(error) return notify('Error: '+error.message,'error');
 // Notificar admins
 const {data:admins}=await db.from('perfiles').select('id').eq('role','admin').eq('approved',true);
-if(admins&&admins.length) await db.from('notificaciones').insert(admins.map(a=>({usuario_id:a.id,titulo:'💡 Nueva consulta de '+currentPerfil.local_nombre,cuerpo:asunto})));
+if(admins&&admins.length) await db.from('notificaciones').insert(admins.map(a=>({usuario_id:a.id,titulo:'💡 Nueva consulta de '+appState.currentPerfil.local_nombre,cuerpo:asunto})));
 el('sug-asunto').value=''; el('sug-texto').value='';
 closeModal('modal-sugerencia');
 notify('¡Consulta enviada!','success');
@@ -2270,7 +2280,7 @@ await updateBadges();
 }
 
 async function abrirRespuestaSug(sugId){
-currentSugId=sugId;
+appState.currentSugId=sugId;
 const {data:sug}=await db.from('sugerencias').select('*').eq('id',sugId).single();
 if(!sug) return;
 el('modal-resp-sug-body').innerHTML=
@@ -2282,8 +2292,8 @@ openModal('modal-resp-sug');
 async function responderSugerencia(){
 const txt=el('resp-texto')&&el('resp-texto').value.trim();
 if(!txt) return notify('Escribí una respuesta','error');
-const {data:sug}=await db.from('sugerencias').select('usuario_id').eq('id',currentSugId).single();
-await db.from('sugerencias').update({respuesta:txt,respuesta_leida:false,updated_at:new Date().toISOString()}).eq('id',currentSugId);
+const {data:sug}=await db.from('sugerencias').select('usuario_id').eq('id',appState.currentSugId).single();
+await db.from('sugerencias').update({respuesta:txt,respuesta_leida:false,updated_at:new Date().toISOString()}).eq('id',appState.currentSugId);
 if(sug) await db.from('notificaciones').insert({usuario_id:sug.usuario_id,titulo:'💬 El admin respondió tu consulta',cuerpo:txt.substring(0,80)});
 closeModal('modal-resp-sug');
 await renderSugerencias();
@@ -2313,7 +2323,7 @@ el('users-all-body').innerHTML=(users||[]).map(u=>
 '<td><span class="badge '+(u.role==='admin'?'badge-admin':'badge-pending')+'">'+(u.role==='admin'?'Personal':'Local')+'</span></td>'+
 '<td><span class="badge '+(u.approved?'badge-complete':'badge-pending')+'">'+(u.approved?'Activo':'Pendiente')+'</span></td>'+
 '<td style="display:flex;gap:6px;flex-wrap:wrap">'+
-(u.id!==currentPerfil.id
+(u.id!==appState.currentPerfil.id
 ?(u.role!=='admin'?'<button class="btn btn-ghost btn-sm" onclick="setAdmin(\''+u.id+'\',true)">↑ Supervisor</button>':'')
 +(u.role==='admin'?'<button class="btn btn-ghost btn-sm" onclick="setAdmin(\''+u.id+'\',false)">↓ Local</button>':'')
 :'<span style="font-size:12px;color:var(--text3)">Tú</span>')+
@@ -2346,8 +2356,8 @@ await Promise.all([renderAdminLocales(),renderTransportes(),renderAdminProducts(
 
 async function renderAdminLocales(){
 const {data}=await db.from('locales').select('*').order('nombre');
-localesCache=data||[];
-el('locales-body').innerHTML=localesCache.map((l)=>{
+appState.localesCache=data||[];
+el('locales-body').innerHTML=appState.localesCache.map((l)=>{
 const esc=getEscala(l.nombre);
 return '<tr>'+
 '<td style="font-weight:600">'+l.nombre+'</td>'+
@@ -2375,7 +2385,7 @@ if(el('new-local-dir')) el('new-local-dir').value='';
 await renderAdminLocales(); notify('Local agregado','success');
 }
 async function editarLocal(id){
-const l=localesCache.find(x=>x.id===id); if(!l) return;
+const l=appState.localesCache.find(x=>x.id===id); if(!l) return;
 el('edit-local-id').value=id;
 el('edit-local-nombre').value=l.nombre;
 el('edit-local-almacen').value=l.almacen;
@@ -2408,8 +2418,8 @@ await renderAdminLocales(); notify('Local eliminado','info');
 
 async function renderTransportes(){
 const {data}=await db.from('transportes').select('*').order('nombre');
-transportesCache=data||[];
-el('transportes-tags').innerHTML=transportesCache.map(t=>
+appState.transportesCache=data||[];
+el('transportes-tags').innerHTML=appState.transportesCache.map(t=>
 '<div class="config-tag">'+t.nombre+'<span class="remove" onclick="eliminarTransporte(\''+t.id+'\')">✕</span></div>').join('');
 }
 async function agregarTransporte(){
@@ -2418,13 +2428,13 @@ const {error}=await db.from('transportes').insert({nombre:v});
 if(error) return notify(error.message,'error');
 el('new-transporte-input').value='';
 const {data}=await db.from('transportes').select('*').order('nombre');
-transportesCache=data||[];
+appState.transportesCache=data||[];
 await renderTransportes(); notify('Transporte agregado','success');
 }
 async function eliminarTransporte(id){
 await db.from('transportes').delete().eq('id',id);
 const {data}=await db.from('transportes').select('*').order('nombre');
-transportesCache=data||[];
+appState.transportesCache=data||[];
 await renderTransportes(); notify('Eliminado','info');
 }
 
@@ -2488,7 +2498,7 @@ if(error) return notify('No se pudo agregar: '+error.message,'error');
 el('new-extra-codigo').value='';
 el('new-extra-nombre').value='';
 el('new-extra-marca').value='';
-productsCache=[];
+appState.productsCache=[];
 await Promise.all([renderPadronExtra(),renderAdminProducts()]);
 notify('Producto agregado al padrón extra','success');
 }
@@ -2496,7 +2506,7 @@ notify('Producto agregado al padrón extra','success');
 async function eliminarPadronExtra(id){
 const {error}=await db.from('padron_extra').delete().eq('id',id);
 if(error) return notify('No se pudo eliminar: '+error.message,'error');
-productsCache=[];
+appState.productsCache=[];
 await Promise.all([renderPadronExtra(),renderAdminProducts()]);
 notify('Producto extra eliminado','info');
 }
@@ -2533,7 +2543,7 @@ const chunkSize=500;
 for(let i=0;i<products.length;i+=chunkSize){
 await db.from('productos').insert(products.slice(i,i+chunkSize));
 }
-productsCache=[];
+appState.productsCache=[];
 notify('Padrón actualizado: '+products.length+' productos','success');
 await Promise.all([renderAdminProducts(),renderPadronExtra()]);
 }catch(err){notify('Error: '+err.message,'error');}
@@ -2746,7 +2756,11 @@ function closeSidebar(){el('sidebar').classList.remove('open');el('mobile-overla
 // ═══════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════
-document.addEventListener('DOMContentLoaded', async function(){
+/**
+ * Inicializa la aplicación: bindings DOM, pantalla de autenticación y restauración de sesión.
+ * @returns {Promise<void>}
+ */
+async function initApp(){
 clearAuthMessages();
 showPage('auth-page');
 
@@ -2817,6 +2831,12 @@ if(!e.target.closest('.conv-row-menu')&&!e.target.closest('.conv-action-btn')) c
 
 // Si hay sesión activa, cargar directo sin pasar por auth
 await checkSession();
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+initApp().catch(err=>{
+notify('Error durante la inicialización de la aplicación: '+(err?.message||err),'error');
+});
 });
 
 // ═══════════════════════════════════════════
@@ -2842,8 +2862,8 @@ if(validada==='1'){
 el('empresa-nombre-display').textContent = sessionStorage.getItem('empresa_nombre')||'';
 el('empresa-screen').style.display='none';
 el('auth-forms').style.display='block';
-populateRegisterLocales().catch(err=>{
-console.error('No se pudieron cargar locales para registro:', err);
+populateRegisterLocales().catch(()=>{
+notify('No se pudieron cargar los locales de registro.','error');
 });
 return true;
 }
@@ -2874,7 +2894,7 @@ const e = el('list-chats');
 
 // ── 1. Conversaciones generales ──
 const {data:memberships} = await db.from('conversacion_miembros')
-  .select('conversacion_id').eq('usuario_id',currentPerfil.id);
+  .select('conversacion_id').eq('usuario_id',appState.currentPerfil.id);
 const convIds = (memberships||[]).map(m=>m.conversacion_id);
 const {data:convs} = convIds.length
   ? await db.from('conversaciones').select('*').in('id',convIds).order('updated_at',{ascending:false})
@@ -2951,7 +2971,7 @@ const lastMsgMap = new Map();
 for(const conv of convs||[]){
   const lastMsg=lastMsgMap.get(conv.id)||null;
   const miembros=membersMap.get(conv.id)||[];
-  const nombre=conv.es_grupo?(conv.nombre||'Grupo'):miembros.filter(m=>m.uid!==currentPerfil.id).map(m=>m.nombre).join(', ')||conv.nombre||'Conversación';
+  const nombre=conv.es_grupo?(conv.nombre||'Grupo'):miembros.filter(m=>m.uid!==appState.currentPerfil.id).map(m=>m.nombre).join(', ')||conv.nombre||'Conversación';
   // For groups: build participant list for display
   const participantes=miembros.map(m=>m.nombre).join(', ');
   const hora=lastMsg?new Date(lastMsg.created_at).toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'}):'';
@@ -3019,7 +3039,7 @@ async function verParticipantes(convId, nombre){
   modalTitle.textContent = '👥 ' + (nombre||'Grupo');
   modalBody.innerHTML = (perfs||[]).map(p=>{
     const n=p.nombre_display||(p.nombre+' '+p.apellido);
-    const isMe=p.id===currentPerfil.id;
+    const isMe=p.id===appState.currentPerfil.id;
     return '<div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border)">'+
       '<div style="width:36px;height:36px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;flex-shrink:0;overflow:hidden">'+
       (p.foto_url?'<img src="'+escHtml(p.foto_url)+'" style="width:100%;height:100%;object-fit:cover">':escHtml(n.slice(0,2).toUpperCase()))+
@@ -3052,11 +3072,11 @@ btnClass:'btn-danger'
 
 async function eliminarChat(convId){
 const {error:memberError}=await db.from('conversacion_miembros')
-.delete().eq('conversacion_id',convId).eq('usuario_id',currentPerfil.id);
+.delete().eq('conversacion_id',convId).eq('usuario_id',appState.currentPerfil.id);
 if(memberError) return notify('No se pudo eliminar el chat: '+memberError.message,'error');
 
 const {data:myMembership,error:myMembershipError}=await db.from('conversacion_miembros')
-.select('conversacion_id').eq('conversacion_id',convId).eq('usuario_id',currentPerfil.id).limit(1);
+.select('conversacion_id').eq('conversacion_id',convId).eq('usuario_id',appState.currentPerfil.id).limit(1);
 if(myMembershipError) return notify('No se pudo validar la eliminación: '+myMembershipError.message,'error');
 if(myMembership?.length) return notify('No tenés permisos para salir de este chat o la política de seguridad lo impide.','error');
 
@@ -3080,7 +3100,7 @@ async function getConvNombre(convId){
 // Para 1-a-1, mostrar el nombre del otro
 const {data:members} = await db.from('conversacion_miembros')
 .select('usuario_id').eq('conversacion_id',convId);
-const otherId = members?.find(m=>m.usuario_id!==currentPerfil.id)?.usuario_id;
+const otherId = members?.find(m=>m.usuario_id!==appState.currentPerfil.id)?.usuario_id;
 if(!otherId) return 'Chat';
 const {data:perfil} = await db.from('perfiles').select('nombre,apellido,nombre_display').eq('id',otherId).single();
 return perfil ? (perfil.nombre_display||(perfil.nombre+' '+perfil.apellido)) : 'Usuario';
@@ -3112,7 +3132,7 @@ if(!msgs||!msgs.length){
 e.innerHTML='<div style="text-align:center;color:var(--text3);font-size:13px;padding:20px">No hay mensajes aún. ¡Escribí el primero!</div>'; return;
 }
 e.innerHTML = msgs.map(m=>{
-const isOwn = m.usuario_id===currentPerfil.id;
+const isOwn = m.usuario_id===appState.currentPerfil.id;
 const initials = (m.usuario_nombre||'').split(' ').map(w=>w[0]||'').join('').slice(0,2).toUpperCase();
 const hora = new Date(m.created_at).toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'});
 return '<div class="chat-msg '+(isOwn?'own':'other')+'">'+
@@ -3141,8 +3161,8 @@ return escHtml(text);
 async function sendConvPayload(payload){
 if(!currentConvId) return notify('Seleccioná una conversación','error');
 await db.from('mensajes').insert({
-conversacion_id:currentConvId, usuario_id:currentPerfil.id,
-usuario_nombre: currentPerfil.nombre_display||(currentPerfil.nombre+' '+currentPerfil.apellido),
+conversacion_id:currentConvId, usuario_id:appState.currentPerfil.id,
+usuario_nombre: appState.currentPerfil.nombre_display||(appState.currentPerfil.nombre+' '+appState.currentPerfil.apellido),
 texto:JSON.stringify(Object.assign({__transfer_msg:true},payload))
 });
 await db.from('conversaciones').update({updated_at:new Date().toISOString()}).eq('id',currentConvId);
@@ -3159,7 +3179,7 @@ el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclic
 openModal('modal-accion');
 const {data}=await db.from('pedidos').select('*,pedido_productos(*)').order('created_at',{ascending:false}).limit(300);
 window._chatSharePedidos=data||[];
-const opts=localesCache.map(l=>'<option value="'+escHtml(l.nombre)+'">'+escHtml(l.nombre)+'</option>').join('');
+const opts=appState.localesCache.map(l=>'<option value="'+escHtml(l.nombre)+'">'+escHtml(l.nombre)+'</option>').join('');
 el('chat-share-pedido-origen').innerHTML+=opts;
 el('chat-share-pedido-destino').innerHTML+=opts;
 ['chat-share-pedido-search','chat-share-pedido-estado','chat-share-pedido-origen','chat-share-pedido-destino'].forEach(id=>{
@@ -3256,8 +3276,8 @@ async function sendConvMsg(){
 const inp=el('conv-input');
 const txt=inp.value.trim(); if(!txt||!currentConvId) return;
 await db.from('mensajes').insert({
-conversacion_id:currentConvId, usuario_id:currentPerfil.id,
-usuario_nombre: currentPerfil.nombre_display||(currentPerfil.nombre+' '+currentPerfil.apellido),
+conversacion_id:currentConvId, usuario_id:appState.currentPerfil.id,
+usuario_nombre: appState.currentPerfil.nombre_display||(appState.currentPerfil.nombre+' '+appState.currentPerfil.apellido),
 texto:txt
 });
 await db.from('conversaciones').update({updated_at:new Date().toISOString()}).eq('id',currentConvId);
@@ -3267,7 +3287,7 @@ inp.value=''; await renderConvMessages();
 async function abrirNuevaConv(){
 // Load all users
 const {data:users,error} = await db.from('perfiles').select('id,nombre,apellido,nombre_display,local_nombre')
-.eq('approved',true).neq('id',currentPerfil.id).order('nombre');
+.eq('approved',true).neq('id',appState.currentPerfil.id).order('nombre');
 if(error) { notify('No se pudieron cargar los usuarios: '+error.message,'error'); return; }
 el('nueva-conv-body').innerHTML=
 '<div class="form-group"><label class="form-label">Nombre del grupo (solo para grupos)</label>'+
@@ -3294,7 +3314,7 @@ const esGrupo = participantes.length>1 || !!nombre;
 // Check if 1-a-1 already exists
 if(!esGrupo){
 const otherId = participantes[0];
-const {data:mis} = await db.from('conversacion_miembros').select('conversacion_id').eq('usuario_id',currentPerfil.id);
+const {data:mis} = await db.from('conversacion_miembros').select('conversacion_id').eq('usuario_id',appState.currentPerfil.id);
 const {data:sus} = await db.from('conversacion_miembros').select('conversacion_id').eq('usuario_id',otherId);
 const misIds = new Set((mis||[]).map(m=>m.conversacion_id));
 const existente = (sus||[]).find(m=>misIds.has(m.conversacion_id));
@@ -3302,11 +3322,11 @@ if(existente){ closeModal('modal-nueva-conv'); await openConversacion(existente.
 }
 
 const {data:conv,error} = await db.from('conversaciones').insert({
-nombre:nombre||null, es_grupo:esGrupo, creado_por:currentPerfil.id
+nombre:nombre||null, es_grupo:esGrupo, creado_por:appState.currentPerfil.id
 }).select().single();
 if(error) return notify('Error: '+error.message,'error');
 
-const todos = [currentPerfil.id, ...participantes];
+const todos = [appState.currentPerfil.id, ...participantes];
 await db.from('conversacion_miembros').insert(todos.map(uid=>({conversacion_id:conv.id,usuario_id:uid})));
 closeModal('modal-nueva-conv');
 await openConversacion(conv.id);
@@ -3318,9 +3338,9 @@ notify('Conversación creada','success');
 //  PERFIL PERSONAL
 // ═══════════════════════════════════════════
 async function renderPerfil(){
-const p = currentPerfil;
+const p = appState.currentPerfil;
 el('perfil-nombre').value = p.nombre_display || (p.nombre+' '+p.apellido);
-el('perfil-email').value = currentUser.email;
+el('perfil-email').value = appState.currentUser.email;
 el('perfil-local').value = p.local_nombre+' ('+p.almacen+')';
 // Foto actual
 const fotoEl = el('perfil-foto-preview');
@@ -3336,16 +3356,16 @@ const nombre = el('perfil-nombre').value.trim();
 if(!nombre) return notify('El nombre no puede estar vacío','error');
 const updates = {nombre_display: nombre};
 if(window._nuevaFotoPerfil) updates.foto_url = window._nuevaFotoPerfil;
-const {error} = await db.from('perfiles').update(updates).eq('id',currentPerfil.id);
+const {error} = await db.from('perfiles').update(updates).eq('id',appState.currentPerfil.id);
 if(error) return notify('Error al guardar: '+error.message,'error');
-currentPerfil.nombre_display = nombre;
-if(window._nuevaFotoPerfil) currentPerfil.foto_url = window._nuevaFotoPerfil;
+appState.currentPerfil.nombre_display = nombre;
+if(window._nuevaFotoPerfil) appState.currentPerfil.foto_url = window._nuevaFotoPerfil;
 window._nuevaFotoPerfil = null;
 // Actualizar sidebar
 safeSet('sidebar-name', nombre);
 const avatarEl = el('sidebar-avatar');
-if(currentPerfil.foto_url){
-avatarEl.style.backgroundImage='url('+currentPerfil.foto_url+')';
+if(appState.currentPerfil.foto_url){
+avatarEl.style.backgroundImage='url('+appState.currentPerfil.foto_url+')';
 avatarEl.style.backgroundSize='cover';
 avatarEl.style.backgroundPosition='center';
 avatarEl.textContent='';
@@ -3433,7 +3453,7 @@ showConfirm(
 '¿Volver el pedido al estado "'+estadoAnterior+'"? Solo hacé esto si fue un error.',
 async()=>{
 await db.from('pedidos').update({estado:estadoAnterior,updated_at:new Date().toISOString()}).eq('id',orderId);
-await db.from('pedido_historial').insert({pedido_id:orderId,estado:estadoAnterior+'_retroceso',usuario_id:currentPerfil.id});
+await db.from('pedido_historial').insert({pedido_id:orderId,estado:estadoAnterior+'_retroceso',usuario_id:appState.currentPerfil.id});
 closeModal('modal-detalle');
 notify('Estado retrocedido a: '+estadoAnterior,'success');
 await updateBadges(); refreshView();
