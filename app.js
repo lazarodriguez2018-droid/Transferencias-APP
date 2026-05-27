@@ -1038,8 +1038,8 @@ if(o.faltantes){
     try{
       const data=JSON.parse(xlsMatch[1].trim());
       data.forEach(r=>{
-        if(r.recibido>r.enviado) sobrantes.push({nombre:r.nombre,diff:r.recibido-r.enviado,env:r.enviado,rec:r.recibido});
-        else if(r.recibido<r.enviado) faltantesArr.push({nombre:r.nombre,diff:r.enviado-r.recibido,env:r.enviado,rec:r.recibido});
+        if(r.recibido>r.enviado) sobrantes.push({nombre:r.nombre,diff:r.recibido-r.enviado,env:r.enviado,rec:r.recibido,sustituto:r.sustituto||''});
+        else if(r.recibido<r.enviado) faltantesArr.push({nombre:r.nombre,diff:r.enviado-r.recibido,env:r.enviado,rec:r.recibido,sustituto:r.sustituto||''});
       });
     }catch(e){}
   }
@@ -1058,7 +1058,7 @@ if(o.faltantes){
       '<div id="'+difId+'" style="display:none;padding:10px 12px;margin-bottom:6px;border-radius:8px;background:rgba(0,0,0,0.25);font-size:12px;line-height:1.8">'+
         (faltantesArr.length?
           '<div style="color:var(--accent2);margin-bottom:6px"><strong>❌ Faltantes</strong><br>'+
-          faltantesArr.map(r=>escHtml(r.nombre)+' &nbsp;<strong style=\"font-size:13px\">−'+r.diff+'</strong>&nbsp;<span style=\"opacity:.55\">(env:'+r.env+' · rec:'+r.rec+')</span>').join('<br>')+
+          faltantesArr.map(r=>escHtml(r.nombre)+' &nbsp;<strong style=\"font-size:13px\">−'+r.diff+'</strong>&nbsp;<span style=\"opacity:.55\">(env:'+r.env+' · rec:'+r.rec+')</span>'+(r.sustituto?'<br><span style=\"color:#f59e0b;font-size:11px\">🔄 Sustituto: '+escHtml(r.sustituto)+'</span>':'')).join('<br>')+
           '</div>':'')+
         (sobrantes.length?
           '<div style="color:#22c55e"><strong>➕ Sobrantes</strong><br>'+
@@ -1206,7 +1206,8 @@ const items=(o?.pedido_productos||[]);
 const esGrande = items.length > 5;
 
 const itemRowHtml = (p, i) =>
-  '<div class="incomp-row" data-idx="'+i+'" style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:7px;margin-bottom:5px;background:rgba(var(--bg2-rgb,40,40,60),0.5);border:1px solid var(--border)">' +
+  '<div class="incomp-item-group" style="margin-bottom:5px">' +
+  '<div class="incomp-row" data-idx="'+i+'" style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:7px;background:rgba(var(--bg2-rgb,40,40,60),0.5);border:1px solid var(--border)">' +
   '<input type="checkbox" class="incomp-item" data-idx="'+i+'" checked style="flex-shrink:0;width:16px;height:16px;accent-color:#22c55e">' +
   '<div style="flex:1;min-width:0">' +
   '<div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+escHtml(p.nombre||'')+'">'+escHtml(p.nombre||'')+'</div>' +
@@ -1216,6 +1217,14 @@ const itemRowHtml = (p, i) =>
   '<span style="font-size:11px;color:var(--text2)">Cant:</span>' +
   '<input type="number" class="incomp-qty" data-idx="'+i+'" data-original="'+(p.cantidad||1)+'" value="'+(p.cantidad||1)+'" min="0" style="width:60px;text-align:center;padding:3px 5px;border-radius:5px;border:1px solid var(--border);background:var(--bg1);color:var(--text1);font-size:13px">' +
   '<span style="font-size:11px;color:var(--text2)">ped: '+(p.cantidad||1)+'</span>' +
+  '<button type="button" onclick="toggleSustituto('+i+')" title="Llegó un producto sustituto" style="margin-left:4px;padding:2px 6px;font-size:10px;border:1px solid rgba(245,158,11,0.4);border-radius:4px;background:rgba(245,158,11,0.1);color:#f59e0b;cursor:pointer;white-space:nowrap;line-height:1.4">🔄 sust.</button>' +
+  '</div>' +
+  '</div>' +
+  '<div class="incomp-sust-wrap" id="incomp-sust-'+i+'" style="display:none;padding:7px 10px;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.3);border-top:none;border-radius:0 0 7px 7px">' +
+  '<div style="display:flex;align-items:center;gap:7px">' +
+  '<span style="font-size:11px;color:#f59e0b;white-space:nowrap">🔄 Llegó sustituto:</span>' +
+  '<input type="text" class="incomp-sust-input form-input" data-idx="'+i+'" placeholder="Nombre del producto que llegó en su lugar..." style="flex:1;font-size:12px;padding:4px 8px;height:30px">' +
+  '</div>' +
   '</div>' +
   '</div>';
 
@@ -1259,8 +1268,16 @@ setTimeout(()=>{
     });
     const cb = document.querySelector('.incomp-item[data-idx="'+input.getAttribute('data-idx')+'"]');
     if(cb) cb.addEventListener('change',()=>{
-      if(!cb.checked){ input.value=0; input.style.borderColor='var(--accent2)'; }
-      else { input.value=input.getAttribute('data-original')||1; input.style.borderColor='var(--border)'; }
+      const swIdx = input.getAttribute('data-idx');
+      const sw = document.getElementById('incomp-sust-'+swIdx);
+      const si = document.querySelector('.incomp-sust-input[data-idx="'+swIdx+'"]');
+      if(!cb.checked){
+        input.value=0; input.style.borderColor='var(--accent2)';
+        if(sw) sw.style.display='block'; // auto-mostrar campo sustituto
+      } else {
+        input.value=input.getAttribute('data-original')||1; input.style.borderColor='var(--border)';
+        if(sw && (!si||!si.value.trim())) sw.style.display='none'; // ocultar si no tiene texto
+      }
     });
   });
 },100);
@@ -1273,6 +1290,17 @@ el('modal-accion-footer').innerHTML='<button class="btn btn-ghost btn-sm" onclic
 openModal('modal-accion');
 }
 
+
+function toggleSustituto(i){
+  const wrap = document.getElementById('incomp-sust-'+i);
+  if(!wrap) return;
+  const visible = wrap.style.display !== 'none';
+  wrap.style.display = visible ? 'none' : 'block';
+  if(!visible){
+    const inp = wrap.querySelector('.incomp-sust-input');
+    if(inp) setTimeout(()=>inp.focus(), 50);
+  }
+}
 
 function toggleIncompExtra(){
   const extra=el('incomp-extra');
@@ -1375,19 +1403,29 @@ qtyInputs.forEach(inp=>{
   qtyMap[idx]=v;
 });
 
+// Leer sustitutos
+const sustInputs=Array.from(document.querySelectorAll('.incomp-sust-input'));
+const sustMap={};
+sustInputs.forEach(inp=>{
+  const idx=parseInt(inp.getAttribute('data-idx'),10);
+  const v=inp.value.trim();
+  if(v) sustMap[idx]=v;
+});
+
 const recibidos=[], faltantesItems=[], recibidosData=[];
 checks.forEach(ch=>{
   const idx=parseInt(ch.getAttribute('data-idx'),10);
   const it=items[idx]; if(!it) return;
   const cantOriginal=it.cantidad||1;
   const cantAceptada=qtyMap[idx]!==undefined ? qtyMap[idx] : (ch.checked?cantOriginal:0);
+  const sustituto=sustMap[idx]||null;
   if(ch.checked && cantAceptada>0){
     const diff=cantAceptada!==cantOriginal?' (ped:'+cantOriginal+')':'';
-    recibidos.push((it.nombre||'')+' x'+cantAceptada+diff);
-    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:cantAceptada});
+    recibidos.push((it.nombre||'')+' x'+cantAceptada+diff+(sustituto?' [sust: '+sustituto+']':''));
+    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:cantAceptada,sustituto:sustituto});
   } else {
-    faltantesItems.push((it.nombre||'')+' x'+cantOriginal);
-    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:0});
+    faltantesItems.push((it.nombre||'')+' x'+cantOriginal+(sustituto?' → sust: '+sustituto:''));
+    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:0,sustituto:sustituto});
   }
 });
 // NO se toca pedido_productos.cantidad — queda como la cantidad originalmente enviada
@@ -2448,7 +2486,8 @@ async function exportarXLSPedido(orderId){
         'Nombre':    r.nombre||'',
         'Enviado':   r.enviado||0,
         'Recibido':  r.recibido||0,
-        'Diferencia':(r.recibido||0)-(r.enviado||0)
+        'Diferencia':(r.recibido||0)-(r.enviado||0),
+        'Sustituto': r.sustituto||''
       }));
     }catch(e){ rows=[]; }
   }
@@ -2468,11 +2507,11 @@ async function exportarXLSPedido(orderId){
     ['TransferApp — Reporte de pedido '+pedidoRef],
     ['Fecha: '+fecha+'   Origen: '+(o.origen_local||'')+'   Destino: '+(o.destino_local||'')+(o.cliente?'   Cliente: '+o.cliente:'')],
     [],
-    ['Código','Nombre','Enviado','Recibido','Diferencia'],
-    ...rows.map(r=>[r['Código'],r['Nombre'],r['Enviado'],r['Recibido'],r['Diferencia']])
+    ['Código','Nombre','Enviado','Recibido','Diferencia','Sustituto recibido'],
+    ...rows.map(r=>[r['Código'],r['Nombre'],r['Enviado'],r['Recibido'],r['Diferencia'],r['Sustituto']||''])
   ];
   const ws=XLSX.utils.aoa_to_sheet(wsData);
-  ws['!cols']=[{wch:16},{wch:45},{wch:10},{wch:10},{wch:12}];
+  ws['!cols']=[{wch:16},{wch:45},{wch:10},{wch:10},{wch:12},{wch:35}];
   XLSX.utils.book_append_sheet(wb,ws,'Reporte');
 
   const nombreArchivo='pedido_'+pedidoRef.replace('#','')+'_'+fecha.replace(/\//g,'-')+'.xlsx';
