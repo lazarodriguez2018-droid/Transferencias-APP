@@ -288,32 +288,68 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
     <!-- DASHBOARD (admin only) -->
     <div id="view-dashboard" style="display:none">
       <div class="page-header"><div>
-        <h1>Dashboard</h1>
-        <p id="dash-subtitle">Resumen general</p>
-      </div></div>
+        <h1>Dashboard de control</h1>
+        <p id="dash-subtitle">Analisis general de pedidos y transferencias</p>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="btn-dash-export">Exportar CSV</button>
+      </div>
+      <div class="filters">
+        <select class="filter-select" id="dash-filter-local">
+          <option value="">Todos los locales</option>
+        </select>
+        <input type="date" class="filter-select" id="dash-filter-desde" title="Desde">
+        <input type="date" class="filter-select" id="dash-filter-hasta" title="Hasta">
+        <input class="filter-select" id="dash-filter-producto" type="text" placeholder="Filtrar producto...">
+      </div>
       <div class="stats-grid">
         <div class="stat-card purple" onclick="navigateTo('paraEnviar')">
-          <div class="stat-label">Pedidos a despachar</div>
+          <div class="stat-label">Pedidos activos</div>
           <div class="stat-value" id="stat-pendientes">0</div><div class="stat-icon">🔧</div>
         </div>
         <div class="stat-card orange" onclick="navigateTo('misPedidos')">
-          <div class="stat-label">Mis pedidos activos</div>
+          <div class="stat-label">Unidades solicitadas</div>
           <div class="stat-value" id="stat-activos">0</div><div class="stat-icon">📤</div>
         </div>
         <div class="stat-card green">
-          <div class="stat-label">Listos para enviar</div>
+          <div class="stat-label">Completados</div>
           <div class="stat-value" id="stat-listos">0</div><div class="stat-icon">✅</div>
         </div>
         <div class="stat-card red" onclick="navigateTo('historial')">
-          <div class="stat-label">Completados este mes</div>
+          <div class="stat-label">Demorados o incompletos</div>
           <div class="stat-value" id="stat-completados">0</div><div class="stat-icon">📊</div>
         </div>
       </div>
-      <div class="card">
+      <div class="dashboard-grid">
+        <div class="card">
+          <div class="card-header"><h3>Productos mas pedidos</h3></div>
+          <div class="card-body" id="dash-products">
+            <div class="empty-state"><div class="icon">📦</div><p>No hay datos para el periodo</p></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Recomendaciones de buffer</h3></div>
+          <div class="card-body" id="dash-buffer">
+            <div class="empty-state"><div class="icon">📊</div><p>Selecciona un local para ver recomendaciones</p></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Demanda por local</h3></div>
+          <div class="card-body" id="dash-locales">
+            <div class="empty-state"><div class="icon">🏪</div><p>No hay datos para el periodo</p></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Pedidos a controlar</h3></div>
+          <div class="card-body" id="dash-risk">
+            <div class="empty-state"><div class="icon">✅</div><p>No hay pedidos con riesgo</p></div>
+          </div>
+        </div>
+        <div class="card dashboard-wide">
         <div class="card-header"><h3>Actividad reciente</h3></div>
         <div class="card-body" id="dash-recent">
           <div class="empty-state"><div class="icon">📦</div><p>No hay actividad reciente</p></div>
         </div>
+      </div>
       </div>
     </div>
 
