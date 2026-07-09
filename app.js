@@ -78,6 +78,9 @@ return String(v??'').replace(/[&<>"']/g,ch=>({ '&':'&amp;','<':'&lt;','>':'&gt;'
 function escJsStr(v){
 return String(v??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\r?\n/g,' ');
 }
+function escAttr(v){
+return escHtml(v).replace(/`/g,'&#96;');
+}
 
 function notify(msg, type='info'){
 const icons={success:'✅',error:'❌',info:'ℹ️'};
@@ -641,6 +644,16 @@ function roleLabel(role){
 return (role==='admin' || role==='supervisor_general') ? 'Supervisor' : 'Local';
 }
 
+function isAdminUser(){
+return appState.currentPerfil?.role === 'admin';
+}
+
+function requireAdminAction(action='esta accion'){
+if(isAdminUser()) return true;
+notify('No tenes permisos para '+action+'.','error');
+return false;
+}
+
 // Carga todos los productos del padrón paginando de a 1000 (límite real de Supabase/PostgREST)
 async function loadProductsCache(){
   if(appState.productsCache.length) return;
@@ -737,6 +750,7 @@ e.innerHTML=pedidos.map(o=>orderCard(o)).join('');
 //  DASHBOARD
 // ═══════════════════════════════════════════
 async function renderDashboard(){
+return renderDashboardControl();
 safeSet('dash-subtitle','Resumen de '+appState.currentPerfil.local_nombre+' ('+appState.currentPerfil.almacen+')');
 await updateBadges();
 const local=appState.currentPerfil.local_nombre;
@@ -751,6 +765,233 @@ e.innerHTML=(data&&data.length)?data.map(o=>orderCard(o)).join('')
 // ═══════════════════════════════════════════
 //  MIS PEDIDOS (yo soy destino)
 // ═══════════════════════════════════════════
+async function renderDashboardControl(){
+if(!appState.currentPerfil) return;
+const isAdmin = appState.currentPerfil.role === 'admin';
+const localPropio = appState.currentPerfil.local_nombre;
+const selectedLocal = hydrateDashboardFilters();
+safeSet('dash-subtitle', isAdmin ? 'Control general de pedidos y transferencias' : 'Resumen de '+localPropio+' ('+appState.currentPerfil.almacen+')');
+
+const orders = await fetchDashboardOrders(selectedLocal);
+const productText = el('dash-filter-producto')?.value || '';
+const tokens = tokenizeSearch(productText);
+const filtered = tokens.length ? orders.filter(o=>orderMatchesTokens(o,tokens)) : orders;
+const analytics = buildDashboardAnalytics(filtered, selectedLocal || localPropio);
+
+safeSet('stat-pendientes', analytics.activeOrders);
+safeSet('stat-activos', analytics.totalUnits);
+safeSet('stat-listos', analytics.completedOrders);
+safeSet('stat-completados', analytics.riskOrders.length + analytics.incompleteOrders);
+
+renderDashboardProducts(analytics.topProducts);
+renderDashboardLocales(analytics.localDemand);
+renderDashboardBuffer(analytics.bufferRecommendations, selectedLocal);
+renderDashboardRisk(analytics.riskOrders);
+
+const recent = filtered.slice().sort((a,b)=>new Date(b.updated_at||b.created_at)-new Date(a.updated_at||a.created_at)).slice(0,8);
+const e = el('dash-recent');
+e.innerHTML = recent.length ? recent.map(o=>orderCard(o)).join('') : '<div class="empty-state"><div class="icon">📦</div><p>No hay actividad reciente</p></div>';
+window.__dashboardLastRows = analytics.exportRows;
+}
+
+function hydrateDashboardFilters(){
+const localSelect = el('dash-filter-local');
+if(localSelect){
+const current = localSelect.value;
+localSelect.innerHTML = '<option value="">Todos los locales</option>' +
+appState.localesCache.map(l=>'<option value="'+escAttr(l.nombre)+'">'+escHtml(l.nombre)+'</option>').join('');
+localSelect.value = current;
+}
+const today = new Date();
+const from = new Date();
+from.setDate(today.getDate()-30);
+if(el('dash-filter-desde') && !el('dash-filter-desde').value) el('dash-filter-desde').value = from.toISOString().slice(0,10);
+if(el('dash-filter-hasta') && !el('dash-filter-hasta').value) el('dash-filter-hasta').value = today.toISOString().slice(0,10);
+return localSelect?.value || '';
+}
+
+async function fetchDashboardOrders(selectedLocal){
+let q = db.from('pedidos').select('*,pedido_productos(*)').order('created_at',{ascending:false});
+const desde = el('dash-filter-desde')?.value;
+const hasta = el('dash-filter-hasta')?.value;
+if(desde) q = q.gte('created_at', desde+'T00:00:00');
+if(hasta) q = q.lte('created_at', hasta+'T23:59:59');
+if(selectedLocal){
+q = q.or('origen_local.eq.'+selectedLocal+',destino_local.eq.'+selectedLocal);
+} else if(appState.currentPerfil.role !== 'admin'){
+const local = appState.currentPerfil.local_nombre;
+q = q.or('origen_local.eq.'+local+',destino_local.eq.'+local);
+}
+const {data,error}=await q.limit(2000);
+if(error){
+notify('No se pudo cargar el dashboard: '+error.message,'error');
+return [];
+}
+return data || [];
+}
+
+function buildDashboardAnalytics(orders, bufferLocal){
+const activeStates = ['pendiente','aceptado','listo','transito','transito_escala','en_escala','listo_escala','llegado'];
+const doneStates = ['completo','incompleto'];
+const now = Date.now();
+const products = new Map();
+const localDemandMap = new Map();
+let totalUnits = 0;
+let activeOrders = 0;
+let completedOrders = 0;
+let incompleteOrders = 0;
+const riskOrders = [];
+
+orders.forEach(o=>{
+const items = o.pedido_productos || [];
+const orderUnits = items.reduce((s,p)=>s+(Number(p.cantidad)||0),0);
+totalUnits += orderUnits;
+if(activeStates.includes(o.estado)) activeOrders++;
+if(doneStates.includes(o.estado)) completedOrders++;
+if(o.estado==='incompleto' || String(o.faltantes||'').trim()) incompleteOrders++;
+const ageHours = (now - new Date(o.created_at || now).getTime())/3600000;
+if((activeStates.includes(o.estado) && ageHours > 24) || o.estado==='incompleto' || String(o.faltantes||'').trim()){
+riskOrders.push({...o,_riskAge:ageHours});
+}
+const destino = o.destino_local || 'Sin destino';
+const currentLocal = localDemandMap.get(destino) || {local:destino,orders:0,units:0};
+currentLocal.orders += 1;
+currentLocal.units += orderUnits;
+localDemandMap.set(destino,currentLocal);
+items.forEach(p=>{
+const qty = Number(p.cantidad)||0;
+const key = (p.codigo || p.nombre || '').toString().trim().toLowerCase();
+if(!key) return;
+const row = products.get(key) || {codigo:p.codigo||'',nombre:p.nombre||'Sin nombre',marca:p.marca||'',orders:0,units:0,localUnits:new Map(),exportRows:[]};
+row.orders += 1;
+row.units += qty;
+row.localUnits.set(destino,(row.localUnits.get(destino)||0)+qty);
+row.exportRows.push({local:destino,qty,orderId:o.id,estado:o.estado,fecha:o.created_at});
+products.set(key,row);
+});
+});
+
+const topProducts = Array.from(products.values()).sort((a,b)=>b.units-a.units || b.orders-a.orders).slice(0,12);
+const localDemand = Array.from(localDemandMap.values()).sort((a,b)=>b.units-a.units || b.orders-a.orders).slice(0,10);
+const selectedLocalProducts = Array.from(products.values())
+.map(p=>({...p,selectedUnits:p.localUnits.get(bufferLocal)||0}))
+.filter(p=>p.selectedUnits>0)
+.sort((a,b)=>b.selectedUnits-a.selectedUnits)
+.slice(0,8);
+const days = Math.max(1, daysBetweenFilters());
+const bufferRecommendations = selectedLocalProducts.map(p=>{
+const daily = p.selectedUnits / days;
+const suggested = Math.max(1, Math.ceil(daily * 10));
+const level = p.selectedUnits >= 20 || daily >= 2 ? 'high' : (p.selectedUnits >= 8 || daily >= 0.8 ? 'medium' : 'low');
+return {...p,daily,suggested,level};
+});
+const exportRows = topProducts.flatMap(p=>p.exportRows.map(r=>({
+codigo:p.codigo,nombre:p.nombre,marca:p.marca,local:r.local,cantidad:r.qty,estado:r.estado,fecha:r.fecha,pedido:r.orderId
+})));
+return {activeOrders,completedOrders,incompleteOrders,totalUnits,riskOrders:riskOrders.sort((a,b)=>(b._riskAge||0)-(a._riskAge||0)).slice(0,10),topProducts,localDemand,bufferRecommendations,exportRows};
+}
+
+function daysBetweenFilters(){
+const desde = el('dash-filter-desde')?.value;
+const hasta = el('dash-filter-hasta')?.value;
+if(!desde || !hasta) return 30;
+const start = new Date(desde+'T00:00:00');
+const end = new Date(hasta+'T23:59:59');
+return Math.ceil((end-start)/86400000) || 1;
+}
+
+function renderMetricList(targetId, rows){
+const target = el(targetId);
+if(!target) return;
+if(!rows.length){
+target.innerHTML='<div class="empty-state"><div class="icon">📦</div><p>No hay datos para el periodo</p></div>';
+return;
+}
+const max = Math.max(...rows.map(r=>r.value),1);
+target.innerHTML='<div class="metric-list">'+rows.map(r=>{
+const pct = Math.max(4, Math.round((r.value/max)*100));
+return '<div class="metric-row">'+
+'<div><div class="metric-title">'+escHtml(r.title)+'</div><div class="metric-sub">'+escHtml(r.sub||'')+'</div></div>'+
+'<div class="metric-value">'+escHtml(r.label||r.value)+'</div>'+
+'<div class="metric-bar"><span style="width:'+pct+'%"></span></div>'+
+'</div>';
+}).join('')+'</div>';
+}
+
+function renderDashboardProducts(products){
+renderMetricList('dash-products', products.map(p=>({
+title:p.nombre,
+sub:[p.codigo,p.marca,p.orders+' pedidos'].filter(Boolean).join(' - '),
+value:p.units,
+label:p.units+' un.'
+})));
+}
+
+function renderDashboardLocales(locales){
+renderMetricList('dash-locales', locales.map(l=>({
+title:l.local,
+sub:l.orders+' pedidos',
+value:l.units,
+label:l.units+' un.'
+})));
+}
+
+function renderDashboardBuffer(recs, selectedLocal){
+const target=el('dash-buffer');
+if(!target) return;
+if(!selectedLocal){
+target.innerHTML='<div class="dashboard-note">Elegir un local arriba permite ver que productos conviene reforzar. La recomendacion usa la demanda del periodo y calcula un buffer sugerido para 10 dias.</div>';
+return;
+}
+if(!recs.length){
+target.innerHTML='<div class="empty-state"><div class="icon">✅</div><p>No hay demanda suficiente para recomendar buffer en '+escHtml(selectedLocal)+'</p></div>';
+return;
+}
+target.innerHTML=recs.map(r=>
+'<div class="buffer-card '+r.level+'">'+
+ '<div class="buffer-title">'+escHtml(r.nombre)+'</div>'+
+ '<div class="buffer-meta">'+
+  'Pedido en el periodo: <strong>'+r.selectedUnits+' un.</strong><br>'+
+  'Promedio diario: <strong>'+r.daily.toFixed(1)+' un.</strong><br>'+
+  'Sugerencia: aumentar buffer a <strong>'+r.suggested+' un.</strong> para cubrir 10 dias.'+
+ '</div>'+
+'</div>').join('');
+}
+
+function renderDashboardRisk(orders){
+const target=el('dash-risk');
+if(!target) return;
+if(!orders.length){
+target.innerHTML='<div class="empty-state"><div class="icon">✅</div><p>No hay pedidos con riesgo</p></div>';
+return;
+}
+target.innerHTML='<div class="risk-list">'+orders.map(o=>{
+const code='#'+String(o.id||'').slice(-8,-2).toUpperCase();
+const reason=o.estado==='incompleto'||String(o.faltantes||'').trim()?'Incompleto':(Math.round(o._riskAge||0)+' h');
+return '<div class="risk-item" onclick="openDetalle(\''+escJsStr(o.id)+'\')">'+
+'<div class="risk-main"><div class="risk-title">'+escHtml(code+' - '+(o.cliente||'Sin cliente'))+'</div>'+
+'<div class="risk-meta">'+escHtml((o.origen_local||'')+' -> '+(o.destino_local||'')+' - '+estadoInfo(o.estado)[1])+'</div></div>'+
+'<div class="risk-badge">'+escHtml(reason)+'</div>'+
+'</div>';
+}).join('')+'</div>';
+}
+
+function exportDashboardCSV(){
+const rows = window.__dashboardLastRows || [];
+if(!rows.length) return notify('No hay datos para exportar','info');
+const headers = ['codigo','nombre','marca','local','cantidad','estado','fecha','pedido'];
+const csv = [headers.join(',')].concat(rows.map(r=>headers.map(h=>'"'+String(r[h]??'').replace(/"/g,'""')+'"').join(','))).join('\n');
+const blob = new Blob([csv],{type:'text/csv;charset=utf-8'});
+const url = URL.createObjectURL(blob);
+const a = document.createElement('a');
+a.href = url;
+a.download = 'dashboard-transferencias.csv';
+document.body.appendChild(a);
+a.click();
+a.remove();
+URL.revokeObjectURL(url);
+}
+
 async function renderMisPedidos(){
 const isAdmin = appState.currentPerfil.role==='admin';
 const local   = appState.currentPerfil.local_nombre;
@@ -2332,17 +2573,20 @@ await updateBadges();
 }
 
 async function aprobarUser(uid){
+if(!requireAdminAction('aprobar usuarios')) return;
 await db.from('perfiles').update({approved:true}).eq('id',uid);
 await db.from('notificaciones').insert({usuario_id:uid,titulo:'✅ Tu cuenta fue aprobada',cuerpo:'Ya podés ingresar a TransferApp.'});
 await renderUsuarios(); notify('Usuario aprobado','success');
 }
 async function rechazarUser(uid){
+if(!requireAdminAction('rechazar usuarios')) return;
 showConfirm('¿Eliminar este usuario permanentemente?', async()=>{
 await db.from('perfiles').delete().eq('id',uid);
 await renderUsuarios(); notify('Usuario eliminado','info');
 }, {title:'Eliminar usuario', btnLabel:'Sí, eliminar'});
 }
 async function setAdmin(uid,makeAdmin){
+if(!requireAdminAction('cambiar roles')) return;
 await db.from('perfiles').update({role:makeAdmin?'admin':'empleado'}).eq('id',uid);
 await renderUsuarios(); notify('Rol actualizado','success');
 }
@@ -2371,6 +2615,7 @@ return '<tr>'+
 }).join('');
 }
 async function agregarLocal(){
+if(!requireAdminAction('crear locales')) return;
 const n=el('new-local-nombre').value.trim(), a=el('new-local-almacen').value.trim().toUpperCase();
 const em=el('new-local-email').value.trim();
 const tel=el('new-local-tel')?.value.trim()||'';
@@ -2396,6 +2641,7 @@ openModal('modal-editar-local');
 }
 
 async function guardarLocal(){
+if(!requireAdminAction('editar locales')) return;
 const id=el('edit-local-id').value;
 const n=el('edit-local-nombre').value.trim();
 const a=el('edit-local-almacen').value.trim().toUpperCase();
@@ -2410,6 +2656,7 @@ await renderAdminLocales();
 notify('Local actualizado','success');
 }
 async function eliminarLocal(id){
+if(!requireAdminAction('eliminar locales')) return;
 showConfirm('¿Eliminar este local? Los pedidos existentes no se verán afectados.', async()=>{
 await db.from('locales').delete().eq('id',id);
 await renderAdminLocales(); notify('Local eliminado','info');
@@ -2423,6 +2670,7 @@ el('transportes-tags').innerHTML=appState.transportesCache.map(t=>
 '<div class="config-tag">'+t.nombre+'<span class="remove" onclick="eliminarTransporte(\''+t.id+'\')">✕</span></div>').join('');
 }
 async function agregarTransporte(){
+if(!requireAdminAction('crear transportes')) return;
 const v=el('new-transporte-input').value.trim(); if(!v) return notify('Escribí el nombre','error');
 const {error}=await db.from('transportes').insert({nombre:v});
 if(error) return notify(error.message,'error');
@@ -2432,6 +2680,7 @@ appState.transportesCache=data||[];
 await renderTransportes(); notify('Transporte agregado','success');
 }
 async function eliminarTransporte(id){
+if(!requireAdminAction('eliminar transportes')) return;
 await db.from('transportes').delete().eq('id',id);
 const {data}=await db.from('transportes').select('*').order('nombre');
 appState.transportesCache=data||[];
@@ -2486,6 +2735,7 @@ el('extra-products-body').innerHTML=(data||[]).map(normalizeExtraProduct).map(p=
 }
 
 async function agregarPadronExtra(){
+if(!requireAdminAction('agregar productos')) return;
 const codigo=el('new-extra-codigo').value.trim();
 const nombre=el('new-extra-nombre').value.trim();
 const marca=el('new-extra-marca').value.trim();
@@ -2504,6 +2754,7 @@ notify('Producto agregado al padrón extra','success');
 }
 
 async function eliminarPadronExtra(id){
+if(!requireAdminAction('eliminar productos')) return;
 const {error}=await db.from('padron_extra').delete().eq('id',id);
 if(error) return notify('No se pudo eliminar: '+error.message,'error');
 appState.productsCache=[];
@@ -2512,6 +2763,7 @@ notify('Producto extra eliminado','info');
 }
 
 async function handlePadronUpload(e){
+if(!requireAdminAction('importar productos')) return;
 const f=e.target.files[0]; if(!f) return;
 if(typeof XLSX==='undefined') return notify('XLSX no cargado','error');
 notify('Procesando archivo...','info');
@@ -2873,6 +3125,10 @@ el('filter-para-busqueda')?.addEventListener('input', renderParaEnviar);
 ['filter-hist-tipo','filter-hist-estado','filter-hist-origen','filter-hist-destino','filter-hist-creador','filter-hist-desde','filter-hist-hasta']
 .forEach(id=>el(id)?.addEventListener('change', renderHistorial));
 el('filter-hist-busqueda')?.addEventListener('input', renderHistorial);
+['dash-filter-local','dash-filter-desde','dash-filter-hasta']
+.forEach(id=>el(id)?.addEventListener('change', renderDashboard));
+el('dash-filter-producto')?.addEventListener('input', renderDashboard);
+el('btn-dash-export')?.addEventListener('click', exportDashboardCSV);
 
 // Verificar clave empresa (session storage)
 checkEmpresaClave();
@@ -2909,7 +3165,7 @@ notify('Error durante la inicialización de la aplicación: '+(err?.message||err
 async function verificarClaveEmpresa(){
 const clave = el('empresa-clave').value.trim();
 if(!clave) return showErr('empresa-error','Ingresá la clave de acceso.');
-const {data,error} = await db.from('empresa_config').select('*').eq('clave',clave).single();
+const {data,error} = await db.rpc('verificar_clave_empresa',{clave_input:clave}).single();
 if(error||!data) return showErr('empresa-error','Clave incorrecta. Contactá al administrador.');
 // Guardar en session storage para esta sesión
 sessionStorage.setItem('empresa_validada', '1');
@@ -3453,6 +3709,7 @@ r.readAsDataURL(f);
 //  BORRAR/EDITAR PEDIDOS — solo admins
 // ═══════════════════════════════════════════
 async function eliminarPedido(orderId){
+if(!requireAdminAction('eliminar pedidos')) return;
 showConfirm(
 '¿Eliminar este pedido permanentemente? Esta acción no se puede deshacer.',
 async()=>{
@@ -3498,6 +3755,7 @@ hideSpinner();
 }
 
 async function retrocederEstado(orderId){
+if(!requireAdminAction('retroceder pedidos')) return;
 const {data:o}=await db.from('pedidos').select('*').eq('id',orderId).single();
 if(!o) return;
 const flujoNormal=['pendiente','aceptado','listo','transito','llegado','completo','incompleto'];
