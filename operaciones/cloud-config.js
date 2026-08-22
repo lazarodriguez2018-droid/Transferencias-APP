@@ -1,6 +1,6 @@
 window.SUCANEITOR_CLOUD_CONFIG = Object.freeze({
-  supabaseUrl: 'https://fjpsggtfssibyuxupggd.supabase.co',
-  supabaseKey: 'sb_publishable_tiTJDR0fCzwg9fBa8z-M4A_gF_6_BD2',
+  supabaseUrl: 'https://akqqpodyijzjdoibkint.supabase.co',
+  supabaseKey: 'sb_publishable_ClVgs8WdyAu0McGi0eAaEQ_MovUmDCC',
   portalUrl: '/',
   pedidosUrl: '/?module=pedidos'
 });

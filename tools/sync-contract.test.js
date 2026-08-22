@@ -7,8 +7,15 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const portal = read('app.js');
 const operations = read('operaciones/app.js');
 const cloud = read('operaciones/cloud-api.js');
+const cloudConfig = read('operaciones/cloud-config.js');
 const reposition = read('operaciones/reposition-app.js');
 const realtime = read('supabase/migrations/20260822030000_realtime_operaciones.sql');
+
+const productionProject = 'akqqpodyijzjdoibkint';
+assert.match(portal, new RegExp(productionProject), 'El portal debe usar el proyecto principal Transfeapp');
+assert.match(cloudConfig, new RegExp(productionProject), 'Operaciones debe usar el proyecto principal Transfeapp');
+assert.doesNotMatch(portal + cloudConfig, /fjpsggtfssibyuxupggd/,
+  'La versión final no debe apuntar al proyecto de pruebas');
 
 [
   'pedido_productos', 'catalogo_version', 'locales', 'transportes'
