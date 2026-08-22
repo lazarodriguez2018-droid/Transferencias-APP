@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════════
 //  SUPABASE CONFIG
 // ═══════════════════════════════════════════
-const SUPABASE_URL = 'https://akqqpodyijzjdoibkint.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_ClVgs8WdyAu0McGi0eAaEQ_MovUmDCC';
+const SUPABASE_URL = 'https://fjpsggtfssibyuxupggd.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_tiTJDR0fCzwg9fBa8z-M4A_gF_6_BD2';
 const { createClient } = supabase;
 const db = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -23,6 +23,7 @@ clienteDesdePedido: false,
 currentChatOrderId: null,
 currentSugId: null,
 despachoTab: 'pendientes',
+activeView: 'hub',
 realtimeChannels: [],
 idle: {
 intervalId: null,
@@ -267,7 +268,7 @@ if(error) return showErr('login-error', error.message==='Invalid login credentia
 await afterLogin(data.user);
 }
 
-let regData={}, verifyCode='';
+let regData={};
 
 async function doRegisterStep1(){
 const nombre   = el('reg-nombre').value.trim();
@@ -288,14 +289,32 @@ if(localVal){
   localNombre=parts[0]||'General';
   almacen=parts[1]||'SUP';
 }
-regData={nombre,apellido,localNombre,almacen,email,pass,tipoCuenta};
-// Sign up with Supabase — sends verification email automatically
-const {error}=await db.auth.signUp({email,password:pass,options:{emailRedirectTo:window.location.href}});
+regData={nombre,apellido,localNombre,almacen,email,tipoCuenta};
+// Supabase envia un enlace. Los datos mínimos viajan como metadata para que
+// el trigger seguro cree el perfil pendiente aunque no exista una sesión aún.
+const {data,error}=await db.auth.signUp({
+  email,
+  password:pass,
+  options:{
+    emailRedirectTo:window.location.origin+window.location.pathname,
+    data:{
+      sucaneitor_nombre:nombre,
+      sucaneitor_apellido:apellido,
+      sucaneitor_local_nombre:localNombre,
+      sucaneitor_almacen:almacen,
+      sucaneitor_tipo_cuenta:tipoCuenta
+    }
+  }
+});
 if(error) return showErr('reg-error',error.message);
+if(data?.session?.user){
+  await afterLogin(data.session.user);
+  return;
+}
 el('reg-email-display').textContent=email;
 el('reg-step1').style.display='none';
 el('reg-step2').style.display='block';
-showSuc('reg-success','¡Código enviado a '+email+'! Revisá tu bandeja de entrada.');
+showSuc('reg-success','¡Enlace enviado a '+email+'! Revisá también correo no deseado.');
 }
 
 function backToStep1(){
@@ -304,28 +323,14 @@ el('reg-step2').style.display='none';
 }
 
 async function doRegisterStep2(){
-const token=el('reg-code').value.trim();
-if(!token||token.length<6) return showErr('reg-error','Ingresá el código de 6 dígitos.');
 showSpinner();
 try{
-// Verify OTP
-const {data,error}=await db.auth.verifyOtp({email:regData.email,token,type:'signup'});
-if(error) return showErr('reg-error','Código incorrecto o expirado. '+error.message);
-// Seguridad: evitar auto-admin por conteos afectados por RLS.
-const isFirst=false;
-// Create perfil
-const {error:pe}=await db.from('perfiles').insert({
-id:data.user.id, nombre:regData.nombre, apellido:regData.apellido,
-local_nombre:regData.localNombre, almacen:regData.almacen,
-role:regData.tipoCuenta==='personal'?'admin':'empleado', approved:false
-});
-if(pe) return showErr('reg-error','Error al crear perfil: '+pe.message);
-el('reg-step2').style.display='none';
-el('reg-step1').style.display='block';
-el('reg-code').value='';
-showRegisterSuccess(isFirst
-?'¡Cuenta creada! Sos el primer administrador. Ya podés iniciar sesión.'
-:'¡Cuenta creada con éxito! Un administrador debe aprobarla antes de que puedas ingresar.');
+const {data:{session},error}=await db.auth.getSession();
+if(error||!session){
+  showErr('reg-error','Todavía no detectamos la confirmación. Abrí el enlace del correo y luego volvé a esta pantalla.');
+  return;
+}
+await afterLogin(session.user);
 } finally {
 hideSpinner();
 }
@@ -346,6 +351,8 @@ stopIdleWatcher();
 teardownRealtime();
 clearLastActivityMs(appState.currentUser?.id);
 appState.currentUser=null; appState.currentPerfil=null;
+appState.activeView='hub';
+history.replaceState(null,'','/');
 sessionStorage.removeItem('empresa_validada');
 sessionStorage.removeItem('empresa_nombre');
 // Reset UI completamente para evitar que persistan opciones de admin
@@ -405,7 +412,7 @@ try{
 showPage('app-page');
 // Siempre resetear nav antes de aplicar rol
 el('admin-nav').style.display='none';
-const isAdmin = appState.currentPerfil.role==='admin';
+const isAdmin = isSupervisorRole(appState.currentPerfil.role);
 safeSet('sidebar-name', appState.currentPerfil.nombre_display||(appState.currentPerfil.nombre+' '+appState.currentPerfil.apellido));
 safeSet('sidebar-role', roleLabel(appState.currentPerfil.role));
 // Avatar: foto o iniciales
@@ -428,7 +435,14 @@ db.from('transportes').select('*').order('nombre'),
 ]);
 appState.localesCache     = locs||[];
 appState.transportesCache = trans||[];
-navigateTo('misPedidos');
+const queryParams=new URLSearchParams(location.search);
+const requestedModule=queryParams.get('module');
+const requestedView=queryParams.get('view');
+const validViews=['hub','dashboard','misPedidos','paraEnviar','historial','misConsultas','chats','agenda','perfil','usuarios','sugerencias','config'];
+const initialView=validViews.includes(requestedView)
+  ? requestedView
+  : requestedModule==='pedidos' ? 'misPedidos' : 'hub';
+navigateTo(initialView,{history:'replace'});
 setupRealtime();
 } finally {
 hideSpinner();
@@ -453,7 +467,31 @@ const pedidosChannel = db.channel('pedidos-changes-'+appState.currentPerfil.id)
 .on('postgres_changes',{event:'INSERT',schema:'public',table:'pedidos'},
 ()=>{ refreshView(); updateBadges(); })
 .subscribe();
-appState.realtimeChannels=[notifsChannel,pedidosChannel];
+const pedidoProductosChannel = db.channel('pedido-productos-'+appState.currentPerfil.id)
+.on('postgres_changes',{event:'*',schema:'public',table:'pedido_productos'},
+()=>{ refreshView(); updateBadges(); })
+.subscribe();
+const catalogChannel = db.channel('catalogo-central-'+appState.currentPerfil.id)
+.on('postgres_changes',{event:'UPDATE',schema:'public',table:'catalogo_version'},async()=>{
+  appState.productsCache=[];
+  await loadProductsCache();
+  refreshView();
+  notify('El padrón central se actualizó en todos los módulos.','info');
+})
+.subscribe();
+const referenceChannel = db.channel('referencias-'+appState.currentPerfil.id)
+.on('postgres_changes',{event:'*',schema:'public',table:'locales'},async()=>{
+  const {data}=await db.from('locales').select('*').order('nombre');
+  appState.localesCache=data||[];
+  refreshView();
+})
+.on('postgres_changes',{event:'*',schema:'public',table:'transportes'},async()=>{
+  const {data}=await db.from('transportes').select('*').order('nombre');
+  appState.transportesCache=data||[];
+  refreshView();
+})
+.subscribe();
+appState.realtimeChannels=[notifsChannel,pedidosChannel,pedidoProductosChannel,catalogChannel,referenceChannel];
 }
 
 function teardownRealtime(){
@@ -465,7 +503,7 @@ appState.realtimeChannels=[];
 async function updateBadges(){
 if(!appState.currentPerfil) return;
 const local   = appState.currentPerfil.local_nombre;
-const isAdmin = appState.currentPerfil.role==='admin';
+const isAdmin = isSupervisorRole(appState.currentPerfil.role);
 const countOrZero = async (q)=>{
 const {count,error}=await q;
 if(error){ return 0; }
@@ -494,7 +532,7 @@ el('badge-misPedidos').textContent=mp; el('badge-misPedidos').style.display=mp>0
 el('badge-paraEnviar').textContent=pe; el('badge-paraEnviar').style.display=pe>0?'flex':'none';
 updateNotifBadgeCount(no);
 
-if(appState.currentPerfil.role==='admin'){
+if(isSupervisorRole(appState.currentPerfil.role)){
 const [pu,su]=await Promise.all([
 countOrZero(db.from('perfiles').select('id',{count:'exact',head:true}).eq('approved',false)),
 countOrZero(db.from('sugerencias').select('id',{count:'exact',head:true}).eq('leida',false)),
@@ -591,13 +629,33 @@ const ESTADOS_FINAL  = ['transito','llegado','completo','incompleto'];
 // ═══════════════════════════════════════════
 //  NAVIGATION
 // ═══════════════════════════════════════════
-function navigateTo(view){
+function navigationUrl(view){
+const url=new URL(location.href);
+url.searchParams.delete('module');
+if(view==='hub') url.searchParams.delete('view'); else url.searchParams.set('view',view);
+return url.pathname+(url.searchParams.toString()?'?'+url.searchParams.toString():'');
+}
+
+function navigateTo(view,options={}){
+const validViews=['hub','dashboard','misPedidos','paraEnviar','historial','misConsultas','chats','agenda','perfil','usuarios','sugerencias','config'];
+if(!validViews.includes(view)) view='hub';
+if(['dashboard','usuarios','sugerencias','config'].includes(view)&&!isAdminUser()) view='hub';
+const historyMode=options.history||'push';
+if(historyMode!=='none'){
+  const state={sucaneitorView:view};
+  const url=navigationUrl(view);
+  if(historyMode==='replace') history.replaceState(state,'',url);
+  else if(appState.activeView!==view||history.state?.sucaneitorView!==view) history.pushState(state,'',url);
+}
+appState.activeView=view;
+const appPage=el('app-page');
+if(appPage) appPage.classList.toggle('hub-mode',view==='hub');
 document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
 document.querySelectorAll('[id^="view-"]').forEach(v=>v.style.display='none');
 const ve=el('view-'+view); if(ve) ve.style.display='block';
 const ni=el('nav-'+view); if(ni) ni.classList.add('active');
 const titles={
-dashboard:'Dashboard',misPedidos:'Pedidos de mi local',paraEnviar:'Pedidos a despachar',
+hub:'Módulos',dashboard:'Dashboard',misPedidos:'Pedidos de mi local',paraEnviar:'Pedidos a despachar',
 historial:'Historial',misConsultas:'Mis Consultas',chats:'Chats',agenda:'Agenda',
 perfil:'Mi Perfil',usuarios:'Usuarios',sugerencias:'Sugerencias',config:'Configuración'
 };
@@ -610,6 +668,18 @@ historial:renderHistorial,misConsultas:renderMisConsultas,chats:renderChats,agen
 perfil:renderPerfil,usuarios:renderUsuarios,sugerencias:renderSugerencias,config:renderConfig};
 if(_rm[view]) withSpinner(()=>_rm[view]());
 closeSidebar();
+}
+
+function restoreNavigationState(event){
+if(!appState.currentPerfil) return;
+closeSidebar();
+document.querySelectorAll('.modal-overlay.show').forEach(modal=>modal.classList.remove('show'));
+document.body.style.overflow='';
+const params=new URLSearchParams(location.search);
+const view=event?.state?.sucaneitorView||params.get('view')||'hub';
+navigateTo(view,{history:'none'});
+const modalId=event?.state?.sucaneitorModal;
+if(modalId&&el(modalId)) requestAnimationFrame(()=>openModal(modalId,{history:false}));
 }
 
 // ═══════════════════════════════════════════
@@ -644,8 +714,12 @@ function roleLabel(role){
 return (role==='admin' || role==='supervisor_general') ? 'Supervisor' : 'Local';
 }
 
+function isSupervisorRole(role){
+return role==='admin' || role==='supervisor_general';
+}
+
 function isAdminUser(){
-return appState.currentPerfil?.role === 'admin';
+return isSupervisorRole(appState.currentPerfil?.role);
 }
 
 function requireAdminAction(action='esta accion'){
@@ -663,7 +737,7 @@ async function loadProductsCache(){
   // Cargar tabla principal paginando
   let from = 0;
   while(true){
-    const {data, error} = await db.from('productos').select('codigo,nombre,marca').order('nombre').range(from, from+PAGE-1);
+    const {data, error} = await db.from('productos').select('codigo,nombre,marca,barras,fabricante').order('nombre').range(from, from+PAGE-1);
     if(error || !data || !data.length) break;
     base = base.concat(data);
     if(data.length < PAGE) break;
@@ -721,7 +795,7 @@ const fecha=fmtDate(o.created_at);
 const urgente=o.urgente?' <span class="priority-badge">🔴 URGENTE</span>':'';
 const viejo=o._viejo?' <span class="priority-badge" style="color:#f7971e">⏰ +24hs</span>':'';
 const isMio=o.destino_local===appState.currentPerfil.local_nombre;
-const isAdmin=appState.currentPerfil.role==='admin';
+const isAdmin=isSupervisorRole(appState.currentPerfil.role);
 const rol=isMio
 ?'<span style="font-size:10px;font-weight:700;color:var(--text3)">YO PEDÍ</span>'
 :'<span style="font-size:10px;font-weight:700;color:var(--accent4)">ME PIDIERON</span>';
@@ -767,7 +841,7 @@ e.innerHTML=(data&&data.length)?data.map(o=>orderCard(o)).join('')
 // ═══════════════════════════════════════════
 async function renderDashboardControl(){
 if(!appState.currentPerfil) return;
-const isAdmin = appState.currentPerfil.role === 'admin';
+const isAdmin = isSupervisorRole(appState.currentPerfil.role);
 const localPropio = appState.currentPerfil.local_nombre;
 const selectedLocal = hydrateDashboardFilters();
 safeSet('dash-subtitle', isAdmin ? 'Control general de pedidos y transferencias' : 'Resumen de '+localPropio+' ('+appState.currentPerfil.almacen+')');
@@ -818,7 +892,7 @@ if(desde) q = q.gte('created_at', desde+'T00:00:00');
 if(hasta) q = q.lte('created_at', hasta+'T23:59:59');
 if(selectedLocal){
 q = q.or('origen_local.eq.'+selectedLocal+',destino_local.eq.'+selectedLocal);
-} else if(appState.currentPerfil.role !== 'admin'){
+} else if(!isSupervisorRole(appState.currentPerfil.role)){
 const local = appState.currentPerfil.local_nombre;
 q = q.or('origen_local.eq.'+local+',destino_local.eq.'+local);
 }
@@ -993,7 +1067,7 @@ URL.revokeObjectURL(url);
 }
 
 async function renderMisPedidos(){
-const isAdmin = appState.currentPerfil.role==='admin';
+const isAdmin = isSupervisorRole(appState.currentPerfil.role);
 const local   = appState.currentPerfil.local_nombre;
 
 // Populate filtro origen
@@ -1086,7 +1160,7 @@ await renderParaEnviar();
 }
 
 async function renderParaEnviar(){
-const isAdmin = appState.currentPerfil.role==='admin';
+const isAdmin = isSupervisorRole(appState.currentPerfil.role);
 const local   = appState.currentPerfil.local_nombre;
 
 // Filtros de local — visibles para admins
@@ -1169,7 +1243,7 @@ appState.despachoTab==='pendientes'?'No hay pedidos pendientes':'No hay pedidos 
 // ═══════════════════════════════════════════
 async function renderHistorial(){
 const local=appState.currentPerfil.local_nombre;
-const isAdmin=appState.currentPerfil.role==='admin';
+const isAdmin=isSupervisorRole(appState.currentPerfil.role);
 const tipo=el('filter-hist-tipo').value;
 const estado=el('filter-hist-estado').value;
 const selOrigen=el('filter-hist-origen');
@@ -1177,11 +1251,11 @@ const selDestino=el('filter-hist-destino');
 const selCreador=el('filter-hist-creador');
 const cvO=selOrigen?.value||'', cvD=selDestino?.value||'', cvC=selCreador?.value||'';
 if(selOrigen){
-selOrigen.innerHTML='<option value="">Todos los orígenes</option>'+appState.localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvO===l.nombre?' selected':'')+'>'+escHtml(l.nombre)+'</option>').join('');
+selOrigen.innerHTML='<option value="">Todos los orígenes</option>'+appState.localesCache.map(l=>'<option value="'+escAttr(l.nombre)+'"'+(cvO===l.nombre?' selected':'')+'>'+escHtml(l.nombre)+'</option>').join('');
 }
 if(isAdmin && selDestino){
 selDestino.style.display='';
-selDestino.innerHTML='<option value="">Todos los destinos</option>'+appState.localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvD===l.nombre?' selected':'')+'>'+escHtml(l.nombre)+'</option>').join('');
+selDestino.innerHTML='<option value="">Todos los destinos</option>'+appState.localesCache.map(l=>'<option value="'+escAttr(l.nombre)+'"'+(cvD===l.nombre?' selected':'')+'>'+escHtml(l.nombre)+'</option>').join('');
 } else if(selDestino) selDestino.style.display='none';
 if(isAdmin && selCreador){
 selCreador.style.display='';
@@ -1328,11 +1402,11 @@ if(o.faltantes){
 if(o.notas) extra+='<div class="detail-row"><span class="label">Notas:</span><span class="value">'+escHtml(o.notas)+'</span></div>';
 if(o.faltantes_escala) extra+='<div class="detail-row"><span class="label">Diferencias en escala:</span><span class="value" style="color:#a855f7">'+escHtml(o.faltantes_escala.split('\n__xls__:')[0])+'</span></div>';
 
-const canOrigen  = isOrigen  || appState.currentPerfil.role==='admin';
-const canDestino = isDestino || appState.currentPerfil.role==='admin';
+const canOrigen  = isOrigen  || isSupervisorRole(appState.currentPerfil.role);
+const canDestino = isDestino || isSupervisorRole(appState.currentPerfil.role);
 const esEscala   = escalaInfo !== null;
 const isEscalaLocal = escalaInfo && appState.currentPerfil.local_nombre === escalaInfo.escala;
-const canEscala  = isEscalaLocal || appState.currentPerfil.role==='admin';
+const canEscala  = isEscalaLocal || isSupervisorRole(appState.currentPerfil.role);
 const colaEscalas=parseEscalaQueue(o);
 const proxParada=(colaEscalas[0]&&colaEscalas[0].nombre)||o.destino_local;
 let actions='';
@@ -1386,7 +1460,7 @@ actions+
 (o.telefono?'<button class="btn btn-success btn-sm" onclick="abrirWhatsApp(\''+escJsStr(o.telefono)+'\',\''+escJsStr(o.cliente||'')+'\')" style="background:#25d366;border-color:#25d366;color:#fff">💬 WhatsApp cliente</button>':'')+
 '<button class="btn btn-ghost btn-sm" onclick="generarEtiqueta(\''+o.id+'\')">🖨️ Etiqueta de envío</button>'+
 (['completo','incompleto'].includes(o.estado)?'<button class="btn btn-ghost btn-sm" onclick="exportarXLSPedido(\''+o.id+'\')" style="color:#22c55e;border-color:rgba(34,197,94,0.35)">📊 Exportar XLS comparativo</button>':'')+
-(appState.currentPerfil.role==='admin'?
+(isSupervisorRole(appState.currentPerfil.role)?
 '<button class="btn btn-warning btn-sm" onclick="retrocederEstado(\''+o.id+'\')">↩️ Retroceder estado</button>'+
 '<button class="btn btn-danger btn-sm" onclick="eliminarPedido(\''+o.id+'\')">🗑️ Eliminar pedido</button>':'')+
 '</div>';
@@ -1690,6 +1764,7 @@ en_escala_completo:'en_escala', listo_escala:'listo_escala',
 llegado:'llegado', completo:'completo'
 };
 const updates={updated_at:new Date().toISOString()};
+let acceptedQuantities=null;
 const responsable=(el('accion-responsable')&&el('accion-responsable').value.trim())||'';
 if(!responsable) return notify('Ingresá tu nombre como responsable','error');
 
@@ -1746,17 +1821,17 @@ checks.forEach(ch=>{
     const cantSust=Math.max(1, parseInt(sustituto.cantidad)||1);
     const diffCant=cantSust!==cantOriginal?' (ped:'+cantOriginal+')':'';
     recibidos.push('INCORRECTO: '+(it.nombre||'')+' x'+cantOriginal+' → '+sustituto.nombre+' x'+cantSust+diffCant);
-    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:cantSust,sustituto:sustituto||null});
+    recibidosData.push({linea_id:it.id||null,codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:cantSust,sustituto:sustituto||null});
     return;
   }
 
   if(ch.checked && cantAceptada>0){
     const diff=cantAceptada!==cantOriginal?' (ped:'+cantOriginal+')':'';
     recibidos.push((it.nombre||'')+' x'+cantAceptada+diff);
-    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:cantAceptada,sustituto:null});
+    recibidosData.push({linea_id:it.id||null,codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:cantAceptada,sustituto:null});
   } else {
     faltantesItems.push((it.nombre||'')+' x'+cantOriginal);
-    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:0,sustituto:null});
+    recibidosData.push({linea_id:it.id||null,codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:0,sustituto:null});
   }
 });
 // NO se toca pedido_productos.cantidad — queda como la cantidad originalmente enviada
@@ -1780,6 +1855,7 @@ if(tipo==='en_escala_incompleto'){
 } else if(tipo==='aceptar_incompleto'){
   updates.estado='aceptado';
   updates.faltantes='Aceptado incompleto - '+resumen;
+  acceptedQuantities=recibidosData.map(item=>({id:item.linea_id,codigo:item.codigo,cantidad:item.sustituto?0:item.recibido}));
 } else {
   updates.estado='incompleto';
   updates.faltantes=resumen;
@@ -1857,6 +1933,16 @@ if(tipo==='aceptar'){
 }
 }
 
+if(tipo==='aceptar'){
+  const {data:lines}=await db.from('pedido_productos').select('id,cantidad').eq('pedido_id',orderId);
+  acceptedQuantities=(lines||[]).map(item=>({id:item.id,cantidad:item.cantidad}));
+}
+if(acceptedQuantities){
+  const results=await Promise.all(acceptedQuantities.filter(item=>item.id).map(item=>db.from('pedido_productos').update({cantidad_aceptada:Math.max(0,Number(item.cantidad)||0)}).eq('id',item.id)));
+  const qtyError=results.find(result=>result.error)?.error;
+  if(qtyError) return notify('No se pudieron guardar las cantidades aceptadas: '+qtyError.message,'error');
+}
+
 const {error}=await db.from('pedidos').update(updates).eq('id',orderId);
 if(error) return notify('Error al actualizar: '+error.message,'error');
 
@@ -1871,7 +1957,7 @@ if(tipo==='aceptar_incompleto'){
 await notificarCambioEstado(orderId, 'incompleto');
 }
 
-closeModal('modal-accion');
+await closeModal('modal-accion');
 notify('Estado actualizado correctamente','success');
 await updateBadges(); refreshView();
 // Reabrir el detalle del pedido para quedarse en pantalla
@@ -1910,7 +1996,7 @@ if(['aceptado','transito_escala','listo_escala'].includes(estado)){
           await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
             to:mails,
             subject:'Pedido en escala: #'+orderId.slice(-8,-2).toUpperCase(),
-            text:'El pedido '+orderId+' está en flujo de escala ('+o.origen_local+' → '+o.destino_local+'). Revisar TransferApp para continuar el despacho.'
+            text:'El pedido '+orderId+' está en flujo de escala ('+o.origen_local+' → '+o.destino_local+'). Revisar Sucaneitor Pedidos para continuar el despacho.'
           })});
         }
       }
@@ -1995,7 +2081,7 @@ const req=id
 :db.from('clientes_agenda').insert(payload).select().single();
 const {data,error}=await req;
 if(error) return notify('No se pudo guardar cliente: '+error.message,'error');
-closeModal('modal-cliente-agenda');
+await closeModal('modal-cliente-agenda');
 notify(id?'Cliente actualizado':'Cliente agregado','success');
 if(appState.clienteDesdePedido){
 seleccionarClienteAgendaPedido(data);
@@ -2005,11 +2091,12 @@ if(el('view-agenda')?.style.display!=='none') await renderAgendaClientes();
 }
 
 async function eliminarClienteAgenda(id){
-if(!confirm('¿Eliminar este cliente de la agenda?')) return;
+showConfirm('El cliente se quitará de la agenda. Los pedidos anteriores no se modifican.',async()=>{
 const {error}=await db.from('clientes_agenda').delete().eq('id',id);
 if(error) return notify('No se pudo eliminar: '+error.message,'error');
 notify('Cliente eliminado','info');
 await renderAgendaClientes();
+},{title:'Eliminar cliente',btnLabel:'Eliminar',btnClass:'btn-danger'});
 }
 
 let _agendaPedidoTimeout=null;
@@ -2308,7 +2395,7 @@ function resetXLSImport() {
   renderSelectedProducts();
 }
 
-function confirmarXLSImport() {
+async function confirmarXLSImport() {
   const soloEncontrados = xlsParsedItems.filter(i => i.encontrado);
   const noEncontrados = xlsParsedItems.filter(i => !i.encontrado);
 
@@ -2328,7 +2415,7 @@ function confirmarXLSImport() {
     (noEncontrados.length ? ' · <span style="color:var(--accent2)">' + noEncontrados.length + ' no encontrados ignorados</span>' : '');
   bannerEl.style.display = 'block';
 
-  closeModal('modal-xls-preview');
+  await closeModal('modal-xls-preview');
 
   if (noEncontrados.length) {
     notify(noEncontrados.length + ' código(s) no encontrados en el padrón fueron ignorados', 'warning');
@@ -2337,12 +2424,41 @@ function confirmarXLSImport() {
   }
 }
 
-async function crearPedido(){
+function normalizeCustomerIdentity(value){
+return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+}
+
+async function findPossibleDuplicateOrder(origen,destino){
+const cliente=normalizeCustomerIdentity(el('new-cliente').value);
+const telefono=String(el('new-telefono').value||'').replace(/\D/g,'');
+if(!cliente&&!telefono) return [];
+const start=new Date(); start.setHours(0,0,0,0);
+const {data,error}=await db.from('pedidos').select('id,cliente,telefono,created_at,estado,pedido_productos(codigo,nombre,cantidad)')
+.eq('origen_local',origen).eq('destino_local',destino).gte('created_at',start.toISOString()).neq('estado','denegado');
+if(error) return [];
+const wanted=new Set(appState.newOrderProducts.map(item=>String(item.codigo)));
+return (data||[]).filter(order=>{
+  const samePhone=telefono&&String(order.telefono||'').replace(/\D/g,'')===telefono;
+  const sameName=!telefono&&cliente&&normalizeCustomerIdentity(order.cliente)===cliente;
+  const overlaps=(order.pedido_productos||[]).some(item=>wanted.has(String(item.codigo)));
+  return (samePhone||sameName)&&overlaps;
+});
+}
+
+async function crearPedido(duplicateConfirmed=false){
 if(!appState.newOrderProducts.length) return notify('Agregá al menos un producto','error');
 const ov=el('new-origen').value, dv=el('new-destino').value;
 if(!ov||!dv) return notify('Seleccioná origen y destino','error');
 if(ov===dv) return notify('Origen y destino no pueden ser iguales','error');
 const [oNom,oAlm]=ov.split('|'), [dNom,dAlm]=dv.split('|');
+if(!duplicateConfirmed){
+  const duplicates=await findPossibleDuplicateOrder(oNom,dNom);
+  if(duplicates.length){
+    const products=[...new Set(duplicates.flatMap(order=>(order.pedido_productos||[]).map(item=>item.nombre)))].slice(0,5);
+    showConfirm(`Ya existe ${duplicates.length===1?'un pedido':'más de un pedido'} de este cliente hoy con productos repetidos:<br><strong>${products.map(escHtml).join(', ')}</strong><br><br>Puede ser correcto, pero conviene comprobarlo antes de continuar.`,()=>crearPedido(true),{title:'Posible pedido duplicado',btnLabel:'Continuar igualmente',btnClass:'btn-warning'});
+    return;
+  }
+}
 const escAuto=getEscala(dNom);
 const usarEscalaAuto=!!(escAuto && (el('new-escala-auto-choice')?.value||'si')==='si');
 const {data:pedido,error}=await db.from('pedidos').insert({
@@ -2350,6 +2466,7 @@ origen_local:oNom,origen_almacen:oAlm,destino_local:dNom,destino_almacen:dAlm,
 cliente:el('new-cliente').value.trim()||null,
 telefono:el('new-telefono').value.trim()||null,
 urgente:el('new-urgente').checked,
+duplicado_confirmado:!!duplicateConfirmed,
 notas:el('new-notas').value.trim()||null,
 escala_local:usarEscalaAuto?escAuto.escala:null,
 escala_almacen:usarEscalaAuto?(escAuto.almacen||null):null,
@@ -2364,7 +2481,7 @@ const {data:users}=await db.from('perfiles').select('id,local_nombre,role').eq('
 // Notificar solo al origen. La escala se decide al aceptar el pedido.
 const dest=users?.filter(u=>u.id!==appState.currentPerfil.id&&u.local_nombre===oNom)||[];
 if(dest.length) await db.from('notificaciones').insert(dest.map(u=>({usuario_id:u.id,titulo:'📦 Nuevo pedido de '+dNom,cuerpo:'#'+pedido.id.slice(-8,-2).toUpperCase()+(pedido.cliente?' · '+pedido.cliente:''),pedido_id:pedido.id})));
-closeModal('modal-nuevo-pedido');
+await closeModal('modal-nuevo-pedido');
 notify('¡Pedido creado exitosamente!','success');
 await updateBadges(); navigateTo('misPedidos');
 }
@@ -2497,7 +2614,7 @@ if(error) return notify('Error: '+error.message,'error');
 const {data:admins}=await db.from('perfiles').select('id').eq('role','admin').eq('approved',true);
 if(admins&&admins.length) await db.from('notificaciones').insert(admins.map(a=>({usuario_id:a.id,titulo:'💡 Nueva consulta de '+appState.currentPerfil.local_nombre,cuerpo:asunto})));
 el('sug-asunto').value=''; el('sug-texto').value='';
-closeModal('modal-sugerencia');
+await closeModal('modal-sugerencia');
 notify('¡Consulta enviada!','success');
 await updateBadges();
 }
@@ -2536,7 +2653,7 @@ if(!txt) return notify('Escribí una respuesta','error');
 const {data:sug}=await db.from('sugerencias').select('usuario_id').eq('id',appState.currentSugId).single();
 await db.from('sugerencias').update({respuesta:txt,respuesta_leida:false,updated_at:new Date().toISOString()}).eq('id',appState.currentSugId);
 if(sug) await db.from('notificaciones').insert({usuario_id:sug.usuario_id,titulo:'💬 El admin respondió tu consulta',cuerpo:txt.substring(0,80)});
-closeModal('modal-resp-sug');
+await closeModal('modal-resp-sug');
 await renderSugerencias();
 notify('Respuesta guardada','success');
 }
@@ -2575,7 +2692,7 @@ await updateBadges();
 async function aprobarUser(uid){
 if(!requireAdminAction('aprobar usuarios')) return;
 await db.from('perfiles').update({approved:true}).eq('id',uid);
-await db.from('notificaciones').insert({usuario_id:uid,titulo:'✅ Tu cuenta fue aprobada',cuerpo:'Ya podés ingresar a TransferApp.'});
+await db.from('notificaciones').insert({usuario_id:uid,titulo:'✅ Tu cuenta fue aprobada',cuerpo:'Ya podés ingresar a Sucaneitor.'});
 await renderUsuarios(); notify('Usuario aprobado','success');
 }
 async function rechazarUser(uid){
@@ -2595,7 +2712,8 @@ await renderUsuarios(); notify('Rol actualizado','success');
 //  ADMIN — CONFIG
 // ═══════════════════════════════════════════
 async function renderConfig(){
-await Promise.all([renderAdminLocales(),renderTransportes(),renderAdminProducts(),renderPadronExtra()]);
+await renderAdminLocales();
+await Promise.all([renderTransferRoutes(),renderTransportes(),renderAdminProducts(),renderPadronExtra()]);
 }
 
 async function renderAdminLocales(){
@@ -2651,7 +2769,7 @@ const dir=el('edit-local-dir').value.trim();
 if(!n||!a) return notify('Completá nombre y código','error');
 const {error}=await db.from('locales').update({nombre:n,almacen:a,email:em||null,telefono:tel||null,direccion:dir||null}).eq('id',id);
 if(error) return notify('Error al guardar: '+error.message,'error');
-closeModal('modal-editar-local');
+await closeModal('modal-editar-local');
 await renderAdminLocales();
 notify('Local actualizado','success');
 }
@@ -2661,6 +2779,45 @@ showConfirm('¿Eliminar este local? Los pedidos existentes no se verán afectado
 await db.from('locales').delete().eq('id',id);
 await renderAdminLocales(); notify('Local eliminado','info');
 }, {title:'Eliminar local', btnLabel:'Sí, eliminar'});
+}
+
+const ROUTE_DAY_LABELS={1:'Lun',2:'Mar',3:'Mié',4:'Jue',5:'Vie',6:'Sáb',7:'Dom'};
+
+async function renderTransferRoutes(){
+const selectOptions='<option value="">Seleccionar…</option>'+appState.localesCache.map(local=>'<option value="'+escAttr(local.nombre)+'">'+escHtml(local.nombre)+' ('+escHtml(local.almacen||'')+')</option>').join('');
+safeSetRouteOptions('route-origin',selectOptions);
+safeSetRouteOptions('route-destination',selectOptions);
+const weekdayWrap=el('route-weekdays');
+if(weekdayWrap&&!weekdayWrap.children.length){
+weekdayWrap.innerHTML=Object.entries(ROUTE_DAY_LABELS).map(([day,label])=>'<label class="config-tag" style="cursor:pointer"><input type="checkbox" class="route-day" value="'+day+'"> '+label+'</label>').join('');
+}
+const {data,error}=await db.from('op_rutas_transferencia').select('*').order('origen_local').order('destino_local');
+const body=el('routes-body'); if(!body) return;
+if(error){ body.innerHTML='<tr><td colspan="4" style="color:var(--text3)">La configuración de recorridos estará disponible al activar la integración.</td></tr>'; return; }
+body.innerHTML=(data||[]).map(route=>'<tr><td><strong>'+escHtml(route.origen_local)+'</strong> → '+escHtml(route.destino_local)+'</td><td>'+((route.dias_semana||[]).map(day=>ROUTE_DAY_LABELS[day]||day).join(', ')||'Sin días')+'</td><td>'+(route.permite_urgentes_fuera_de_inicio?'Permitidos con aprobación':'No')+'</td><td><button class="btn btn-danger btn-sm" onclick="deleteTransferRoute(\''+escJsStr(route.id)+'\')">🗑️</button></td></tr>').join('')||'<tr><td colspan="4" style="color:var(--text3)">Todavía no hay recorridos configurados.</td></tr>';
+}
+
+function safeSetRouteOptions(id,html){ const target=el(id); if(target) target.innerHTML=html; }
+
+async function saveTransferRoute(){
+if(!requireAdminAction('configurar recorridos')) return;
+const origin=el('route-origin')?.value||'',destination=el('route-destination')?.value||'';
+const days=Array.from(document.querySelectorAll('.route-day:checked')).map(input=>Number(input.value)).sort((a,b)=>a-b);
+if(!origin||!destination||origin===destination) return notify('Elegí un origen y un destino diferentes','error');
+if(!days.length) return notify('Seleccioná al menos un día','error');
+const {error}=await db.from('op_rutas_transferencia').upsert({origen_local:origin,destino_local:destination,dias_semana:days,activa:true,permite_urgentes_fuera_de_inicio:true},{onConflict:'origen_local,destino_local'});
+if(error) return notify('No se pudo guardar el recorrido: '+error.message,'error');
+document.querySelectorAll('.route-day').forEach(input=>{input.checked=false;});
+await renderTransferRoutes(); notify('Recorrido actualizado','success');
+}
+
+async function deleteTransferRoute(id){
+if(!requireAdminAction('eliminar recorridos')) return;
+showConfirm('¿Eliminar este calendario? Los pedidos y reposiciones existentes no se modifican.',async()=>{
+const {error}=await db.from('op_rutas_transferencia').delete().eq('id',id);
+if(error) return notify(error.message,'error');
+await renderTransferRoutes(); notify('Recorrido eliminado','info');
+},{title:'Eliminar recorrido',btnLabel:'Sí, eliminar'});
 }
 
 async function renderTransportes(){
@@ -2698,7 +2855,7 @@ safeSet('products-count', baseCount);
 safeSet('products-extra-count', extraCount);
 safeSet('products-total-count', baseCount+extraCount);
 const q=(el('admin-search-prod')&&el('admin-search-prod').value.trim())||'';
-let qBase=db.from('productos').select('codigo,nombre,marca').order('nombre').limit(100);
+let qBase=db.from('productos').select('codigo,nombre,marca,barras,fabricante').order('nombre').limit(100);
 let qExtra=db.from('padron_extra').select('*').order('nombre').limit(100);
 if(q){
 qBase=qBase.or('nombre.ilike.%'+q+'%,codigo.ilike.%'+q+'%');
@@ -2782,21 +2939,29 @@ const headers=rows[hi].map(h=>String(h||'').toLowerCase().trim());
 const iC=headers.findIndex(h=>h==='código'||h==='codigo');
 const iN=headers.findIndex(h=>h==='nombre');
 const iM=headers.findIndex(h=>h==='marca');
+const iB=headers.findIndex(h=>/^(c[oó]digo de barras|codigo barras|c[oó]digo barra|barras|barcode|ean|gtin)$/.test(h));
+const iF=headers.findIndex(h=>h==='fabricante');
 if(iN===-1) return notify('No se encontró columna Nombre','error');
 const products=[];
 for(let i=hi+1;i<rows.length;i++){
 const row=rows[i]; if(!row||!row[iN]) continue;
-products.push({codigo:String(row[iC]||''),nombre:String(row[iN]||''),marca:String(row[iM]||'')});
+const codigo=String(iC>=0?row[iC]||'':'').trim();
+const nombre=String(row[iN]||'').trim();
+if(!codigo||!nombre) continue;
+products.push({
+codigo,
+nombre,
+marca:String(iM>=0?row[iM]||'':'').trim(),
+barras:String(iB>=0?row[iB]||'':'').trim(),
+fabricante:String(iF>=0?row[iF]||'':'').trim()
+});
 }
 if(!products.length) return notify('Sin productos válidos','error');
-// Delete all and re-insert in chunks
-await db.from('productos').delete().not('id','is',null);
-const chunkSize=500;
-for(let i=0;i<products.length;i+=chunkSize){
-await db.from('productos').insert(products.slice(i,i+chunkSize));
-}
+// Un único procedimiento transaccional: si algo falla, el padrón anterior queda intacto.
+const {data:total,error}=await db.rpc('reemplazar_padron_productos',{payload:products});
+if(error) throw error;
 appState.productsCache=[];
-notify('Padrón actualizado: '+products.length+' productos','success');
+notify('Padrón central actualizado: '+(total||products.length)+' productos','success');
 await Promise.all([renderAdminProducts(),renderPadronExtra()]);
 }catch(err){notify('Error: '+err.message,'error');}
 };
@@ -2859,7 +3024,7 @@ async function exportarXLSPedido(orderId){
   });
 
   const wsData=[];
-  wsData.push(['TransferApp — Reporte de pedido '+pedidoRef]);
+  wsData.push(['Sucaneitor Pedidos — Reporte de pedido '+pedidoRef]);
   wsData.push(['Fecha: '+fecha+'   Origen: '+(o.origen_local||'')+'   Destino: '+(o.destino_local||'')+(o.cliente?'   Cliente: '+o.cliente:'')]);
   wsData.push([]);
 
@@ -3064,8 +3229,25 @@ win.document.close();
 // ═══════════════════════════════════════════
 //  MODALS / SIDEBAR
 // ═══════════════════════════════════════════
-function openModal(id){el(id).classList.add('show');document.body.style.overflow='hidden';}
-function closeModal(id){el(id).classList.remove('show');document.body.style.overflow='';}
+function openModal(id,options={}){
+const modal=el(id); if(!modal) return;
+modal.classList.add('show');document.body.style.overflow='hidden';
+if(options.history!==false&&appState.currentPerfil&&history.state?.sucaneitorModal!==id){
+  history.pushState({sucaneitorView:appState.activeView||'hub',sucaneitorModal:id},'',location.href);
+}
+}
+function closeModal(id,options={}){
+const modal=el(id); if(!modal) return;
+modal.classList.remove('show');
+if(!document.querySelector('.modal-overlay.show')) document.body.style.overflow='';
+if(options.history!==false&&history.state?.sucaneitorModal===id){
+  return new Promise(resolve=>{
+    window.addEventListener('popstate',()=>requestAnimationFrame(resolve),{once:true});
+    history.back();
+  });
+}
+return Promise.resolve();
+}
 function toggleSidebar(){el('sidebar').classList.toggle('open');el('mobile-overlay').classList.toggle('show');}
 function closeSidebar(){el('sidebar').classList.remove('open');el('mobile-overlay').classList.remove('show');}
 
@@ -3099,6 +3281,7 @@ el('notif-bell-mobile')?.addEventListener('click', toggleNotifPanel);
 el('notif-bell-desktop')?.addEventListener('click', toggleNotifPanel);
 el('btn-marcar-todas')?.addEventListener('click', marcarTodasLeidas);
 el('btn-limpiar-notifs')?.addEventListener('click', limpiarNotificacionesViejas);
+window.addEventListener('popstate', restoreNavigationState);
 el('btn-suggest-sidebar')?.addEventListener('click', ()=>openModal('modal-sugerencia'));
 el('btn-new-consulta')?.addEventListener('click', ()=>openModal('modal-sugerencia'));
 el('btn-limpiar-consultas')?.addEventListener('click', limpiarConsultasRespondidas);
@@ -3197,7 +3380,7 @@ function abrirWhatsApp(telefono, nombre){
 if(!telefono) return notify('Este pedido no tiene teléfono del cliente','info');
 // Limpiar el número: sacar espacios, guiones, paréntesis
 const num = telefono.replace(/[\s-()]/g,'');
-const texto = encodeURIComponent('Hola '+( nombre||'')+'! Te contactamos desde TransferApp respecto a tu pedido.');
+const texto = encodeURIComponent('Hola '+( nombre||'')+'! Te contactamos desde Sucaneitor respecto a tu pedido.');
 // Si el número no tiene código de país, agregar +598 (Uruguay)
 const numFinal = num.startsWith('+') ? num : '+598'+num;
 window.open('https://wa.me/'+numFinal.replace('+','')+'?text='+texto,'_blank');
@@ -3317,7 +3500,7 @@ async function openChatFromList(orderId){
 }
 
 async function openDetalleFromChat(orderId){
-  closeModal('modal-chat');
+  await closeModal('modal-chat');
   await openDetalle(orderId);
 }
 
@@ -3539,7 +3722,7 @@ if(!checked) return notify('Seleccioná un pedido','error');
 const p=(window._chatSharePedidos||[]).find(o=>o.id===checked.value);
 if(!p) return notify('No se encontró el pedido seleccionado','error');
 await sendConvPayload({type:'pedido',orderId:p.id,text:'Pedido #'+p.id.slice(-8,-2).toUpperCase()+' · '+(p.cliente||'Sin cliente')+' · '+p.origen_local+' → '+p.destino_local});
-closeModal('modal-accion');
+await closeModal('modal-accion');
 }
 
 async function compartirContactoEnChat(){
@@ -3572,7 +3755,7 @@ if(!checked) return notify('Seleccioná un contacto','error');
 const c=(window._chatShareContacts||[]).find(x=>x.id===checked.value);
 if(!c) return notify('No se encontró el contacto seleccionado','error');
 await sendConvPayload({type:'contact',nombre:c.nombre,telefono:c.telefono,direccion:c.direccion});
-closeModal('modal-accion');
+await closeModal('modal-accion');
 }
 
 function abrirMenuAdjuntosChat(){
@@ -3638,7 +3821,7 @@ const {data:mis} = await db.from('conversacion_miembros').select('conversacion_i
 const {data:sus} = await db.from('conversacion_miembros').select('conversacion_id').eq('usuario_id',otherId);
 const misIds = new Set((mis||[]).map(m=>m.conversacion_id));
 const existente = (sus||[]).find(m=>misIds.has(m.conversacion_id));
-if(existente){ closeModal('modal-nueva-conv'); await openConversacion(existente.conversacion_id); return; }
+if(existente){ await closeModal('modal-nueva-conv'); await openConversacion(existente.conversacion_id); return; }
 }
 
 const {data:conv,error} = await db.from('conversaciones').insert({
@@ -3648,7 +3831,7 @@ if(error) return notify('Error: '+error.message,'error');
 
 const todos = [appState.currentPerfil.id, ...participantes];
 await db.from('conversacion_miembros').insert(todos.map(uid=>({conversacion_id:conv.id,usuario_id:uid})));
-closeModal('modal-nueva-conv');
+await closeModal('modal-nueva-conv');
 await openConversacion(conv.id);
 await renderChats();
 notify('Conversación creada','success');
@@ -3740,7 +3923,7 @@ if(!deletedCount){
 throw new Error('El pedido no se eliminó (0 filas afectadas). Verificá políticas RLS para DELETE en pedidos.');
 }
 
-closeModal('modal-detalle');
+await closeModal('modal-detalle');
 notify('Pedido eliminado','info');
 await updateBadges();
 await refreshView();
@@ -3776,7 +3959,7 @@ showConfirm(
 async()=>{
 await db.from('pedidos').update({estado:estadoAnterior,updated_at:new Date().toISOString()}).eq('id',orderId);
 await db.from('pedido_historial').insert({pedido_id:orderId,estado:estadoAnterior+'_retroceso',usuario_id:appState.currentPerfil.id});
-closeModal('modal-detalle');
+await closeModal('modal-detalle');
 notify('Estado retrocedido a: '+estadoAnterior,'success');
 await updateBadges(); refreshView();
 },

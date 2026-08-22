@@ -1,0 +1,39 @@
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+
+const root = path.resolve(__dirname, '..');
+const read = file => fs.readFileSync(path.join(root, file), 'utf8');
+const portal = read('app.js');
+const operations = read('operaciones/app.js');
+const cloud = read('operaciones/cloud-api.js');
+const reposition = read('operaciones/reposition-app.js');
+const realtime = read('supabase/migrations/20260822030000_realtime_operaciones.sql');
+
+[
+  'pedido_productos', 'catalogo_version', 'locales', 'transportes'
+].forEach(table => assert.match(portal, new RegExp(`table:\\s*'${table}'`), `Falta sincronizar ${table} en el portal`));
+
+[
+  'op_inventario_sesiones', 'op_inventario_items', 'op_inventario_eventos',
+  'op_inventario_balances', 'op_inventario_participantes', 'op_reposiciones',
+  'op_reposicion_items', 'op_reposicion_extras', 'op_reposicion_participantes'
+].forEach(table => {
+  assert.match(cloud, new RegExp(`table:\\s*'${table}'`), `Falta observar ${table} en el cliente web`);
+  assert.match(realtime, new RegExp(`'${table}'`), `Falta publicar ${table} en Realtime`);
+});
+assert.match(realtime, /alter publication supabase_realtime add table public\.%I/);
+
+assert.match(cloud, /function selectInBatches/);
+assert.match(cloud, /function groupRows/);
+assert.doesNotMatch(cloud, /for \(const session of rows \|\| \[\]\) \{[\s\S]{0,1200}await client\.from\('op_inventario_items'\)/,
+  'El directorio de inventarios no debe consultar sesión por sesión');
+assert.match(operations, /session-create-location/);
+assert.match(operations, /populateLocationControls/);
+assert.doesNotMatch(operations, /<option value="(?:CEN|CDA|CDE)"/,
+  'No deben existir locales ficticios codificados en la aplicación');
+assert.match(reposition, /function repoCanEdit\(\)/);
+assert.match(reposition, /repoState\?\.can_edit !== false/);
+assert.match(reposition, /classList\.toggle\('repo-readonly'/);
+
+console.log('sync-contract: OK');
