@@ -1,5 +1,5 @@
 // ===== MÓDULO REPOSICIÓN =====
-// Se mantiene separado del conteo para que ambos flujos compartan padrón y servidor
+// Se mantiene separado del conteo para que ambos flujos compartan padrón y sincronización
 // sin mezclar estados ni archivos finales.
 
 let repoSearchResultsByTarget = {};
@@ -72,7 +72,6 @@ async function analyzeRepositionFile(input) {
 }
 
 async function createRepositionSession(url, usuario, requestedName) {
-  if (!url) { showSessionError('Ingresá la URL del servidor'); return; }
   if (!repoParsedSource || !repoSourceBytes) { showSessionError('Cargá primero el archivo de reposición'); return; }
   try {
     const response = await fetch(`${url}/api/reposicion/crear`, {
@@ -106,7 +105,6 @@ async function joinReposition(rid, nombre, url, usuario, initialRepo) {
     sessionNombre = nombre;
     usuarioNombre = usuario || 'Usuario';
     localStorage.setItem('sc_usuario', usuarioNombre);
-    localStorage.setItem('sc_server_url', url);
     let loaded = initialRepo;
     if (!loaded) {
       const response = await fetchWithTimeout(`${url}/api/reposicion/state?rid=${encodeURIComponent(rid)}&usuario=${encodeURIComponent(usuarioNombre)}`, {}, 6000);
@@ -136,7 +134,6 @@ async function joinReposition(rid, nombre, url, usuario, initialRepo) {
 function enterRepositionApp() {
   if (!repoState) return;
   document.getElementById('session-screen').style.display = 'none';
-  document.getElementById('module-screen').style.display = 'none';
   document.getElementById('main-nav').style.display = 'flex';
   document.getElementById('main-tabs').style.display = 'none';
   document.getElementById('repo-tabs').style.display = 'flex';

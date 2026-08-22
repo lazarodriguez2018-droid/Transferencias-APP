@@ -28,6 +28,8 @@ let repoLastScanTime = 0;
 let appDialogResolver = null;
 let appDialogValidator = null;
 let appDialogLastFocus = null;
+let availableSessions = [];
+let sessionLoadSequence = 0;
 
 // Red
 let serverUrl = '';
@@ -56,11 +58,12 @@ const IS_IOS_DEVICE = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
 document.addEventListener('DOMContentLoaded', async () => {
   applySavedTheme();
   const requestedModule = new URLSearchParams(location.search).get('module');
-  if (requestedModule === 'inventario' || requestedModule === 'reposicion') {
-    currentModule = requestedModule;
-    document.getElementById('module-screen').style.display = 'none';
-    mostrarPantallaSesion();
+  if (requestedModule !== 'inventario' && requestedModule !== 'reposicion') {
+    location.replace('/');
+    return;
   }
+  currentModule = requestedModule;
+  mostrarPantallaSesion(false);
   if (window.SucanCloud) {
     try {
       await window.SucanCloud.ready;
@@ -97,16 +100,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     : (window.matchMedia?.('(pointer: coarse)').matches ? 'nombre' : 'barras');
   setST(initialSearchType);
 
-  // En la web se entra directamente desde el selector de módulos.
-  if (requestedModule === 'inventario' || requestedModule === 'reposicion') selectModule(requestedModule);
-  else mostrarPantallaSesion();
+  selectModule(requestedModule);
 });
 
 function selectModule(moduleName) {
   currentModule = moduleName === 'reposicion' ? 'reposicion' : 'inventario';
   localStorage.setItem('sc_module', currentModule);
-  document.getElementById('module-screen').style.display = 'none';
-  mostrarPantallaSesion();
+  mostrarPantallaSesion(true);
 }
 
 function backToModules() {
@@ -121,13 +121,12 @@ function backToModules() {
   document.getElementById('main-tabs').style.display = 'none';
   document.getElementById('repo-tabs').style.display = 'none';
   document.querySelectorAll('.page,.repo-page').forEach(page => page.classList.remove('active'));
-  document.getElementById('module-screen').style.display = 'flex';
+  location.href = '/';
 }
 
-function mostrarPantallaSesion() {
+function mostrarPantallaSesion(loadSessions = true) {
   if (!currentModule) {
-    document.getElementById('session-screen').style.display = 'none';
-    document.getElementById('module-screen').style.display = 'flex';
+    location.replace('/');
     return;
   }
   document.getElementById('session-screen').style.display = 'flex';
@@ -140,35 +139,32 @@ function mostrarPantallaSesion() {
   document.getElementById('session-module-subtitle').textContent = isRepo
     ? 'Preparación colaborativa y generación de remitos'
     : 'Sistema de conteo colaborativo';
-  document.getElementById('btn-offline-card').style.display = isRepo ? 'none' : 'block';
   document.getElementById('repo-file-fields').style.display = isRepo ? 'block' : 'none';
   document.getElementById('create-session-title').textContent = isRepo ? 'Crear reposición nueva' : 'Crear sesión nueva';
   const sessionInput = document.getElementById('input-sesion-nombre');
   sessionInput.placeholder = isRepo ? 'Nombre opcional (se completa desde el archivo)' : 'Ej: Inventario PDE marzo';
-  document.getElementById('net-card-title').textContent = isRepo ? 'Conectar al servidor de reposiciones' : 'Conectar al servidor';
-  document.getElementById('net-card-subtitle').textContent = isRepo ? 'Trabajo compartido entre celulares, tablets y PC' : 'Sincronización en tiempo real con PC y Tablet';
-  document.getElementById('sesiones-lista').style.display = 'none';
+  const profile = window.SucanCloud?.profile || {};
+  const displayName = window.SucanCloud?.displayName || localStorage.getItem('sc_usuario') || 'Usuario';
+  const localName = profile.local_nombre || '';
+  const warehouse = profile.almacen || '';
+  const isSupervisor = !!window.SucanCloud?.isSupervisor?.();
+  document.getElementById('input-usuario').value = displayName;
+  document.getElementById('session-user-context').textContent = displayName;
+  document.getElementById('session-scope-label').textContent = isSupervisor
+    ? 'Acceso administrativo: podés ver las sesiones de toda la empresa.'
+    : localName
+      ? `Mostrando solamente sesiones vinculadas a ${localName}${warehouse ? ` (${warehouse})` : ''}.`
+      : 'Mostrando las sesiones disponibles para tu cuenta.';
+  const locationFilter = document.getElementById('session-location-filter');
+  locationFilter.style.display = isSupervisor ? 'block' : 'none';
+  if (!isSupervisor) locationFilter.value = '';
+  document.getElementById('session-search').value = '';
+  document.getElementById('available-sessions-title').textContent = isRepo ? 'Reposiciones disponibles' : 'Inventarios disponibles';
+  document.querySelector('#session-create-panel summary').lastChild.textContent = isRepo
+    ? ' Crear una reposición nueva'
+    : ' Crear un inventario nuevo';
 
-  // Pre-rellenar con datos guardados
-  const savedUsuario = localStorage.getItem('sc_usuario') || '';
-  const savedUrl = localStorage.getItem('sc_server_url') || '';
-  if (savedUsuario) document.getElementById('input-usuario').value = savedUsuario;
-  if (savedUrl) document.getElementById('input-server-url').value = savedUrl;
-
-  if (window.SucanCloud) {
-    document.getElementById('input-usuario').value = window.SucanCloud.displayName;
-    document.getElementById('input-usuario').readOnly = true;
-    document.getElementById('input-server-url').value = location.origin;
-    document.getElementById('input-server-url').readOnly = true;
-    const netOptions = document.getElementById('net-options');
-    if (netOptions) netOptions.style.display = 'none';
-    const netCard = document.getElementById('net-card-title');
-    if (netCard) netCard.textContent = 'Sincronización web activa';
-    const netSubtitle = document.getElementById('net-card-subtitle');
-    if (netSubtitle) netSubtitle.textContent = 'Todos los celulares, tablets y PC trabajan sobre la misma información.';
-  }
-
-  if (!IS_IOS_DEVICE) document.getElementById('input-usuario').focus({preventScroll:true});
+  if (loadSessions) cargarSesionesDisponibles();
 }
 
 function entrarApp() {
@@ -199,77 +195,124 @@ function entrarApp() {
   if (serverOnline) loadBarcodeAssignments();
 }
 
-function entrarOffline() {
-  if (currentModule === 'reposicion') {
-    showSessionError('Reposición necesita el servidor para compartir el avance');
-    return;
-  }
-  const usuario = document.getElementById('input-usuario').value.trim() || 'Usuario';
-  usuarioNombre = usuario;
-  localStorage.setItem('sc_usuario', usuario);
-  sessionId = '';
-  sessionNombre = '';
-  document.getElementById('nav-almacen').textContent = almacen || 'Sin almacén';
-  entrarApp();
+function normalizeSessionSearch(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('es')
+    .trim();
 }
 
-function toggleNetOptions() {
-  const opts = document.getElementById('net-options');
-  const chev = document.getElementById('net-chevron');
-  const visible = opts.style.display !== 'none';
-  opts.style.display = visible ? 'none' : 'block';
-  chev.textContent = visible ? '›' : '∨';
+function sessionLocations(session) {
+  return [session.local_nombre, session.almacen, session.origin, session.destination]
+    .map(value => String(value || '').trim())
+    .filter(Boolean);
+}
+
+function populateSessionLocationFilter(sessions) {
+  const filter = document.getElementById('session-location-filter');
+  if (!filter || !window.SucanCloud?.isSupervisor?.()) return;
+  const previous = filter.value;
+  const labels = [...new Set(sessions.flatMap(sessionLocations))]
+    .sort((left, right) => left.localeCompare(right, 'es', {sensitivity:'base'}));
+  filter.innerHTML = '<option value="">Toda la empresa</option>' + labels
+    .map(label => `<option value="${esc(label)}">${esc(label)}</option>`)
+    .join('');
+  filter.value = labels.includes(previous) ? previous : '';
+}
+
+function renderAvailableSessions() {
+  const items = document.getElementById('sesiones-items');
+  const count = document.getElementById('session-results-count');
+  if (!items || !count) return;
+  const queryTerms = normalizeSessionSearch(document.getElementById('session-search')?.value).split(/\s+/).filter(Boolean);
+  const selectedLocation = normalizeSessionSearch(document.getElementById('session-location-filter')?.value);
+  const profileLocation = normalizeSessionSearch(window.SucanCloud?.profile?.local_nombre || window.SucanCloud?.profile?.almacen);
+
+  const visible = availableSessions.filter(session => {
+    const participants = [...(session.usuarios || []), ...(session.participantes || [])]
+      .map(person => person.nombre || '').join(' ');
+    const locations = sessionLocations(session);
+    const haystack = normalizeSessionSearch([
+      session.nombre, session.id, session.estado, participants, ...locations
+    ].join(' '));
+    const matchesSearch = queryTerms.every(term => haystack.includes(term));
+    const matchesLocation = !selectedLocation || locations.some(value => normalizeSessionSearch(value) === selectedLocation);
+    return matchesSearch && matchesLocation;
+  }).sort((left, right) => {
+    const leftLocal = sessionLocations(left).some(value => normalizeSessionSearch(value) === profileLocation) ? 1 : 0;
+    const rightLocal = sessionLocations(right).some(value => normalizeSessionSearch(value) === profileLocation) ? 1 : 0;
+    if (leftLocal !== rightLocal) return rightLocal - leftLocal;
+    return new Date(right.updated_at || right.creada_fecha || 0) - new Date(left.updated_at || left.creada_fecha || 0);
+  });
+
+  count.textContent = !availableSessions.length
+    ? 'No hay sesiones activas disponibles.'
+    : visible.length === availableSessions.length
+      ? `${visible.length} ${visible.length === 1 ? 'sesión disponible' : 'sesiones disponibles'}`
+      : `${visible.length} de ${availableSessions.length} sesiones`;
+
+  if (!visible.length) {
+    items.innerHTML = `<div class="session-empty">${availableSessions.length
+      ? 'No hay resultados con esos filtros. Probá otro nombre, local, almacén o usuario.'
+      : `Todavía no hay ${currentModule === 'reposicion' ? 'reposiciones' : 'inventarios'} disponibles para tu cuenta.`}</div>`;
+    return;
+  }
+
+  items.innerHTML = '';
+  visible.forEach(session => {
+    const summary = session.summary || {};
+    const participants = session.usuarios || session.participantes || [];
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'sesion-item';
+    const route = currentModule === 'reposicion'
+      ? `<span class="session-route-pill">${esc(session.origin || '—')} → ${esc(session.destination || '—')}</span>`
+      : session.local_nombre || session.almacen
+        ? `<span class="session-route-pill">${esc(session.local_nombre || session.almacen)}${session.local_nombre && session.almacen ? ` · ${esc(session.almacen)}` : ''}</span>`
+        : '';
+    const details = currentModule === 'reposicion'
+      ? `${session.estado === 'enviado' ? 'Enviada' : 'En preparación'} · ${summary.productos || 0} productos · ${summary.unidades_preparadas || 0}/${summary.unidades_pedidas || 0} unidades${session.remito_pendiente ? ' · remito pendiente' : ''}`
+      : `${session.productos || 0} productos · ${session.unidades || 0} unidades`;
+    row.innerHTML = `
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:14px;line-height:1.35">${esc(session.nombre)}</div>
+        ${route}
+        <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.45">${details}</div>
+        ${participants.length ? `<div style="margin-top:6px">${participants.slice(0, 4).map(person => `<span class="user-pill">👤 ${esc(person.nombre)}</span>`).join('')}${participants.length > 4 ? `<span class="user-pill">+${participants.length - 4}</span>` : ''}</div>` : ''}
+      </div>
+      <span class="sesion-badge">${currentModule === 'reposicion' && session.estado === 'enviado' ? 'Abrir →' : 'Entrar →'}</span>`;
+    row.onclick = () => unirseASesion(session.id, session.nombre);
+    items.appendChild(row);
+  });
 }
 
 async function cargarSesionesDisponibles() {
-  const url = document.getElementById('input-server-url').value.trim().replace(/\/$/, '');
-  if (!url) { showSessionError('Ingresá la URL del servidor primero'); return; }
-
+  const requestSequence = ++sessionLoadSequence;
+  const items = document.getElementById('sesiones-items');
+  const count = document.getElementById('session-results-count');
+  items.innerHTML = '<div class="session-empty">Buscando sesiones disponibles…</div>';
+  count.textContent = 'Actualizando…';
   try {
     const endpoint = currentModule === 'reposicion' ? '/api/reposiciones' : '/api/sesiones';
-    const res = await fetchWithTimeout(`${url}${endpoint}`, {}, 4000);
+    const res = await fetchWithTimeout(`${location.origin}${endpoint}`, {}, 15000);
+    if (!res.ok) throw new Error('No se pudo consultar las sesiones');
     const sesiones = await res.json();
-    const lista = document.getElementById('sesiones-lista');
-    const items = document.getElementById('sesiones-items');
-    lista.style.display = 'block';
-
-    if (!sesiones.length) {
-      items.innerHTML = '<div style="padding:14px;text-align:center;color:var(--muted);font-size:13px">No hay sesiones activas</div>';
-      return;
-    }
-
-    items.innerHTML = '';
-    sesiones.forEach(s => {
-      const repoSummary = s.summary || {};
-      const row = document.createElement('button');
-      row.type = 'button';
-      row.className = 'sesion-item';
-      row.innerHTML = `
-        <div style="flex:1">
-          <div style="font-weight:600;font-size:14px">${esc(s.nombre)}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px">
-            ${currentModule === 'reposicion'
-              ? `${s.estado === 'enviado' ? 'Enviada' : 'En preparación'} · ${repoSummary.productos || 0} productos · ${repoSummary.unidades_preparadas || 0}/${repoSummary.unidades_pedidas || 0} unidades · ${esc(s.origin || '')} → ${esc(s.destination || '')}${s.remito_pendiente ? ' · remito pendiente' : ''}`
-              : `${s.productos} productos · ${s.unidades} unidades ${s.almacen ? '· ' + s.almacen : ''}`}
-          </div>
-          <div style="margin-top:4px">
-            ${(s.usuarios || []).map(u => `<span class="user-pill">👤 ${esc(u.nombre)}</span>`).join('')}
-          </div>
-        </div>
-        <span class="sesion-badge">${currentModule === 'reposicion' && s.estado === 'enviado' ? 'Abrir →' : 'Unirse →'}</span>
-      `;
-      row.onclick = () => unirseASesion(s.id, s.nombre);
-      items.appendChild(row);
-    });
+    if (requestSequence !== sessionLoadSequence) return;
+    availableSessions = Array.isArray(sesiones) ? sesiones : [];
+    populateSessionLocationFilter(availableSessions);
+    renderAvailableSessions();
   } catch(e) {
-    showSessionError('No se pudo conectar al servidor. ¿Está corriendo?');
+    if (requestSequence !== sessionLoadSequence) return;
+    availableSessions = [];
+    count.textContent = 'No se pudieron cargar las sesiones.';
+    items.innerHTML = '<div class="session-empty">No pudimos consultar Sucaneitor. Revisá tu conexión a internet y tocá “Actualizar”.</div>';
   }
 }
 
 async function unirseASesion(sid, nombre) {
-  const url = document.getElementById('input-server-url').value.trim().replace(/\/$/, '');
+  const url = location.origin;
   const usuario = document.getElementById('input-usuario').value.trim() || 'Usuario';
-  if (!url) { showSessionError('Ingresá la URL del servidor'); return; }
 
   if (currentModule === 'reposicion') {
     await joinReposition(sid, nombre, url, usuario);
@@ -286,7 +329,6 @@ async function unirseASesion(sid, nombre) {
 
     usuarioNombre = usuario;
     localStorage.setItem('sc_usuario', usuario);
-    localStorage.setItem('sc_server_url', url);
 
     sessionId = data.session_id;
     sessionNombre = data.nombre;
@@ -299,10 +341,9 @@ async function unirseASesion(sid, nombre) {
 }
 
 async function crearSesion() {
-  const url = window.SucanCloud ? location.origin : document.getElementById('input-server-url').value.trim().replace(/\/$/, '');
+  const url = location.origin;
   const usuario = document.getElementById('input-usuario').value.trim() || 'Usuario';
   const nombreSesion = document.getElementById('input-sesion-nombre').value.trim();
-  if (!url) { showSessionError('Ingresá la URL del servidor'); return; }
   if (currentModule === 'reposicion') {
     await createRepositionSession(url, usuario, nombreSesion);
     return;
@@ -320,7 +361,6 @@ async function crearSesion() {
 
     usuarioNombre = usuario;
     localStorage.setItem('sc_usuario', usuario);
-    localStorage.setItem('sc_server_url', url);
 
     sessionId = data.session_id;
     sessionNombre = data.nombre;
@@ -396,8 +436,7 @@ async function loadPadron(input) {
     setPadronStatus(`✅ Padrón: ${padron.length} productos`);
     toast(`✅ Padrón: ${padron.length} productos`, 's');
     saveLocal();
-    // Subir padrón al servidor para que todos los dispositivos lo tengan.
-    // IMPORTANTE: el padrón debe ser GLOBAL, no del navegador.
+    // Guardar el padrón central para que todos los dispositivos lo compartan.
     if (serverUrl && serverOnline) {
       try {
         const up = await fetch(`${serverUrl}/api/padron`, {
@@ -413,11 +452,11 @@ async function loadPadron(input) {
         toast(`☁️ Padrón global sincronizado (${ans.total || padron.length})`, 's');
         await loadBarcodeAssignments();
       } catch (e) {
-        console.warn('No se pudo subir padrón al servidor:', e);
-        toast('⚠️ El padrón quedó SOLO en este dispositivo. Revisá servidor/conexión.', 'e');
+        console.warn('No se pudo sincronizar el padrón central:', e);
+        toast('⚠️ No se pudo actualizar el padrón central. Revisá tu conexión a internet.', 'e');
       }
     } else {
-      toast('⚠️ Sin servidor conectado: el padrón quedó SOLO en este dispositivo', 'e');
+      toast('⚠️ No hay conexión con Sucaneitor. El padrón central no se actualizó.', 'e');
     }
   } catch (e) {
     toast('❌ Error al leer el padrón', 'e');
@@ -1265,8 +1304,7 @@ async function loadBalance(input) {
     toast(`✅ Balance: ${balanceData.length} productos`, 's');
     refreshReport();
     saveLocal();
-    // Subir balance al servidor vinculado a la sesión.
-    // IMPORTANTE: el balance debe quedar por session_id, no en localStorage.
+    // Guardar el balance web vinculado a la sesión.
     if (serverUrl && serverOnline && sessionId) {
       try {
         const metaGuardar = { almacen: almacenDet, fecha: fechaDet, nombre: file.name };
@@ -1282,11 +1320,11 @@ async function loadBalance(input) {
         const ans = await up.json().catch(() => ({}));
         toast(`☁️ Balance sincronizado a esta sesión (${ans.total || balanceData.length})`, 's');
       } catch (e) {
-        console.warn('No se pudo subir balance al servidor:', e);
-        toast('⚠️ El balance quedó SOLO en este dispositivo. Revisá servidor/conexión.', 'e');
+        console.warn('No se pudo sincronizar el balance:', e);
+        toast('⚠️ No se pudo guardar el balance en la web. Revisá tu conexión a internet.', 'e');
       }
     } else {
-      toast('⚠️ Sin sesión de servidor: el balance quedó SOLO en este dispositivo', 'e');
+      toast('⚠️ Entrá a un inventario antes de cargar el balance.', 'e');
     }
   } catch (e) {
     toast('❌ Error al leer el balance', 'e');
@@ -1310,7 +1348,7 @@ async function clearBalance() {
         method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({session_id: sessionId, balance: [], meta: {}})
       });
-    } catch (e) { toast('No se pudo quitar el balance del servidor', 'e'); }
+    } catch (e) { toast('No se pudo quitar el balance compartido', 'e'); }
   }
 }
 
@@ -1637,13 +1675,12 @@ async function setAlmacen(val) {
   saveLocal();
 }
 
-// ===== RED LOCAL (SSE) =====
+// ===== SINCRONIZACIÓN WEB =====
 async function connectToServer(url, sid) {
-  url = url || document.getElementById('server-url').value.trim().replace(/\/$/, '');
+  url = (url || location.origin).replace(/\/$/, '');
   if (sid) sessionId = sid;
-  if (!url) { toast('❌ Ingresá la URL del servidor', 'e'); return; }
 
-  // Test connection
+  // Comprobar la sesión alojada y cargar su estado compartido.
   try {
     const stateUrl = sessionId ? `${url}/api/state?sid=${sessionId}` : `${url}/api/state`;
     const res = await fetchWithTimeout(stateUrl, {}, 3000);
@@ -1652,7 +1689,6 @@ async function connectToServer(url, sid) {
 
     serverUrl = url;
     serverOnline = true;
-    localStorage.setItem('sc_server_url', url);
 
     // Cargar estado del servidor
     countItems = state.countItems || {};
@@ -1663,7 +1699,7 @@ async function connectToServer(url, sid) {
 
     renderLiveLog(); renderCountTable(); updateStats();
 
-    // Bajar padrón global del servidor (tiene prioridad sobre el builtin)
+    // Bajar el padrón central (tiene prioridad sobre el incorporado).
     try {
       const resPadron = await fetch(`${url}/api/padron`);
       if (resPadron.ok) {
@@ -1671,12 +1707,12 @@ async function connectToServer(url, sid) {
         if (pdata.padron && pdata.padron.length > 0) {
           padron = pdata.padron;
           invalidateSearchIndex();
-          setPadronStatus(`✅ Padrón: ${padron.length} productos (servidor)`);
+          setPadronStatus(`✅ Padrón central: ${padron.length} productos`);
         }
       }
-    } catch (e) { console.warn('No se pudo bajar padrón del servidor:', e); }
+    } catch (e) { console.warn('No se pudo actualizar el padrón central:', e); }
 
-    // Bajar balance de la sesión del servidor
+    // Bajar el balance compartido de la sesión.
     if (sessionId) {
       balanceData = null;
       try {
@@ -1688,7 +1724,7 @@ async function connectToServer(url, sid) {
             window.balanceMeta = bdata.meta || null;
             const meta = bdata.meta || {};
             document.getElementById('bal-info').textContent =
-              `${balanceData.length} productos${meta.almacen ? ' · ' + meta.almacen : ''}${meta.fecha ? ' · ' + meta.fecha : ''} (servidor)`;
+              `${balanceData.length} productos${meta.almacen ? ' · ' + meta.almacen : ''}${meta.fecha ? ' · ' + meta.fecha : ''} (web)`;
             document.getElementById('bal-status').style.display = 'block';
             document.getElementById('no-bal-msg').style.display = 'none';
             if (meta.nombre) document.getElementById('bal-fname').textContent = `📄 ${meta.nombre}`;
@@ -1700,7 +1736,7 @@ async function connectToServer(url, sid) {
             document.getElementById('no-bal-msg').style.display = 'block';
           }
         }
-      } catch (e) { console.warn('No se pudo bajar balance del servidor:', e); }
+      } catch (e) { console.warn('No se pudo actualizar el balance compartido:', e); }
     }
 
     await loadBarcodeAssignments();
@@ -1708,14 +1744,17 @@ async function connectToServer(url, sid) {
     // Conectar SSE
     connectSSE();
 
-    document.getElementById('net-offline').style.display = 'none';
-    document.getElementById('net-online').style.display = 'block';
-    document.getElementById('net-url-display').textContent = url;
+    const offlineCard = document.getElementById('net-offline');
+    const onlineCard = document.getElementById('net-online');
+    const urlDisplay = document.getElementById('net-url-display');
+    if (offlineCard) offlineCard.style.display = 'none';
+    if (onlineCard) onlineCard.style.display = 'block';
+    if (urlDisplay) urlDisplay.textContent = url;
     setSyncStatus('online');
-    toast('✅ Conectado al servidor', 's');
+    toast('✅ Sincronización web activa', 's');
     updateClientCount();
   } catch (e) {
-    toast('❌ No se pudo conectar al servidor. ¿Está corriendo server.py?', 'e');
+    toast('❌ No se pudo sincronizar. Revisá tu conexión a internet.', 'e');
     console.error(e);
   }
 }
@@ -1803,8 +1842,8 @@ function connectSSE() {
     if (d.padron && d.padron.length) {
       padron = d.padron;
       invalidateSearchIndex();
-      setPadronStatus(`✅ Padrón: ${padron.length} productos (servidor)`);
-      toast('📋 Padrón actualizado desde servidor', 's');
+      setPadronStatus(`✅ Padrón central: ${padron.length} productos`);
+      toast('📋 Padrón central actualizado', 's');
       loadBarcodeAssignments();
     }
   });
@@ -1825,7 +1864,7 @@ function connectSSE() {
       document.getElementById('bal-status').style.display = 'block';
       document.getElementById('no-bal-msg').style.display = 'none';
       document.getElementById('bal-fname').textContent = meta.nombre ? `📄 ${meta.nombre}` : '📄 Balance de Stock';
-      document.getElementById('bal-info').textContent = `${balanceData.length} productos${meta.almacen ? ' · ' + meta.almacen : ''}${meta.fecha ? ' · ' + meta.fecha : ''} (servidor)`;
+      document.getElementById('bal-info').textContent = `${balanceData.length} productos${meta.almacen ? ' · ' + meta.almacen : ''}${meta.fecha ? ' · ' + meta.fecha : ''} (web)`;
       refreshReport();
       saveLocal();
       toast('📊 Balance actualizado en esta sesión', 's');
@@ -1861,11 +1900,12 @@ function disconnectServer() {
   serverOnline = false;
   if (serverSSE) { serverSSE.close(); serverSSE = null; }
   serverUrl = '';
-  localStorage.removeItem('sc_server_url');
-  document.getElementById('net-offline').style.display = 'block';
-  document.getElementById('net-online').style.display = 'none';
+  const offlineCard = document.getElementById('net-offline');
+  const onlineCard = document.getElementById('net-online');
+  if (offlineCard) offlineCard.style.display = 'block';
+  if (onlineCard) onlineCard.style.display = 'none';
   setSyncStatus('offline');
-  toast('⏹ Desconectado del servidor', 'i');
+  toast('Sincronización pausada', 'i');
 }
 
 async function updateClientCount() {
@@ -2032,7 +2072,7 @@ function ignoreUnknownBarcode() {
 function openBarcodeAssignment() {
   if (!currentUnknownBarcode) return;
   if (!serverOnline || !serverUrl) {
-    toast('La asignación necesita conexión con el servidor para compartirse', 'e');
+    toast('La asignación necesita conexión a internet para compartirse', 'e');
     return;
   }
   currentAssignmentProduct = null;
@@ -2592,10 +2632,10 @@ function loadLocalState() {
 
 
 async function diagnosticoServidor() {
-  if (!serverUrl) { toast('❌ No hay servidor conectado', 'e'); return; }
+  if (!serverUrl) { toast('❌ No hay conexión con Sucaneitor', 'e'); return; }
   try {
     const p = await fetch(`${serverUrl}/api/padron`).then(r=>r.json());
-    let msg = `Servidor: padrón ${p.total || 0}`;
+    let msg = `Sucaneitor: padrón ${p.total || 0}`;
     if (sessionId) {
       const b = await fetch(`${serverUrl}/api/balance?session_id=${sessionId}`).then(r=>r.json());
       msg += ` · balance ${b.balance ? b.balance.length : 0}`;
@@ -2603,7 +2643,7 @@ async function diagnosticoServidor() {
     toast(msg, 'i');
     console.log('[diagnosticoServidor]', {padron:p, sessionId, balance: sessionId ? await fetch(`${serverUrl}/api/balance?session_id=${sessionId}`).then(r=>r.json()) : null});
   } catch(e) {
-    toast('❌ No pude consultar el servidor', 'e');
+    toast('❌ No pude consultar Sucaneitor', 'e');
     console.error(e);
   }
 }
@@ -2901,7 +2941,7 @@ async function iaIdentify() {
   overlay.style.display = 'block';
   btn.disabled = true;
   btn.textContent = '⏳ Analizando...';
-  status.textContent = '🤖 Enviando al servidor...';
+  status.textContent = '🤖 Enviando a Sucaneitor...';
 
   try {
     // Prompt con contexto del padrón
@@ -2923,12 +2963,12 @@ async function iaIdentify() {
         })
       });
       const data = await resp.json();
-      if (!data.ok) throw new Error(data.error || 'Error del servidor');
+      if (!data.ok) throw new Error(data.error || 'Error del servicio');
       result = data.result;
       status.textContent = `🤖 Analizando... (${data.productos_analizados} productos comparados)`;
     } else {
       // Sin servidor: no disponible
-      throw new Error('Necesitás conectarte al servidor para usar la IA. Abrí SucaneitorInventario.exe en la PC.');
+      throw new Error('Necesitás conexión a internet para usar esta función.');
     }
 
     // result ya está asignado arriba

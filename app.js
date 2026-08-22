@@ -433,11 +433,6 @@ db.from('transportes').select('*').order('nombre'),
 appState.localesCache     = locs||[];
 appState.transportesCache = trans||[];
 const queryParams=new URLSearchParams(location.search);
-const returnTo=queryParams.get('return_to')||'';
-if(/^\/operaciones\/?(?:\?[^#]*)?$/.test(returnTo)){
-location.replace(returnTo);
-return;
-}
 const requestedModule=queryParams.get('module');
 navigateTo(requestedModule==='pedidos'?'misPedidos':'hub');
 setupRealtime();

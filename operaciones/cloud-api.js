@@ -67,8 +67,7 @@
     cloud.db = window.supabase.createClient(config.supabaseUrl, config.supabaseKey);
     const {data:{session}} = await cloud.db.auth.getSession();
     if (!session) {
-      const returnTo = encodeURIComponent(location.pathname + location.search);
-      location.replace(`${config.portalUrl}?return_to=${returnTo}`);
+      location.replace(config.portalUrl);
       throw new Error('Iniciá sesión para continuar');
     }
     cloud.user = session.user;
@@ -182,7 +181,7 @@
         cloud.db.from('op_inventario_items').select('cantidad').eq('sesion_id',session.id),
         cloud.db.from('op_inventario_participantes').select('nombre,joined_at').eq('sesion_id',session.id)
       ]);
-      return {id:session.id,nombre:session.nombre,creada:asDate(session.created_at),creada_fecha:session.created_at,usuarios:(parts||[]).map(p=>({nombre:p.nombre,joined:asDate(p.joined_at)})),productos:products||0,unidades:(items||[]).reduce((s,i)=>s+Number(i.cantidad||0),0),almacen:session.almacen||''};
+      return {id:session.id,nombre:session.nombre,creada:asDate(session.created_at),creada_fecha:session.created_at,updated_at:session.updated_at,usuarios:(parts||[]).map(p=>({nombre:p.nombre,joined:asDate(p.joined_at)})),productos:products||0,unidades:(items||[]).reduce((s,i)=>s+Number(i.cantidad||0),0),local_nombre:session.local_nombre||'',almacen:session.almacen||''};
     }));
   }
   async function listRepositions() {
