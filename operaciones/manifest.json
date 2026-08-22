@@ -1,0 +1,18 @@
+{
+  "name": "Sucaneitor Operaciones",
+  "short_name": "Sucaneitor",
+  "description": "Inventario y reposición colaborativa de mercadería Sucan",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f7fb",
+  "theme_color": "#f4f7fb",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "sucan_logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

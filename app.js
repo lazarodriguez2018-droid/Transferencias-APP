@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════════
 //  SUPABASE CONFIG
 // ═══════════════════════════════════════════
-const SUPABASE_URL = 'https://akqqpodyijzjdoibkint.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_ClVgs8WdyAu0McGi0eAaEQ_MovUmDCC';
+const SUPABASE_URL = 'https://fjpsggtfssibyuxupggd.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_tiTJDR0fCzwg9fBa8z-M4A_gF_6_BD2';
 const { createClient } = supabase;
 const db = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -405,7 +405,7 @@ try{
 showPage('app-page');
 // Siempre resetear nav antes de aplicar rol
 el('admin-nav').style.display='none';
-const isAdmin = appState.currentPerfil.role==='admin';
+const isAdmin = isSupervisorRole(appState.currentPerfil.role);
 safeSet('sidebar-name', appState.currentPerfil.nombre_display||(appState.currentPerfil.nombre+' '+appState.currentPerfil.apellido));
 safeSet('sidebar-role', roleLabel(appState.currentPerfil.role));
 // Avatar: foto o iniciales
@@ -428,7 +428,14 @@ db.from('transportes').select('*').order('nombre'),
 ]);
 appState.localesCache     = locs||[];
 appState.transportesCache = trans||[];
-navigateTo('misPedidos');
+const queryParams=new URLSearchParams(location.search);
+const returnTo=queryParams.get('return_to')||'';
+if(/^\/operaciones\/(?:\?[^#]*)?$/.test(returnTo)){
+location.replace(returnTo);
+return;
+}
+const requestedModule=queryParams.get('module');
+navigateTo(requestedModule==='pedidos'?'misPedidos':'hub');
 setupRealtime();
 } finally {
 hideSpinner();
@@ -465,7 +472,7 @@ appState.realtimeChannels=[];
 async function updateBadges(){
 if(!appState.currentPerfil) return;
 const local   = appState.currentPerfil.local_nombre;
-const isAdmin = appState.currentPerfil.role==='admin';
+const isAdmin = isSupervisorRole(appState.currentPerfil.role);
 const countOrZero = async (q)=>{
 const {count,error}=await q;
 if(error){ return 0; }
@@ -494,7 +501,7 @@ el('badge-misPedidos').textContent=mp; el('badge-misPedidos').style.display=mp>0
 el('badge-paraEnviar').textContent=pe; el('badge-paraEnviar').style.display=pe>0?'flex':'none';
 updateNotifBadgeCount(no);
 
-if(appState.currentPerfil.role==='admin'){
+if(isSupervisorRole(appState.currentPerfil.role)){
 const [pu,su]=await Promise.all([
 countOrZero(db.from('perfiles').select('id',{count:'exact',head:true}).eq('approved',false)),
 countOrZero(db.from('sugerencias').select('id',{count:'exact',head:true}).eq('leida',false)),
@@ -597,7 +604,7 @@ document.querySelectorAll('[id^="view-"]').forEach(v=>v.style.display='none');
 const ve=el('view-'+view); if(ve) ve.style.display='block';
 const ni=el('nav-'+view); if(ni) ni.classList.add('active');
 const titles={
-dashboard:'Dashboard',misPedidos:'Pedidos de mi local',paraEnviar:'Pedidos a despachar',
+hub:'Módulos',dashboard:'Dashboard',misPedidos:'Pedidos de mi local',paraEnviar:'Pedidos a despachar',
 historial:'Historial',misConsultas:'Mis Consultas',chats:'Chats',agenda:'Agenda',
 perfil:'Mi Perfil',usuarios:'Usuarios',sugerencias:'Sugerencias',config:'Configuración'
 };
@@ -644,8 +651,12 @@ function roleLabel(role){
 return (role==='admin' || role==='supervisor_general') ? 'Supervisor' : 'Local';
 }
 
+function isSupervisorRole(role){
+return role==='admin' || role==='supervisor_general';
+}
+
 function isAdminUser(){
-return appState.currentPerfil?.role === 'admin';
+return isSupervisorRole(appState.currentPerfil?.role);
 }
 
 function requireAdminAction(action='esta accion'){
@@ -663,7 +674,7 @@ async function loadProductsCache(){
   // Cargar tabla principal paginando
   let from = 0;
   while(true){
-    const {data, error} = await db.from('productos').select('codigo,nombre,marca').order('nombre').range(from, from+PAGE-1);
+    const {data, error} = await db.from('productos').select('codigo,nombre,marca,barras,fabricante').order('nombre').range(from, from+PAGE-1);
     if(error || !data || !data.length) break;
     base = base.concat(data);
     if(data.length < PAGE) break;
@@ -721,7 +732,7 @@ const fecha=fmtDate(o.created_at);
 const urgente=o.urgente?' <span class="priority-badge">🔴 URGENTE</span>':'';
 const viejo=o._viejo?' <span class="priority-badge" style="color:#f7971e">⏰ +24hs</span>':'';
 const isMio=o.destino_local===appState.currentPerfil.local_nombre;
-const isAdmin=appState.currentPerfil.role==='admin';
+const isAdmin=isSupervisorRole(appState.currentPerfil.role);
 const rol=isMio
 ?'<span style="font-size:10px;font-weight:700;color:var(--text3)">YO PEDÍ</span>'
 :'<span style="font-size:10px;font-weight:700;color:var(--accent4)">ME PIDIERON</span>';
@@ -767,7 +778,7 @@ e.innerHTML=(data&&data.length)?data.map(o=>orderCard(o)).join('')
 // ═══════════════════════════════════════════
 async function renderDashboardControl(){
 if(!appState.currentPerfil) return;
-const isAdmin = appState.currentPerfil.role === 'admin';
+const isAdmin = isSupervisorRole(appState.currentPerfil.role);
 const localPropio = appState.currentPerfil.local_nombre;
 const selectedLocal = hydrateDashboardFilters();
 safeSet('dash-subtitle', isAdmin ? 'Control general de pedidos y transferencias' : 'Resumen de '+localPropio+' ('+appState.currentPerfil.almacen+')');
@@ -818,7 +829,7 @@ if(desde) q = q.gte('created_at', desde+'T00:00:00');
 if(hasta) q = q.lte('created_at', hasta+'T23:59:59');
 if(selectedLocal){
 q = q.or('origen_local.eq.'+selectedLocal+',destino_local.eq.'+selectedLocal);
-} else if(appState.currentPerfil.role !== 'admin'){
+} else if(!isSupervisorRole(appState.currentPerfil.role)){
 const local = appState.currentPerfil.local_nombre;
 q = q.or('origen_local.eq.'+local+',destino_local.eq.'+local);
 }
@@ -993,7 +1004,7 @@ URL.revokeObjectURL(url);
 }
 
 async function renderMisPedidos(){
-const isAdmin = appState.currentPerfil.role==='admin';
+const isAdmin = isSupervisorRole(appState.currentPerfil.role);
 const local   = appState.currentPerfil.local_nombre;
 
 // Populate filtro origen
@@ -1086,7 +1097,7 @@ await renderParaEnviar();
 }
 
 async function renderParaEnviar(){
-const isAdmin = appState.currentPerfil.role==='admin';
+const isAdmin = isSupervisorRole(appState.currentPerfil.role);
 const local   = appState.currentPerfil.local_nombre;
 
 // Filtros de local — visibles para admins
@@ -1169,7 +1180,7 @@ appState.despachoTab==='pendientes'?'No hay pedidos pendientes':'No hay pedidos 
 // ═══════════════════════════════════════════
 async function renderHistorial(){
 const local=appState.currentPerfil.local_nombre;
-const isAdmin=appState.currentPerfil.role==='admin';
+const isAdmin=isSupervisorRole(appState.currentPerfil.role);
 const tipo=el('filter-hist-tipo').value;
 const estado=el('filter-hist-estado').value;
 const selOrigen=el('filter-hist-origen');
@@ -1177,11 +1188,11 @@ const selDestino=el('filter-hist-destino');
 const selCreador=el('filter-hist-creador');
 const cvO=selOrigen?.value||'', cvD=selDestino?.value||'', cvC=selCreador?.value||'';
 if(selOrigen){
-selOrigen.innerHTML='<option value="">Todos los orígenes</option>'+appState.localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvO===l.nombre?' selected':'')+'>'+escHtml(l.nombre)+'</option>').join('');
+selOrigen.innerHTML='<option value="">Todos los orígenes</option>'+appState.localesCache.map(l=>'<option value="'+escAttr(l.nombre)+'"'+(cvO===l.nombre?' selected':'')+'>'+escHtml(l.nombre)+'</option>').join('');
 }
 if(isAdmin && selDestino){
 selDestino.style.display='';
-selDestino.innerHTML='<option value="">Todos los destinos</option>'+appState.localesCache.map(l=>'<option value="'+l.nombre+'"'+(cvD===l.nombre?' selected':'')+'>'+escHtml(l.nombre)+'</option>').join('');
+selDestino.innerHTML='<option value="">Todos los destinos</option>'+appState.localesCache.map(l=>'<option value="'+escAttr(l.nombre)+'"'+(cvD===l.nombre?' selected':'')+'>'+escHtml(l.nombre)+'</option>').join('');
 } else if(selDestino) selDestino.style.display='none';
 if(isAdmin && selCreador){
 selCreador.style.display='';
@@ -1328,11 +1339,11 @@ if(o.faltantes){
 if(o.notas) extra+='<div class="detail-row"><span class="label">Notas:</span><span class="value">'+escHtml(o.notas)+'</span></div>';
 if(o.faltantes_escala) extra+='<div class="detail-row"><span class="label">Diferencias en escala:</span><span class="value" style="color:#a855f7">'+escHtml(o.faltantes_escala.split('\n__xls__:')[0])+'</span></div>';
 
-const canOrigen  = isOrigen  || appState.currentPerfil.role==='admin';
-const canDestino = isDestino || appState.currentPerfil.role==='admin';
+const canOrigen  = isOrigen  || isSupervisorRole(appState.currentPerfil.role);
+const canDestino = isDestino || isSupervisorRole(appState.currentPerfil.role);
 const esEscala   = escalaInfo !== null;
 const isEscalaLocal = escalaInfo && appState.currentPerfil.local_nombre === escalaInfo.escala;
-const canEscala  = isEscalaLocal || appState.currentPerfil.role==='admin';
+const canEscala  = isEscalaLocal || isSupervisorRole(appState.currentPerfil.role);
 const colaEscalas=parseEscalaQueue(o);
 const proxParada=(colaEscalas[0]&&colaEscalas[0].nombre)||o.destino_local;
 let actions='';
@@ -1386,7 +1397,7 @@ actions+
 (o.telefono?'<button class="btn btn-success btn-sm" onclick="abrirWhatsApp(\''+escJsStr(o.telefono)+'\',\''+escJsStr(o.cliente||'')+'\')" style="background:#25d366;border-color:#25d366;color:#fff">💬 WhatsApp cliente</button>':'')+
 '<button class="btn btn-ghost btn-sm" onclick="generarEtiqueta(\''+o.id+'\')">🖨️ Etiqueta de envío</button>'+
 (['completo','incompleto'].includes(o.estado)?'<button class="btn btn-ghost btn-sm" onclick="exportarXLSPedido(\''+o.id+'\')" style="color:#22c55e;border-color:rgba(34,197,94,0.35)">📊 Exportar XLS comparativo</button>':'')+
-(appState.currentPerfil.role==='admin'?
+(isSupervisorRole(appState.currentPerfil.role)?
 '<button class="btn btn-warning btn-sm" onclick="retrocederEstado(\''+o.id+'\')">↩️ Retroceder estado</button>'+
 '<button class="btn btn-danger btn-sm" onclick="eliminarPedido(\''+o.id+'\')">🗑️ Eliminar pedido</button>':'')+
 '</div>';
@@ -1690,6 +1701,7 @@ en_escala_completo:'en_escala', listo_escala:'listo_escala',
 llegado:'llegado', completo:'completo'
 };
 const updates={updated_at:new Date().toISOString()};
+let acceptedQuantities=null;
 const responsable=(el('accion-responsable')&&el('accion-responsable').value.trim())||'';
 if(!responsable) return notify('Ingresá tu nombre como responsable','error');
 
@@ -1746,17 +1758,17 @@ checks.forEach(ch=>{
     const cantSust=Math.max(1, parseInt(sustituto.cantidad)||1);
     const diffCant=cantSust!==cantOriginal?' (ped:'+cantOriginal+')':'';
     recibidos.push('INCORRECTO: '+(it.nombre||'')+' x'+cantOriginal+' → '+sustituto.nombre+' x'+cantSust+diffCant);
-    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:cantSust,sustituto:sustituto||null});
+    recibidosData.push({linea_id:it.id||null,codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:cantSust,sustituto:sustituto||null});
     return;
   }
 
   if(ch.checked && cantAceptada>0){
     const diff=cantAceptada!==cantOriginal?' (ped:'+cantOriginal+')':'';
     recibidos.push((it.nombre||'')+' x'+cantAceptada+diff);
-    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:cantAceptada,sustituto:null});
+    recibidosData.push({linea_id:it.id||null,codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:cantAceptada,sustituto:null});
   } else {
     faltantesItems.push((it.nombre||'')+' x'+cantOriginal);
-    recibidosData.push({codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:0,sustituto:null});
+    recibidosData.push({linea_id:it.id||null,codigo:it.codigo||'',nombre:it.nombre||'',enviado:cantOriginal,recibido:0,sustituto:null});
   }
 });
 // NO se toca pedido_productos.cantidad — queda como la cantidad originalmente enviada
@@ -1780,6 +1792,7 @@ if(tipo==='en_escala_incompleto'){
 } else if(tipo==='aceptar_incompleto'){
   updates.estado='aceptado';
   updates.faltantes='Aceptado incompleto - '+resumen;
+  acceptedQuantities=recibidosData.map(item=>({id:item.linea_id,codigo:item.codigo,cantidad:item.sustituto?0:item.recibido}));
 } else {
   updates.estado='incompleto';
   updates.faltantes=resumen;
@@ -1857,6 +1870,16 @@ if(tipo==='aceptar'){
 }
 }
 
+if(tipo==='aceptar'){
+  const {data:lines}=await db.from('pedido_productos').select('id,cantidad').eq('pedido_id',orderId);
+  acceptedQuantities=(lines||[]).map(item=>({id:item.id,cantidad:item.cantidad}));
+}
+if(acceptedQuantities){
+  const results=await Promise.all(acceptedQuantities.filter(item=>item.id).map(item=>db.from('pedido_productos').update({cantidad_aceptada:Math.max(0,Number(item.cantidad)||0)}).eq('id',item.id)));
+  const qtyError=results.find(result=>result.error)?.error;
+  if(qtyError) return notify('No se pudieron guardar las cantidades aceptadas: '+qtyError.message,'error');
+}
+
 const {error}=await db.from('pedidos').update(updates).eq('id',orderId);
 if(error) return notify('Error al actualizar: '+error.message,'error');
 
@@ -1910,7 +1933,7 @@ if(['aceptado','transito_escala','listo_escala'].includes(estado)){
           await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
             to:mails,
             subject:'Pedido en escala: #'+orderId.slice(-8,-2).toUpperCase(),
-            text:'El pedido '+orderId+' está en flujo de escala ('+o.origen_local+' → '+o.destino_local+'). Revisar TransferApp para continuar el despacho.'
+            text:'El pedido '+orderId+' está en flujo de escala ('+o.origen_local+' → '+o.destino_local+'). Revisar Sucaneitor Pedidos para continuar el despacho.'
           })});
         }
       }
@@ -2005,11 +2028,12 @@ if(el('view-agenda')?.style.display!=='none') await renderAgendaClientes();
 }
 
 async function eliminarClienteAgenda(id){
-if(!confirm('¿Eliminar este cliente de la agenda?')) return;
+showConfirm('El cliente se quitará de la agenda. Los pedidos anteriores no se modifican.',async()=>{
 const {error}=await db.from('clientes_agenda').delete().eq('id',id);
 if(error) return notify('No se pudo eliminar: '+error.message,'error');
 notify('Cliente eliminado','info');
 await renderAgendaClientes();
+},{title:'Eliminar cliente',btnLabel:'Eliminar',btnClass:'btn-danger'});
 }
 
 let _agendaPedidoTimeout=null;
@@ -2337,12 +2361,41 @@ function confirmarXLSImport() {
   }
 }
 
-async function crearPedido(){
+function normalizeCustomerIdentity(value){
+return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+}
+
+async function findPossibleDuplicateOrder(origen,destino){
+const cliente=normalizeCustomerIdentity(el('new-cliente').value);
+const telefono=String(el('new-telefono').value||'').replace(/\D/g,'');
+if(!cliente&&!telefono) return [];
+const start=new Date(); start.setHours(0,0,0,0);
+const {data,error}=await db.from('pedidos').select('id,cliente,telefono,created_at,estado,pedido_productos(codigo,nombre,cantidad)')
+.eq('origen_local',origen).eq('destino_local',destino).gte('created_at',start.toISOString()).neq('estado','denegado');
+if(error) return [];
+const wanted=new Set(appState.newOrderProducts.map(item=>String(item.codigo)));
+return (data||[]).filter(order=>{
+  const samePhone=telefono&&String(order.telefono||'').replace(/\D/g,'')===telefono;
+  const sameName=!telefono&&cliente&&normalizeCustomerIdentity(order.cliente)===cliente;
+  const overlaps=(order.pedido_productos||[]).some(item=>wanted.has(String(item.codigo)));
+  return (samePhone||sameName)&&overlaps;
+});
+}
+
+async function crearPedido(duplicateConfirmed=false){
 if(!appState.newOrderProducts.length) return notify('Agregá al menos un producto','error');
 const ov=el('new-origen').value, dv=el('new-destino').value;
 if(!ov||!dv) return notify('Seleccioná origen y destino','error');
 if(ov===dv) return notify('Origen y destino no pueden ser iguales','error');
 const [oNom,oAlm]=ov.split('|'), [dNom,dAlm]=dv.split('|');
+if(!duplicateConfirmed){
+  const duplicates=await findPossibleDuplicateOrder(oNom,dNom);
+  if(duplicates.length){
+    const products=[...new Set(duplicates.flatMap(order=>(order.pedido_productos||[]).map(item=>item.nombre)))].slice(0,5);
+    showConfirm(`Ya existe ${duplicates.length===1?'un pedido':'más de un pedido'} de este cliente hoy con productos repetidos:<br><strong>${products.map(escHtml).join(', ')}</strong><br><br>Puede ser correcto, pero conviene comprobarlo antes de continuar.`,()=>crearPedido(true),{title:'Posible pedido duplicado',btnLabel:'Continuar igualmente',btnClass:'btn-warning'});
+    return;
+  }
+}
 const escAuto=getEscala(dNom);
 const usarEscalaAuto=!!(escAuto && (el('new-escala-auto-choice')?.value||'si')==='si');
 const {data:pedido,error}=await db.from('pedidos').insert({
@@ -2350,6 +2403,7 @@ origen_local:oNom,origen_almacen:oAlm,destino_local:dNom,destino_almacen:dAlm,
 cliente:el('new-cliente').value.trim()||null,
 telefono:el('new-telefono').value.trim()||null,
 urgente:el('new-urgente').checked,
+duplicado_confirmado:!!duplicateConfirmed,
 notas:el('new-notas').value.trim()||null,
 escala_local:usarEscalaAuto?escAuto.escala:null,
 escala_almacen:usarEscalaAuto?(escAuto.almacen||null):null,
@@ -2575,7 +2629,7 @@ await updateBadges();
 async function aprobarUser(uid){
 if(!requireAdminAction('aprobar usuarios')) return;
 await db.from('perfiles').update({approved:true}).eq('id',uid);
-await db.from('notificaciones').insert({usuario_id:uid,titulo:'✅ Tu cuenta fue aprobada',cuerpo:'Ya podés ingresar a TransferApp.'});
+await db.from('notificaciones').insert({usuario_id:uid,titulo:'✅ Tu cuenta fue aprobada',cuerpo:'Ya podés ingresar a Sucaneitor.'});
 await renderUsuarios(); notify('Usuario aprobado','success');
 }
 async function rechazarUser(uid){
@@ -2595,7 +2649,8 @@ await renderUsuarios(); notify('Rol actualizado','success');
 //  ADMIN — CONFIG
 // ═══════════════════════════════════════════
 async function renderConfig(){
-await Promise.all([renderAdminLocales(),renderTransportes(),renderAdminProducts(),renderPadronExtra()]);
+await renderAdminLocales();
+await Promise.all([renderTransferRoutes(),renderTransportes(),renderAdminProducts(),renderPadronExtra()]);
 }
 
 async function renderAdminLocales(){
@@ -2663,6 +2718,45 @@ await renderAdminLocales(); notify('Local eliminado','info');
 }, {title:'Eliminar local', btnLabel:'Sí, eliminar'});
 }
 
+const ROUTE_DAY_LABELS={1:'Lun',2:'Mar',3:'Mié',4:'Jue',5:'Vie',6:'Sáb',7:'Dom'};
+
+async function renderTransferRoutes(){
+const selectOptions='<option value="">Seleccionar…</option>'+appState.localesCache.map(local=>'<option value="'+escAttr(local.nombre)+'">'+escHtml(local.nombre)+' ('+escHtml(local.almacen||'')+')</option>').join('');
+safeSetRouteOptions('route-origin',selectOptions);
+safeSetRouteOptions('route-destination',selectOptions);
+const weekdayWrap=el('route-weekdays');
+if(weekdayWrap&&!weekdayWrap.children.length){
+weekdayWrap.innerHTML=Object.entries(ROUTE_DAY_LABELS).map(([day,label])=>'<label class="config-tag" style="cursor:pointer"><input type="checkbox" class="route-day" value="'+day+'"> '+label+'</label>').join('');
+}
+const {data,error}=await db.from('op_rutas_transferencia').select('*').order('origen_local').order('destino_local');
+const body=el('routes-body'); if(!body) return;
+if(error){ body.innerHTML='<tr><td colspan="4" style="color:var(--text3)">La configuración de recorridos estará disponible al activar la integración.</td></tr>'; return; }
+body.innerHTML=(data||[]).map(route=>'<tr><td><strong>'+escHtml(route.origen_local)+'</strong> → '+escHtml(route.destino_local)+'</td><td>'+((route.dias_semana||[]).map(day=>ROUTE_DAY_LABELS[day]||day).join(', ')||'Sin días')+'</td><td>'+(route.permite_urgentes_fuera_de_inicio?'Permitidos con aprobación':'No')+'</td><td><button class="btn btn-danger btn-sm" onclick="deleteTransferRoute(\''+escJsStr(route.id)+'\')">🗑️</button></td></tr>').join('')||'<tr><td colspan="4" style="color:var(--text3)">Todavía no hay recorridos configurados.</td></tr>';
+}
+
+function safeSetRouteOptions(id,html){ const target=el(id); if(target) target.innerHTML=html; }
+
+async function saveTransferRoute(){
+if(!requireAdminAction('configurar recorridos')) return;
+const origin=el('route-origin')?.value||'',destination=el('route-destination')?.value||'';
+const days=Array.from(document.querySelectorAll('.route-day:checked')).map(input=>Number(input.value)).sort((a,b)=>a-b);
+if(!origin||!destination||origin===destination) return notify('Elegí un origen y un destino diferentes','error');
+if(!days.length) return notify('Seleccioná al menos un día','error');
+const {error}=await db.from('op_rutas_transferencia').upsert({origen_local:origin,destino_local:destination,dias_semana:days,activa:true,permite_urgentes_fuera_de_inicio:true},{onConflict:'origen_local,destino_local'});
+if(error) return notify('No se pudo guardar el recorrido: '+error.message,'error');
+document.querySelectorAll('.route-day').forEach(input=>{input.checked=false;});
+await renderTransferRoutes(); notify('Recorrido actualizado','success');
+}
+
+async function deleteTransferRoute(id){
+if(!requireAdminAction('eliminar recorridos')) return;
+showConfirm('¿Eliminar este calendario? Los pedidos y reposiciones existentes no se modifican.',async()=>{
+const {error}=await db.from('op_rutas_transferencia').delete().eq('id',id);
+if(error) return notify(error.message,'error');
+await renderTransferRoutes(); notify('Recorrido eliminado','info');
+},{title:'Eliminar recorrido',btnLabel:'Sí, eliminar'});
+}
+
 async function renderTransportes(){
 const {data}=await db.from('transportes').select('*').order('nombre');
 appState.transportesCache=data||[];
@@ -2698,7 +2792,7 @@ safeSet('products-count', baseCount);
 safeSet('products-extra-count', extraCount);
 safeSet('products-total-count', baseCount+extraCount);
 const q=(el('admin-search-prod')&&el('admin-search-prod').value.trim())||'';
-let qBase=db.from('productos').select('codigo,nombre,marca').order('nombre').limit(100);
+let qBase=db.from('productos').select('codigo,nombre,marca,barras,fabricante').order('nombre').limit(100);
 let qExtra=db.from('padron_extra').select('*').order('nombre').limit(100);
 if(q){
 qBase=qBase.or('nombre.ilike.%'+q+'%,codigo.ilike.%'+q+'%');
@@ -2782,21 +2876,29 @@ const headers=rows[hi].map(h=>String(h||'').toLowerCase().trim());
 const iC=headers.findIndex(h=>h==='código'||h==='codigo');
 const iN=headers.findIndex(h=>h==='nombre');
 const iM=headers.findIndex(h=>h==='marca');
+const iB=headers.findIndex(h=>/^(c[oó]digo de barras|codigo barras|c[oó]digo barra|barras|barcode|ean|gtin)$/.test(h));
+const iF=headers.findIndex(h=>h==='fabricante');
 if(iN===-1) return notify('No se encontró columna Nombre','error');
 const products=[];
 for(let i=hi+1;i<rows.length;i++){
 const row=rows[i]; if(!row||!row[iN]) continue;
-products.push({codigo:String(row[iC]||''),nombre:String(row[iN]||''),marca:String(row[iM]||'')});
+const codigo=String(iC>=0?row[iC]||'':'').trim();
+const nombre=String(row[iN]||'').trim();
+if(!codigo||!nombre) continue;
+products.push({
+codigo,
+nombre,
+marca:String(iM>=0?row[iM]||'':'').trim(),
+barras:String(iB>=0?row[iB]||'':'').trim(),
+fabricante:String(iF>=0?row[iF]||'':'').trim()
+});
 }
 if(!products.length) return notify('Sin productos válidos','error');
-// Delete all and re-insert in chunks
-await db.from('productos').delete().not('id','is',null);
-const chunkSize=500;
-for(let i=0;i<products.length;i+=chunkSize){
-await db.from('productos').insert(products.slice(i,i+chunkSize));
-}
+// Un único procedimiento transaccional: si algo falla, el padrón anterior queda intacto.
+const {data:total,error}=await db.rpc('reemplazar_padron_productos',{payload:products});
+if(error) throw error;
 appState.productsCache=[];
-notify('Padrón actualizado: '+products.length+' productos','success');
+notify('Padrón central actualizado: '+(total||products.length)+' productos','success');
 await Promise.all([renderAdminProducts(),renderPadronExtra()]);
 }catch(err){notify('Error: '+err.message,'error');}
 };
@@ -2859,7 +2961,7 @@ async function exportarXLSPedido(orderId){
   });
 
   const wsData=[];
-  wsData.push(['TransferApp — Reporte de pedido '+pedidoRef]);
+  wsData.push(['Sucaneitor Pedidos — Reporte de pedido '+pedidoRef]);
   wsData.push(['Fecha: '+fecha+'   Origen: '+(o.origen_local||'')+'   Destino: '+(o.destino_local||'')+(o.cliente?'   Cliente: '+o.cliente:'')]);
   wsData.push([]);
 
@@ -3197,7 +3299,7 @@ function abrirWhatsApp(telefono, nombre){
 if(!telefono) return notify('Este pedido no tiene teléfono del cliente','info');
 // Limpiar el número: sacar espacios, guiones, paréntesis
 const num = telefono.replace(/[\s-()]/g,'');
-const texto = encodeURIComponent('Hola '+( nombre||'')+'! Te contactamos desde TransferApp respecto a tu pedido.');
+const texto = encodeURIComponent('Hola '+( nombre||'')+'! Te contactamos desde Sucaneitor respecto a tu pedido.');
 // Si el número no tiene código de país, agregar +598 (Uruguay)
 const numFinal = num.startsWith('+') ? num : '+598'+num;
 window.open('https://wa.me/'+numFinal.replace('+','')+'?text='+texto,'_blank');

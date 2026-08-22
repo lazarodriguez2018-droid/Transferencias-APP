@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; base-uri 'self'; form-action 'self';">
-<title>TransferApp</title>
+<title>Sucaneitor</title>
 <link rel="icon" type="image/svg+xml" href="logo.svg">
 <link rel="shortcut icon" href="logo.svg">
 <link rel="apple-touch-icon" href="logo.svg">
@@ -95,8 +95,8 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   <div class="auth-card">
     <div class="auth-logo">
       <div class="logo-icon">📦</div>
-      <h1>TransferApp</h1>
-      <p>Gestión de transferencias entre locales</p>
+      <h1>Sucaneitor</h1>
+      <p>Inventario, reposiciones y pedidos entre locales</p>
     </div>
     <!-- PANTALLA CLAVE EMPRESA -->
     <div id="empresa-screen">
@@ -209,7 +209,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   <!-- SIDEBAR -->
   <div class="sidebar" id="sidebar">
     <div class="sidebar-logo">
-      <div class="logo-row"><div class="logo-icon">📦</div><h2>TransferApp</h2></div>
+      <div class="logo-row"><div class="logo-icon">📦</div><h2>Sucaneitor</h2></div>
       <div class="local-badge" id="sidebar-local-badge">–</div>
     </div>
     <div class="notif-bell-desktop" id="notif-bell-desktop">
@@ -218,6 +218,12 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
       <span class="notif-count-desktop" id="notif-count" style="display:none">0</span>
     </div>
     <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-label">Operaciones</div>
+        <div class="nav-item" id="nav-hub" data-nav="hub"><span class="icon">▦</span> Módulos</div>
+        <a class="nav-item nav-link" href="operaciones/?module=inventario"><span class="icon">✓</span> Inventario</a>
+        <a class="nav-item nav-link" href="operaciones/?module=reposicion"><span class="icon">⇄</span> Reposición</a>
+      </div>
       <div class="nav-section">
         <div class="nav-label">Pedidos</div>
         <div class="nav-item" id="nav-misPedidos" data-nav="misPedidos">
@@ -284,6 +290,20 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
 
   <!-- CONTENT -->
   <div class="main-content">
+
+    <!-- SELECTOR DE MODULOS -->
+    <div id="view-hub" style="display:none">
+      <div class="operations-hero">
+        <span class="operations-eyebrow">SUCANEITOR OPERACIONES</span>
+        <h1>¿Qué vas a hacer?</h1>
+        <p>Los tres módulos comparten usuarios, locales y el mismo padrón de mercaderías.</p>
+      </div>
+      <div class="operations-grid">
+        <a class="operations-card inventory" href="operaciones/?module=inventario"><span class="operations-icon">✓</span><div><h2>Inventario</h2><p>Conteo colaborativo, escáner y análisis de diferencias.</p><strong>Entrar a Inventario →</strong></div></a>
+        <a class="operations-card replenishment" href="operaciones/?module=reposicion"><span class="operations-icon">⇄</span><div><h2>Reposición</h2><p>Juntar mercadería, cubrir pedidos aceptados y generar remitos.</p><strong>Entrar a Reposición →</strong></div></a>
+        <button class="operations-card orders" type="button" onclick="navigateTo('misPedidos')"><span class="operations-icon">📦</span><div><h2>Pedidos entre locales</h2><p>Solicitudes por clientes, aceptación y seguimiento del envío.</p><strong>Entrar a Pedidos →</strong></div></button>
+      </div>
+    </div>
 
     <!-- DASHBOARD (admin only) -->
     <div id="view-dashboard" style="display:none">
@@ -598,7 +618,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
 
     <!-- CONFIGURACIÓN (admin) -->
     <div id="view-config" style="display:none">
-      <div class="page-header"><div><h1>⚙️ Configuración</h1><p>Administrá locales, transportes y productos</p></div></div>
+      <div class="page-header"><div><h1>⚙️ Configuración</h1><p>Administrá locales, recorridos, transportes y el padrón central</p></div></div>
 
       <!-- LOCALES -->
       <div class="card" style="margin-bottom:16px">
@@ -633,6 +653,21 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
               <tbody id="locales-body"></tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <!-- CALENDARIO DE TRANSFERENCIAS -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3>📅 Días habituales por recorrido</h3></div>
+        <div class="card-body">
+          <p style="font-size:13px;color:var(--text2);margin-bottom:12px">Define qué días se prepara normalmente cada ruta. Los pedidos urgentes aceptados pueden incorporarse fuera de esos días con aprobación de un supervisor.</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+            <div class="form-group" style="margin-bottom:0;min-width:190px"><label class="form-label">Origen</label><select class="form-input" id="route-origin"></select></div>
+            <div class="form-group" style="margin-bottom:0;min-width:190px"><label class="form-label">Destino</label><select class="form-input" id="route-destination"></select></div>
+            <div class="form-group" style="margin-bottom:0;flex:1;min-width:280px"><label class="form-label">Días de preparación</label><div id="route-weekdays" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>
+            <button class="btn btn-primary btn-sm" onclick="saveTransferRoute()" style="height:42px;white-space:nowrap">Guardar recorrido</button>
+          </div>
+          <div style="overflow-x:auto"><table class="admin-table"><thead><tr><th>Recorrido</th><th>Días habituales</th><th>Urgentes</th><th>Acciones</th></tr></thead><tbody id="routes-body"></tbody></table></div>
         </div>
       </div>
 
