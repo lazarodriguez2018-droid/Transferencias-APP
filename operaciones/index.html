@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<base href="/operaciones/">
 <title>Sucaneitor Operaciones</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#f4f7fb">
@@ -72,7 +73,7 @@ body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;min-he
 
 /* BUTTONS */
 .btn{display:inline-flex;align-items:center;gap:7px;padding:10px 16px;border-radius:8px;
-  font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .2s;font-family:'Sora',sans-serif}
+  font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .2s;font-family:'Sora',sans-serif;text-decoration:none}
 .btn-p{background:var(--accent);color:#000}
 .btn-p:active{opacity:.85}
 .btn-s{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
@@ -432,8 +433,8 @@ html[data-theme="dark"] .module-screen{background:radial-gradient(circle at top,
       </button>
     </div>
     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:18px">
-      <button class="btn btn-s" onclick="SucanCloud.goPedidos()">Pedidos entre locales</button>
-      <button class="btn btn-s" onclick="SucanCloud.goPortal()">Volver al inicio</button>
+      <a class="btn btn-s" href="/?module=pedidos">Pedidos entre locales</a>
+      <a class="btn btn-s" href="/">Volver al inicio</a>
     </div>
   </div>
 </div>

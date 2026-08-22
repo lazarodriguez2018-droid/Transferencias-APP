@@ -131,6 +131,10 @@ button { cursor:pointer; border:none; outline:none; }
 
 /* MAIN */
 .main-content { margin-left:250px; flex:1; padding:24px; min-height:100vh; }
+#app-page.hub-mode .sidebar,
+#app-page.hub-mode .mobile-header,
+#app-page.hub-mode .mobile-overlay { display:none !important; }
+#app-page.hub-mode .main-content { width:100%; max-width:1280px; margin:0 auto; padding-top:24px; }
 .page-header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:22px; }
 .page-header h1 { font-size:24px; font-weight:700; letter-spacing:-0.5px; }
 .page-header p { color:var(--text2); font-size:13px; margin-top:3px; }
@@ -389,6 +393,7 @@ button { cursor:pointer; border:none; outline:none; }
   .actions-bar { flex-direction:column; }
   .actions-bar .btn { width:100%; }
   .route-box { flex-direction:column; align-items:flex-start; }
+  #app-page.hub-mode .main-content { padding:20px 14px; }
 }
 @media (max-width:400px) {
   .stats-grid { grid-template-columns:1fr; }

@@ -434,7 +434,7 @@ appState.localesCache     = locs||[];
 appState.transportesCache = trans||[];
 const queryParams=new URLSearchParams(location.search);
 const returnTo=queryParams.get('return_to')||'';
-if(/^\/operaciones\/(?:\?[^#]*)?$/.test(returnTo)){
+if(/^\/operaciones\/?(?:\?[^#]*)?$/.test(returnTo)){
 location.replace(returnTo);
 return;
 }
@@ -603,6 +603,8 @@ const ESTADOS_FINAL  = ['transito','llegado','completo','incompleto'];
 //  NAVIGATION
 // ═══════════════════════════════════════════
 function navigateTo(view){
+const appPage=el('app-page');
+if(appPage) appPage.classList.toggle('hub-mode',view==='hub');
 document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
 document.querySelectorAll('[id^="view-"]').forEach(v=>v.style.display='none');
 const ve=el('view-'+view); if(ve) ve.style.display='block';

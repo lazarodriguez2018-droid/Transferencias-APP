@@ -55,6 +55,12 @@ const IS_IOS_DEVICE = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', async () => {
   applySavedTheme();
+  const requestedModule = new URLSearchParams(location.search).get('module');
+  if (requestedModule === 'inventario' || requestedModule === 'reposicion') {
+    currentModule = requestedModule;
+    document.getElementById('module-screen').style.display = 'none';
+    mostrarPantallaSesion();
+  }
   if (window.SucanCloud) {
     try {
       await window.SucanCloud.ready;
@@ -92,7 +98,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   setST(initialSearchType);
 
   // En la web se entra directamente desde el selector de módulos.
-  const requestedModule = new URLSearchParams(location.search).get('module');
   if (requestedModule === 'inventario' || requestedModule === 'reposicion') selectModule(requestedModule);
   else mostrarPantallaSesion();
 });
