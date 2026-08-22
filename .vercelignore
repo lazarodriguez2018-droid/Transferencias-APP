@@ -1,0 +1,5 @@
+operaciones/tests/
+tools/
+supabase/
+SUPABASE_SEGURIDAD_PRODUCCION.md
+supabase-rls-hardening.sql
