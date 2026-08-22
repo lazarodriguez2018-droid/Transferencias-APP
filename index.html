@@ -154,12 +154,13 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         <button class="btn btn-primary" id="btn-reg-step1">Continuar →</button>
       </div>
       <div id="reg-step2" style="display:none">
-        <p style="font-size:13px;color:var(--text2);margin-bottom:16px">Ingresá el código de verificación enviado a <strong id="reg-email-display"></strong></p>
-        <div class="form-group"><label class="form-label">Código de verificación</label>
-          <input class="form-input" type="text" id="reg-code" placeholder="12345678" maxlength="10"
-            style="font-family:'DM Mono',monospace;font-size:20px;letter-spacing:4px;text-align:center"></div>
-        <button class="btn btn-primary" id="btn-reg-step2" style="margin-bottom:10px">Verificar y crear cuenta</button>
-        <button class="btn btn-ghost" id="btn-reg-back">← Volver</button>
+        <div style="font-size:42px;text-align:center;margin-bottom:12px">✉️</div>
+        <p style="font-size:14px;color:var(--text2);line-height:1.6;margin-bottom:16px;text-align:center">
+          Te enviamos un enlace de confirmación a <strong id="reg-email-display"></strong>.
+          Abrilo desde tu correo y volverás automáticamente a Sucaneitor.
+        </p>
+        <button class="btn btn-primary" id="btn-reg-step2" style="margin-bottom:10px">Ya confirmé mi correo</button>
+        <button class="btn btn-ghost" id="btn-reg-back">← Usar otro correo</button>
       </div>
     </div>
   </div>

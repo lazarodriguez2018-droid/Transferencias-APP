@@ -267,7 +267,7 @@ if(error) return showErr('login-error', error.message==='Invalid login credentia
 await afterLogin(data.user);
 }
 
-let regData={}, verifyCode='';
+let regData={};
 
 async function doRegisterStep1(){
 const nombre   = el('reg-nombre').value.trim();
@@ -288,14 +288,32 @@ if(localVal){
   localNombre=parts[0]||'General';
   almacen=parts[1]||'SUP';
 }
-regData={nombre,apellido,localNombre,almacen,email,pass,tipoCuenta};
-// Sign up with Supabase — sends verification email automatically
-const {error}=await db.auth.signUp({email,password:pass,options:{emailRedirectTo:window.location.href}});
+regData={nombre,apellido,localNombre,almacen,email,tipoCuenta};
+// Supabase envia un enlace. Los datos mínimos viajan como metadata para que
+// el trigger seguro cree el perfil pendiente aunque no exista una sesión aún.
+const {data,error}=await db.auth.signUp({
+  email,
+  password:pass,
+  options:{
+    emailRedirectTo:window.location.origin+window.location.pathname,
+    data:{
+      sucaneitor_nombre:nombre,
+      sucaneitor_apellido:apellido,
+      sucaneitor_local_nombre:localNombre,
+      sucaneitor_almacen:almacen,
+      sucaneitor_tipo_cuenta:tipoCuenta
+    }
+  }
+});
 if(error) return showErr('reg-error',error.message);
+if(data?.session?.user){
+  await afterLogin(data.session.user);
+  return;
+}
 el('reg-email-display').textContent=email;
 el('reg-step1').style.display='none';
 el('reg-step2').style.display='block';
-showSuc('reg-success','¡Código enviado a '+email+'! Revisá tu bandeja de entrada.');
+showSuc('reg-success','¡Enlace enviado a '+email+'! Revisá también correo no deseado.');
 }
 
 function backToStep1(){
@@ -304,28 +322,14 @@ el('reg-step2').style.display='none';
 }
 
 async function doRegisterStep2(){
-const token=el('reg-code').value.trim();
-if(!token||token.length<6) return showErr('reg-error','Ingresá el código de 6 dígitos.');
 showSpinner();
 try{
-// Verify OTP
-const {data,error}=await db.auth.verifyOtp({email:regData.email,token,type:'signup'});
-if(error) return showErr('reg-error','Código incorrecto o expirado. '+error.message);
-// Seguridad: evitar auto-admin por conteos afectados por RLS.
-const isFirst=false;
-// Create perfil
-const {error:pe}=await db.from('perfiles').insert({
-id:data.user.id, nombre:regData.nombre, apellido:regData.apellido,
-local_nombre:regData.localNombre, almacen:regData.almacen,
-role:regData.tipoCuenta==='personal'?'admin':'empleado', approved:false
-});
-if(pe) return showErr('reg-error','Error al crear perfil: '+pe.message);
-el('reg-step2').style.display='none';
-el('reg-step1').style.display='block';
-el('reg-code').value='';
-showRegisterSuccess(isFirst
-?'¡Cuenta creada! Sos el primer administrador. Ya podés iniciar sesión.'
-:'¡Cuenta creada con éxito! Un administrador debe aprobarla antes de que puedas ingresar.');
+const {data:{session},error}=await db.auth.getSession();
+if(error||!session){
+  showErr('reg-error','Todavía no detectamos la confirmación. Abrí el enlace del correo y luego volvé a esta pantalla.');
+  return;
+}
+await afterLogin(session.user);
 } finally {
 hideSpinner();
 }
