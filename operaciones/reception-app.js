@@ -12,6 +12,7 @@ let receiptScanner = null;
 let receiptScannerMode = 'expected';
 let receiptLastScanCode = '';
 let receiptLastScanTime = 0;
+let receiptScanNoticeOpen = false;
 let receiptListLimit = 250;
 
 function receiptApi(path, options) { return fetch(`${serverUrl}${path}`, options); }
@@ -68,6 +69,7 @@ async function joinReception(rid, nombre, url, usuario, initialReceipt, options=
 
 function enterReceptionApp(options={}) {
   if(!receiptState)return;
+  document.title=`Remito ${receiptState.document_number} · Sucaneitor`;
   document.getElementById('session-screen').style.display='none'; document.getElementById('main-nav').style.display='flex'; document.getElementById('main-tabs').style.display='none'; document.getElementById('repo-tabs').style.display='none'; document.getElementById('receipt-tabs').style.display='flex';
   document.querySelectorAll('.page').forEach(page=>page.classList.remove('active'));
   const logo=document.querySelector('#main-nav .nav-logo > span'); if(logo)logo.innerHTML='Sucaneitor <span style="color:#38bdf8">Recepción</span>';
@@ -79,7 +81,7 @@ function showReceiptTab(name,options={}) {
   if(name!=='control')document.getElementById('receipt-search-results')?.style.setProperty('display','none');
   document.querySelectorAll('.page').forEach(page=>page.classList.remove('active')); document.querySelectorAll('.tab').forEach(tab=>tab.classList.remove('active'));
   const page=document.getElementById(`receipt-page-${name}`),tab=document.getElementById(`receipt-tab-${name}`); if(!page||!tab)return; page.classList.add('active');tab.classList.add('active');window.scrollTo({top:0,behavior:'auto'});
-  if(name==='lista')renderReceiptList(); if(name==='extras')renderReceiptExtras(); if(name==='resumen')renderReceiptSummary(); if(name==='control')setTimeout(()=>document.getElementById('receipt-search-input')?.focus({preventScroll:true}),80);
+  if(name==='lista')renderReceiptList(); if(name==='extras')renderReceiptExtras(); if(name==='resumen')renderReceiptSummary(); if(name==='control'&&options.focus!==false)setTimeout(()=>document.getElementById('receipt-search-input')?.focus({preventScroll:true}),80);
   if(sessionId&&currentModule==='recepcion')updateOperationsHistory(options.history||'push','workspace',name);
 }
 
@@ -102,7 +104,7 @@ async function refreshReceptionState(render=true) {
 }
 
 function receiptStatus(item) { return SucaneitorReception.status(item); }
-function receiptStatusLabel(status) { return {pendiente:'Pendiente',parcial:'Recibido parcial',exacto:'Cantidad exacta',sobrante:'Cantidad excedida',no_recibido:'No recibido'}[status]||status; }
+function receiptStatusLabel(status) { return {pendiente:'Sin tachar',parcial:'Cantidad parcial',exacto:'Tachado',sobrante:'Cantidad excedida',no_recibido:'No llegó'}[status]||status; }
 function receiptStatusClass(status) { return status==='exacto'?'exact':status==='sobrante'?'over':status==='no_recibido'?'missing':'short'; }
 
 function renderReceiptAll() {
@@ -111,10 +113,10 @@ function renderReceiptAll() {
   document.getElementById('receipt-access-banner')?.classList.toggle('show',!receiptCanEdit());
   document.getElementById('receipt-session-title').textContent=receiptState.nombre;
   document.getElementById('receipt-route-badge').textContent=`${receiptState.origin} → ${receiptState.destination}`;
-  const summary=SucaneitorReception.summary(receiptState),kpis=`<div class="repo-kpi"><span>Unidades esperadas</span><strong>${summary.unidades_esperadas}</strong></div><div class="repo-kpi"><span>Recibidas</span><strong>${summary.unidades_recibidas}</strong></div><div class="repo-kpi"><span>Faltantes</span><strong>${summary.unidades_faltantes}</strong></div><div class="repo-kpi"><span>Extras</span><strong>${summary.extras_unidades}</strong></div>`;
+  const summary=SucaneitorReception.summary(receiptState),kpis=`<div class="repo-kpi"><span>Unidades del remito</span><strong>${summary.unidades_esperadas}</strong></div><div class="repo-kpi"><span>Recibidas</span><strong>${summary.unidades_recibidas}</strong></div><div class="repo-kpi"><span>Sin confirmar</span><strong>${summary.unidades_faltantes}</strong></div><div class="repo-kpi"><span>Extras</span><strong>${summary.extras_unidades}</strong></div>`;
   ['control','lista','resumen'].forEach(section=>{const node=document.getElementById(`receipt-kpis-${section}`);if(node)node.innerHTML=kpis;});
   const count=document.getElementById('receipt-list-count'); if(count){count.textContent=summary.productos_pendientes;count.classList.toggle('show',summary.productos_pendientes>0);}
-  const progress=document.getElementById('receipt-progress-copy'); if(progress)progress.innerHTML=`<strong>${summary.exactos} de ${summary.productos} productos exactos</strong><br>${summary.productos_pendientes} todavía requieren revisión.`;
+  const progress=document.getElementById('receipt-progress-copy'); if(progress)progress.innerHTML=`<strong>${summary.exactos} de ${summary.productos} productos tachados</strong><br>${summary.productos_pendientes} siguen sin tachar o tienen una cantidad diferente.`;
   renderReceiptCurrent(); renderReceiptList(); renderReceiptExtras(); renderReceiptSummary(); renderReceiptConfig();
 }
 
@@ -125,12 +127,25 @@ function renderReceiptCurrent() {
   let item=receiptState.items.find(row=>String(row.codigo)===String(receiptCurrentCode)); if(!item)item=receiptState.items.find(row=>Number(row.recibido)<Number(row.esperado)&&!row.no_recibido)||receiptState.items[0];
   if(!item){card.innerHTML='<div class="repo-empty">El remito no contiene productos.</div>';return;} receiptCurrentCode=item.codigo;
   const status=receiptStatus(item),missing=Math.max(0,Number(item.esperado)-Number(item.recibido)),extra=Math.max(0,Number(item.recibido)-Number(item.esperado));
-  const actions=receiptCanEdit()?`<div class="repo-fast"><button class="btn btn-p" onclick="receiptChangeQty('${receiptEncode(item.codigo)}',1,'nombre')">+1 recibido</button><button class="btn btn-s" onclick="receiptChangeQty('${receiptEncode(item.codigo)}',5,'nombre')">+5</button><button class="btn btn-s" onclick="receiptEditQty('${receiptEncode(item.codigo)}')">Editar cantidad</button></div><div class="repo-inline" style="margin-top:9px"><button class="btn btn-s" onclick="receiptMarkNotReceived('${receiptEncode(item.codigo)}')">No recibido</button><button class="btn btn-s" onclick="openReceiptScanner('expected')">▣ Escanear este producto</button></div>`:`<div class="repo-status-banner warn">Recepción en modo consulta.</div>`;
+  const isChecked=status==='exacto';
+  const actions=receiptCanEdit()?`<div class="receipt-check-actions"><button class="btn ${isChecked?'btn-g':'btn-p'}" ${isChecked?'disabled':''} onclick="receiptMarkExpected('${receiptEncode(item.codigo)}','control')">${isChecked?'✓ Producto tachado':`✓ Tachar · llegaron ${item.esperado}`}</button><button class="btn btn-s" onclick="receiptEditQty('${receiptEncode(item.codigo)}')">Editar cantidad</button></div><div class="repo-inline" style="margin-top:9px"><button class="btn btn-s" onclick="receiptChangeQty('${receiptEncode(item.codigo)}',1,'nombre')">+1 unidad</button><button class="btn btn-s" onclick="openReceiptScanner('expected')">▣ Escanear</button></div>`:`<div class="repo-status-banner warn">Recepción en modo consulta.</div>`;
   card.innerHTML=`<span class="receipt-flag ${receiptStatusClass(status)}">${receiptStatusLabel(status)}</span><div class="repo-source-name" style="margin-top:12px">PRODUCTO DEL REMITO</div><h2 class="repo-product-name">${esc(item.nombre)}</h2><div class="repo-source-name">SKU ${esc(item.codigo)}${item.barras?` · Barras ${esc(item.barras)}`:' · Sin código de barras'}${item.descripcion_archivo&&item.descripcion_archivo!==item.nombre?`<br>En archivo: ${esc(item.descripcion_archivo)}`:''}</div><div class="repo-quantities"><div class="repo-quantity"><span>Esperado</span><strong>${item.esperado}</strong></div><div class="repo-quantity"><span>Recibido</span><strong>${item.recibido}</strong></div><div class="repo-quantity pending"><span>${extra?'Sobra':'Falta'}</span><strong>${extra||missing}</strong></div></div>${actions}${item.updated_by?`<div class="tm mt2">Último cambio: ${esc(item.updated_by)}</div>`:''}`;
 }
 
-function receiptOpenItem(encodedCode) { receiptCurrentCode=receiptDecode(encodedCode); document.getElementById('receipt-search-input').value=''; document.getElementById('receipt-search-results').style.display='none'; renderReceiptCurrent(); showReceiptTab('control'); }
+function closeReceiptSearchResults(target='receipt-search-results') { const container=document.getElementById(target);if(container)container.style.display='none'; }
+function receiptOpenItem(encodedCode) { receiptCurrentCode=receiptDecode(encodedCode); closeReceiptSearchResults(); renderReceiptCurrent(); showReceiptTab('control',{focus:false}); }
 function receiptOpenNextPending() { const next=receiptState?.items.find(item=>Number(item.recibido)<Number(item.esperado)&&!item.no_recibido); receiptCurrentCode=next?.codigo||''; renderReceiptCurrent(); showReceiptTab('control'); }
+
+async function receiptMarkExpected(encodedCode,source='control') {
+  const code=receiptDecode(encodedCode),item=receiptState?.items.find(row=>String(row.codigo)===code);if(!item)return;
+  const saved=await receiptSetAbsolute(encodedCode,item.esperado,`tachado_${source}`);if(!saved)return;
+  toast(`✓ ${item.nombre} tachado · ${item.esperado} unidades`,'s');
+  if(source==='control'){
+    const input=document.getElementById('receipt-search-input');if(input)input.value='';closeReceiptSearchResults();
+    const next=receiptState.items.find(row=>Number(row.recibido)<Number(row.esperado)&&!row.no_recibido);receiptCurrentCode=next?.codigo||'';renderReceiptCurrent();
+    setTimeout(()=>input?.focus({preventScroll:true}),80);
+  }
+}
 
 async function receiptChangeQty(encodedCode,delta,source='manual') {
   if(!requireReceiptEditable())return false; const code=receiptDecode(encodedCode),item=receiptState.items.find(row=>String(row.codigo)===code); if(!item)return false;
@@ -140,9 +155,9 @@ async function receiptChangeQty(encodedCode,delta,source='manual') {
 }
 
 async function receiptSetAbsolute(encodedCode,value,source='lista') {
-  if(!requireReceiptEditable())return; const code=receiptDecode(encodedCode),qty=Number.parseInt(value,10); if(!Number.isInteger(qty)||qty<0){toast('Cantidad inválida','e');renderReceiptList();return;}
-  const item=receiptState.items.find(row=>String(row.codigo)===code); if(qty>Number(item?.esperado||0)){const confirmed=await appConfirm({title:'Cantidad mayor al remito',subtitle:item?.nombre||code,tone:'warning',icon:'+',confirmText:'Guardar igualmente',message:`Esperado: ${item?.esperado||0} · recibido: ${qty}.`});if(!confirmed){renderReceiptList();return;}}
-  try{const response=await receiptApi('/api/recepcion/update_qty',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reception_id:sessionId,codigo:code,absolute:qty,source})}),data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'No se pudo guardar');const index=receiptState.items.findIndex(row=>String(row.codigo)===code);if(index>=0)receiptState.items[index]=data.item;receiptCurrentCode=code;renderReceiptAll();}catch(error){toast(error.message,'e');}
+  if(!requireReceiptEditable())return false; const code=receiptDecode(encodedCode),qty=Number.parseInt(value,10); if(!Number.isInteger(qty)||qty<0){toast('Cantidad inválida','e');renderReceiptList();return false;}
+  const item=receiptState.items.find(row=>String(row.codigo)===code); if(qty>Number(item?.esperado||0)){const confirmed=await appConfirm({title:'Cantidad mayor al remito',subtitle:item?.nombre||code,tone:'warning',icon:'+',confirmText:'Guardar igualmente',message:`Esperado: ${item?.esperado||0} · recibido: ${qty}.`});if(!confirmed){renderReceiptList();return false;}}
+  try{const response=await receiptApi('/api/recepcion/update_qty',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reception_id:sessionId,codigo:code,absolute:qty,source})}),data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'No se pudo guardar');const index=receiptState.items.findIndex(row=>String(row.codigo)===code);if(index>=0)receiptState.items[index]=data.item;receiptCurrentCode=code;renderReceiptAll();return true;}catch(error){toast(error.message,'e');return false;}
 }
 
 async function receiptEditQty(encodedCode) {
@@ -160,7 +175,7 @@ function renderReceiptList() {
   const container=document.getElementById('receipt-items-list'); if(!container||!receiptState)return;
   const query=SucaneitorReception.normalize(document.getElementById('receipt-list-search')?.value),filter=document.getElementById('receipt-list-filter')?.value||'all';
   let rows=receiptState.items.filter(item=>!query||SucaneitorReception.normalize(`${item.codigo} ${item.nombre} ${item.descripcion_archivo||''}`).includes(query)).filter(item=>{const status=receiptStatus(item);if(filter==='pending')return ['pendiente','parcial'].includes(status);if(filter==='exact')return status==='exacto';if(filter==='short')return Number(item.recibido)<Number(item.esperado);if(filter==='over')return status==='sobrante';if(filter==='not_received')return status==='no_recibido';return true;});
-  const visible=rows.slice(0,receiptListLimit); container.innerHTML=rows.length?visible.map(item=>{const status=receiptStatus(item),className=`receipt-row-${receiptStatusClass(status)}`,actions=receiptCanEdit()?`<div class="repo-row-actions"><button class="btn btn-s" onclick="receiptChangeQty('${receiptEncode(item.codigo)}',-1,'lista')">−</button><input class="input repo-qty-input" type="number" min="0" inputmode="numeric" value="${item.recibido}" onchange="receiptSetAbsolute('${receiptEncode(item.codigo)}',this.value,'lista')"><button class="btn btn-s" onclick="receiptChangeQty('${receiptEncode(item.codigo)}',1,'lista')">+</button></div>`:`<strong>${item.recibido}/${item.esperado}</strong>`;return `<article class="repo-row ${className}"><div onclick="receiptOpenItem('${receiptEncode(item.codigo)}')" style="cursor:pointer"><h3>${esc(item.nombre)}</h3><div class="repo-row-meta">SKU ${esc(item.codigo)} · Esperado ${item.esperado} · Recibido ${item.recibido} · ${receiptStatusLabel(status)}${item.observacion?` · ${esc(item.observacion)}`:''}${item.updated_by?` · ${esc(item.updated_by)}`:''}</div></div>${actions}</article>`;}).join('')+(rows.length>visible.length?`<button class="btn btn-s btn-full" onclick="receiptListLimit+=250;renderReceiptList()">Mostrar más · quedan ${rows.length-visible.length}</button>`:''):'<div class="repo-empty">No hay productos para este filtro.</div>';
+  const visible=rows.slice(0,receiptListLimit); container.innerHTML=rows.length?visible.map(item=>{const status=receiptStatus(item),className=`receipt-row-${receiptStatusClass(status)}`,isChecked=status==='exacto',actions=receiptCanEdit()?`<div class="repo-row-actions">${isChecked?'<span class="receipt-checked-mark">✓ Tachado</span>':status==='sobrante'?'<span class="receipt-over-mark">Revisar excedente</span>':`<button class="btn btn-p" onclick="receiptMarkExpected('${receiptEncode(item.codigo)}','lista')">✓ Tachar ${item.esperado}</button>`}<button class="btn btn-s" onclick="receiptEditQty('${receiptEncode(item.codigo)}')">Editar</button></div>`:`<strong>${item.recibido}/${item.esperado}</strong>`;return `<article class="repo-row ${className}"><div onclick="receiptOpenItem('${receiptEncode(item.codigo)}')" style="cursor:pointer"><h3>${isChecked?'✓ ':''}${esc(item.nombre)}</h3><div class="repo-row-meta">SKU ${esc(item.codigo)} · Remito ${item.esperado} · Recibido ${item.recibido} · ${receiptStatusLabel(status)}${item.observacion?` · ${esc(item.observacion)}`:''}${item.updated_by?` · ${esc(item.updated_by)}`:''}</div></div>${actions}</article>`;}).join('')+(rows.length>visible.length?`<button class="btn btn-s btn-full" onclick="receiptListLimit+=250;renderReceiptList()">Mostrar más · quedan ${rows.length-visible.length}</button>`:''):'<div class="repo-empty">No hay productos para este filtro.</div>';
 }
 
 function receiptSearchSource() {
@@ -175,23 +190,23 @@ function searchReceiptProducts(query,mode) {
   let results=SucaneitorSearch.rankProducts(index,value,null,30).map(row=>row.product);const compact=SucaneitorSearch.normalizeText(value);
   source.filter(product=>String(product.codigo).toLowerCase().includes(value.toLowerCase())||String(product.barras||'').includes(compact)).forEach(product=>{if(!results.some(row=>String(row.codigo)===String(product.codigo)))results.unshift(product);});
   if(mode!=='extra')results.sort((a,b)=>{const ae=expectedCodes.has(String(a.codigo)),be=expectedCodes.has(String(b.codigo));if(ae!==be)return Number(be)-Number(ae);const ai=receiptState.items.find(item=>String(item.codigo)===String(a.codigo)),bi=receiptState.items.find(item=>String(item.codigo)===String(b.codigo));return Number(Number(ai?.recibido)>=Number(ai?.esperado))-Number(Number(bi?.recibido)>=Number(bi?.esperado));});
-  receiptSearchResults[target]=results.slice(0,25);container.style.display='block';container.innerHTML=results.length?results.slice(0,25).map((product,indexRow)=>{const item=receiptState.items.find(row=>String(row.codigo)===String(product.codigo)),label=item?(Number(item.recibido)>=Number(item.esperado)?`COMPLETO ${item.recibido}/${item.esperado}`:`EN REMITO · FALTA ${Math.max(0,item.esperado-item.recibido)}`):'FUERA DEL REMITO';return `<button type="button" class="repo-result" onclick="selectReceiptSearchResult('${target}',${indexRow},'${mode}')"><strong>${esc(product.nombre)}</strong><span>SKU ${esc(product.codigo)} · ${label}${product.barras?` · Barras ${esc(product.barras)}`:''}</span></button>`;}).join(''):'<div class="repo-empty">Sin coincidencias.</div>';
+  receiptSearchResults[target]=results.slice(0,25);container.style.display='block';const header=`<div class="receipt-results-head"><span>${results.length?`${Math.min(25,results.length)} resultados`:'Sin coincidencias'}</span><button type="button" onclick="closeReceiptSearchResults('${target}')" aria-label="Cerrar resultados">× Cerrar lista</button></div>`;container.innerHTML=header+(results.length?results.slice(0,25).map((product,indexRow)=>{const item=receiptState.items.find(row=>String(row.codigo)===String(product.codigo)),label=item?(Number(item.recibido)>=Number(item.esperado)?`TACHADO ${item.recibido}/${item.esperado}`:`EN REMITO · RESTA ${Math.max(0,item.esperado-item.recibido)}`):'FUERA DEL REMITO';return `<button type="button" class="repo-result" onclick="selectReceiptSearchResult('${target}',${indexRow},'${mode}')"><strong>${esc(product.nombre)}</strong><span>SKU ${esc(product.codigo)} · ${label}${product.barras?` · Barras ${esc(product.barras)}`:''}</span></button>`;}).join(''):'<div class="repo-empty">Probá con otro nombre o con el SKU.</div>');
 }
 
 async function selectReceiptSearchResult(target,index,mode) {
-  const product=(receiptSearchResults[target]||[])[index];if(!product)return;document.getElementById(target).style.display='none';
-  const item=receiptState.items.find(row=>String(row.codigo)===String(product.codigo));if(item){receiptCurrentCode=item.codigo;document.getElementById('receipt-search-input').value='';renderReceiptCurrent();showReceiptTab('control');return;}
+  const product=(receiptSearchResults[target]||[])[index];if(!product)return;closeReceiptSearchResults(target);
+  const item=receiptState.items.find(row=>String(row.codigo)===String(product.codigo));if(item){receiptCurrentCode=item.codigo;renderReceiptCurrent();showReceiptTab('control',{focus:false});return;}
   await receiptPromptExtra(product);
 }
 
-async function receiptPromptExtra(product,increment=1) {
+async function receiptPromptExtra(product,increment=1,options={}) {
   if(!requireReceiptEditable())return;
-  const value=await appPrompt({title:'Producto fuera del remito',subtitle:product.nombre,message:'Se registrará como mercadería extra recibida.',label:'Cantidad recibida',value:String(increment),type:'number',inputMode:'numeric',min:1,tone:'warning',icon:'+',confirmText:'Agregar como extra'});if(value===false)return;const qty=Number.parseInt(value,10);if(!Number.isInteger(qty)||qty<=0){toast('Cantidad inválida','e');return;}await receiptUpdateExtra(product,qty,false);
+  const value=await appPrompt({title:options.fromScanner?'Escaneo fuera del remito':'Producto fuera del remito',subtitle:product.nombre,message:options.fromScanner?'El código corresponde a un producto que no figura en el remito. Se agregará por separado; la cantidad inicial es 1.':'Se registrará como mercadería extra recibida.',label:'Cantidad recibida',value:String(increment),type:'number',inputMode:'numeric',min:1,tone:'warning',icon:'+',confirmText:'Agregar como extra'});if(value===false)return false;const qty=Number.parseInt(value,10);if(!Number.isInteger(qty)||qty<=0){toast('Cantidad inválida','e');return false;}const extra=await receiptUpdateExtra(product,qty,false);if(extra&&options.fromScanner)await receiptOfferScannedQuantity(product,true,qty);return !!extra;
 }
 
 async function receiptUpdateExtra(productOrCode,value,absolute=false) {
   if(!requireReceiptEditable())return;const code=typeof productOrCode==='object'?String(productOrCode.codigo):receiptDecode(productOrCode),product=typeof productOrCode==='object'?productOrCode:padron.find(item=>String(item.codigo)===code)||receiptState.extras.find(item=>String(item.codigo)===code);
-  try{const payload={reception_id:sessionId,codigo:code,nombre:product?.nombre||code,barras:product?.barras||''};if(absolute)payload.absolute=Number(value);else payload.delta=Number(value);const response=await receiptApi('/api/recepcion/extra',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'No se pudo guardar');const index=receiptState.extras.findIndex(item=>String(item.codigo)===code);if(index>=0)receiptState.extras[index]=data.extra;else receiptState.extras.push(data.extra);renderReceiptAll();toast('Producto registrado como extra','s');}catch(error){toast(error.message,'e');}
+  try{const payload={reception_id:sessionId,codigo:code,nombre:product?.nombre||code,barras:product?.barras||''};if(absolute)payload.absolute=Number(value);else payload.delta=Number(value);const response=await receiptApi('/api/recepcion/extra',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'No se pudo guardar');const index=receiptState.extras.findIndex(item=>String(item.codigo)===code);if(index>=0)receiptState.extras[index]=data.extra;else receiptState.extras.push(data.extra);renderReceiptAll();toast('Producto registrado como extra','s');return data.extra;}catch(error){toast(error.message,'e');return false;}
 }
 
 async function receiptRemoveExtra(encodedCode) {
@@ -206,19 +221,30 @@ function renderReceiptExtras() {
 async function submitReceiptBarcode(){const input=document.getElementById('receipt-barcode-input'),code=input.value.trim();if(!code)return;input.value='';await handleReceiptBarcode(code,'manual');}
 async function handleReceiptBarcode(code,source='camera') {
   code=String(code||'').trim();if(!code||!receiptState)return;const result=findByBarcode(code),help=document.getElementById('receipt-camera-help');
-  if(!result.matches.length){if(help){help.textContent=`Código no encontrado: ${code}`;help.style.color='#ff7185';}currentUnknownBarcode=code;document.getElementById('modal-title').textContent='Código no encontrado';document.getElementById('modal-subtitle').textContent=code;document.getElementById('modal-body').innerHTML='<p class="tm">No se agregó ninguna unidad. Podés buscar el producto por nombre o asignar este código para corregir el padrón.</p>';document.getElementById('modal-actions').innerHTML='<button class="btn btn-s" onclick="closeModal()">Seguir</button><button class="btn btn-p" onclick="closeReceiptScanner();openBarcodeAssignment()">Asignar código a un producto</button>';document.getElementById('modal-overlay').classList.add('show');return;}
-  if(result.matches.length>1){window._receiptBarcodeMatches=result.matches;window._receiptBarcodeCode=code;document.getElementById('modal-title').textContent='Código compartido';document.getElementById('modal-subtitle').textContent='Elegí el producto físico.';document.getElementById('modal-body').innerHTML=`<div style="max-height:340px;overflow:auto">${result.matches.map((product,index)=>`<button class="repo-result" onclick="selectReceiptBarcodeMatch(${index})"><strong>${esc(product.nombre)}</strong><span>SKU ${esc(product.codigo)}</span></button>`).join('')}</div>`;document.getElementById('modal-actions').innerHTML='<button class="btn btn-s" onclick="closeModal()">Cancelar</button>';document.getElementById('modal-overlay').classList.add('show');return;}
+  if(!result.matches.length){receiptScanNoticeOpen=source==='camera';if(help){help.textContent=`Código no encontrado: ${code}`;help.style.color='#ff7185';}currentUnknownBarcode=code;document.getElementById('modal-title').textContent='Código no encontrado';document.getElementById('modal-subtitle').textContent=code;document.getElementById('modal-body').innerHTML='<p class="tm">No se agregó ninguna unidad. Podés buscar el producto por nombre o asignar este código para corregir el padrón.</p>';document.getElementById('modal-actions').innerHTML='<button class="btn btn-s" onclick="closeModal()">Seguir</button><button class="btn btn-p" onclick="receiptScanNoticeOpen=false;closeReceiptScanner();openBarcodeAssignment()">Asignar código a un producto</button>';document.getElementById('modal-overlay').classList.add('show');return;}
+  if(result.matches.length>1){receiptScanNoticeOpen=source==='camera';window._receiptBarcodeMatches=result.matches;window._receiptBarcodeCode=code;document.getElementById('modal-title').textContent='Código compartido';document.getElementById('modal-subtitle').textContent='Elegí el producto físico.';document.getElementById('modal-body').innerHTML=`<div style="max-height:340px;overflow:auto">${result.matches.map((product,index)=>`<button class="repo-result" onclick="selectReceiptBarcodeMatch(${index})"><strong>${esc(product.nombre)}</strong><span>SKU ${esc(product.codigo)}</span></button>`).join('')}</div>`;document.getElementById('modal-actions').innerHTML='<button class="btn btn-s" onclick="closeModal()">Cancelar</button>';document.getElementById('modal-overlay').classList.add('show');return;}
   await routeReceiptScannedProduct(result.matches[0],code,source);
 }
 async function selectReceiptBarcodeMatch(index){const product=(window._receiptBarcodeMatches||[])[index],code=window._receiptBarcodeCode||'';closeModal();if(product)await routeReceiptScannedProduct(product,code,'camera');}
 async function routeReceiptScannedProduct(product,code,source) {
   const item=receiptState.items.find(row=>String(row.codigo)===String(product.codigo)),help=document.getElementById('receipt-camera-help');
-  if(item){receiptCurrentCode=item.codigo;const added=await receiptChangeQty(receiptEncode(item.codigo),1,source==='camera'?'scanner':source);if(help){help.textContent=added?`Recibido: ${item.nombre} · +1`:'Lectura cancelada';help.style.color=added?'#63e6be':'#ffd166';}return;}
-  if(help){help.textContent=`Fuera del remito: ${product.nombre}`;help.style.color='#ffd166';}await receiptPromptExtra(product,1);
+  const fromCamera=source==='camera';if(fromCamera)receiptScanNoticeOpen=true;
+  try{
+    if(item){receiptCurrentCode=item.codigo;const added=await receiptChangeQty(receiptEncode(item.codigo),1,fromCamera?'scanner':source);if(help){help.textContent=added?`Recibido: ${item.nombre} · +1`:'Lectura cancelada';help.style.color=added?'#63e6be':'#ffd166';}if(added&&fromCamera)await receiptOfferScannedQuantity(item,false,1);return;}
+    if(help){help.textContent=`Fuera del remito: ${product.nombre}`;help.style.color='#ffd166';}await receiptPromptExtra(product,1,{fromScanner:fromCamera});
+  } finally {if(fromCamera){receiptScanNoticeOpen=false;receiptLastScanTime=Date.now();}}
+}
+
+async function receiptOfferScannedQuantity(product,isExtra,addedQuantity=1) {
+  const code=String(product.codigo),current=isExtra?receiptState.extras.find(row=>String(row.codigo)===code):receiptState.items.find(row=>String(row.codigo)===code),total=Number(isExtra?current?.cantidad:current?.recibido)||0,expected=isExtra?null:Number(current?.esperado)||0;
+  const edit=await appConfirm({title:`${addedQuantity} ${addedQuantity===1?'unidad agregada':'unidades agregadas'}`,subtitle:product.nombre,icon:'✓',confirmText:'Modificar cantidad',cancelText:'Seguir escaneando',message:`Se agregó ${addedQuantity===1?'1 unidad':`${addedQuantity} unidades`} ${isExtra?'al remito separado de extras':'al control del remito'}. Total actual: ${total}${expected!==null?` de ${expected}`:''}.`});
+  if(!edit)return;
+  if(isExtra){const value=await appPrompt({title:'Modificar cantidad extra',subtitle:product.nombre,message:'Indicá la cantidad total que llegó fuera del remito.',label:'Cantidad total',value:String(total),type:'number',inputMode:'numeric',min:0,icon:'#',confirmText:'Guardar'});if(value!==false)await receiptUpdateExtra(receiptEncode(code),value,true);}
+  else await receiptEditQty(receiptEncode(code));
 }
 async function openReceiptScanner(mode='expected') {
   if(!requireReceiptEditable())return;receiptScannerMode=mode;const modal=document.getElementById('receipt-camera-modal'),help=document.getElementById('receipt-camera-help');document.getElementById('receipt-camera-title').textContent=mode==='extra'?'Escanear producto extra':'Escanear producto recibido';help.textContent='Cada lectura válida suma una unidad.';help.style.color='#d7e6ed';modal.classList.add('show');
-  try{await loadHtml5QrcodeForRepo();receiptScanner=new Html5Qrcode('receipt-camera-reader');const width=Math.min(window.innerWidth-40,480);await receiptScanner.start({facingMode:'environment'},{fps:15,qrbox:{width:Math.max(220,Math.round(width*.82)),height:150},aspectRatio:1.333},decoded=>{const now=Date.now();if(decoded===receiptLastScanCode&&now-receiptLastScanTime<1200)return;receiptLastScanCode=decoded;receiptLastScanTime=now;tactileFeedback(35);handleReceiptBarcode(decoded,'camera');},()=>{});}catch(error){help.textContent='No se pudo abrir la cámara. Podés escribir el código manualmente.';help.style.color='#ff7185';toast('No se pudo iniciar la cámara','e');}
+  try{await loadHtml5QrcodeForRepo();receiptScanner=new Html5Qrcode('receipt-camera-reader');const width=Math.min(window.innerWidth-40,480);await receiptScanner.start({facingMode:'environment'},{fps:15,qrbox:{width:Math.max(220,Math.round(width*.82)),height:150},aspectRatio:1.333},decoded=>{if(receiptScanNoticeOpen)return;const now=Date.now();if(decoded===receiptLastScanCode&&now-receiptLastScanTime<1200)return;receiptLastScanCode=decoded;receiptLastScanTime=now;tactileFeedback(35);handleReceiptBarcode(decoded,'camera');},()=>{});}catch(error){help.textContent='No se pudo abrir la cámara. Podés escribir el código manualmente.';help.style.color='#ff7185';toast('No se pudo iniciar la cámara','e');}
 }
 async function closeReceiptScanner(){document.getElementById('receipt-camera-modal')?.classList.remove('show');if(receiptScanner){try{await receiptScanner.stop();}catch(_){}try{await receiptScanner.clear();}catch(_){}receiptScanner=null;}const reader=document.getElementById('receipt-camera-reader');if(reader)reader.innerHTML='';}
 
@@ -257,4 +283,19 @@ async function downloadReceptionReport() {
     add('Auditoría',[['Fecha','Usuario','Acción','SKU','Detalle'],...(receiptState.log||[]).map(row=>[row.ts,row.usuario||'',row.accion,row.codigo||'',JSON.stringify(row.detalle||{})])]);
     XLSX.writeFile(book,`Control_Remito_${String(receiptState.document_number).replace(/[^A-Za-z0-9_-]/g,'_')}.xlsx`);toast('Informe descargado','s');
   }catch(error){toast(error.message||'No se pudo generar el informe','e');}
+}
+
+function receiptTransferRows(type) {
+  return receiptState?SucaneitorReception.transferRows(receiptState,type):[];
+}
+
+async function downloadReceiptTransfer(type) {
+  if(!receiptState)return;const rows=receiptTransferRows(type);
+  if(!rows.length){toast(type==='extras'?'No hay productos extra para exportar':'Todavía no hay mercadería recibida para exportar','w');return;}
+  try{
+    toast('Generando remito para el sistema…','i');
+    const buffer=await repoBuildTransfer(rows),route=`${repoSafeName(receiptState.origin)}_${repoSafeName(receiptState.destination)}`,number=repoSafeName(receiptState.document_number),name=type==='extras'?`Remito_Extras_Recibidos_${route}_${number}.xls`:`Remito_Recibido_${route}_${number}.xls`;
+    repoDownloadBuffer(buffer,name,'application/vnd.ms-excel');
+    toast(`${name} descargado`,'s');
+  }catch(error){toast(error.message||'No se pudo generar el remito','e');}
 }

@@ -23,7 +23,7 @@ assert.match(portalHtml, /href="\/operaciones\?module=recepcion"/);
 assert.match(operationsHtml, /href="\/"[^>]*>← Volver al inicio<\/a>/);
 assert.doesNotMatch(operationsHtml, /id="module-screen"|¿Qué vas a hacer\?|Usar sin servidor|URL del servidor|Modo Red Local/,
   'Operaciones no debe conservar el selector blanco ni opciones del servidor local');
-assert.match(operationsHtml, /app\.js\?v=reception-v1/,
+assert.match(operationsHtml, /app\.js\?v=receipt-directory-v2/,
   'El navegador debe solicitar la versión nueva y no reutilizar archivos antiguos');
 assert.doesNotMatch(operationsJs, /module-screen|sc_server_url|input-server-url/,
   'La navegación y las sesiones deben funcionar únicamente sobre la web alojada');

@@ -17,4 +17,9 @@ assert.match(app,/Buscar primero por nombre o SKU|searchReceiptProducts/,'La bú
 assert.match(app,/Cada lectura válida suma una unidad/,'El escáner debe sumar una unidad');
 assert.match(html,/No existen más productos para controlar|receipt-finished/,'Debe existir un cierre notorio del recorrido');
 assert.match(html,/id="receipt-orders-list"/,'La recepción debe mostrar pedidos de clientes vinculados');
+assert.match(app,/function closeReceiptSearchResults/,'La búsqueda debe poder cerrarse sin borrar el texto');
+assert.match(app,/function receiptMarkExpected/,'El flujo principal debe permitir tachar la cantidad indicada por el remito');
+assert.match(app,/unidad agregada|unidades agregadas/,'El escáner debe confirmar claramente la cantidad agregada');
+assert.match(app,/downloadReceiptTransfer/,'La recepción debe generar remitos de importación');
+assert.match(html,/Remito recibido \(\.xls\)[\s\S]*Remito extras \(\.xls\)/,'Los productos del remito y los extras deben descargarse por separado');
 console.log('reception-workflow: OK');

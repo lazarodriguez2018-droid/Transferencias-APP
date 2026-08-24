@@ -564,11 +564,14 @@
   cloud.watchSessionDirectory = function (callback) {
     const channel=cloud.db.channel(`op-directory-${cloud.user.id}`)
       .on('postgres_changes',{event:'*',schema:'public',table:'op_inventario_sesiones'},callback)
-      .on('postgres_changes',{event:'*',schema:'public',table:'op_inventario_participantes'},callback)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'op_inventario_participantes'},callback)
+      .on('postgres_changes',{event:'DELETE',schema:'public',table:'op_inventario_participantes'},callback)
       .on('postgres_changes',{event:'*',schema:'public',table:'op_reposiciones'},callback)
-      .on('postgres_changes',{event:'*',schema:'public',table:'op_reposicion_participantes'},callback)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'op_reposicion_participantes'},callback)
+      .on('postgres_changes',{event:'DELETE',schema:'public',table:'op_reposicion_participantes'},callback)
       .on('postgres_changes',{event:'*',schema:'public',table:'op_recepciones'},callback)
-      .on('postgres_changes',{event:'*',schema:'public',table:'op_recepcion_participantes'},callback).subscribe();
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'op_recepcion_participantes'},callback)
+      .on('postgres_changes',{event:'DELETE',schema:'public',table:'op_recepcion_participantes'},callback).subscribe();
     cloud.channels.push(channel); return channel;
   };
   cloud.checkUrgentOrders = async function (repo) {

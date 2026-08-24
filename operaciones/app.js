@@ -38,6 +38,8 @@ let availableSessions = [];
 let sessionLoadSequence = 0;
 let companyLocations = [];
 let sessionDirectoryTimer = null;
+let sessionLoadInFlight = null;
+let sessionLoadModule = '';
 let catalogRefreshTimer = null;
 let suppressOperationsOverlayHistory = false;
 let operationsBootHideTimer = null;
@@ -187,8 +189,8 @@ function populateLocationControls() {
 function scheduleSessionDirectoryRefresh() {
   clearTimeout(sessionDirectoryTimer);
   sessionDirectoryTimer = setTimeout(() => {
-    if (document.getElementById('session-screen')?.style.display !== 'none') cargarSesionesDisponibles();
-  }, 250);
+    if (document.getElementById('session-screen')?.style.display !== 'none') cargarSesionesDisponibles({silent:true});
+  }, 900);
 }
 
 function scheduleCatalogRefresh() {
@@ -210,6 +212,7 @@ function scheduleCatalogRefresh() {
 
 function selectModule(moduleName, options = {}) {
   currentModule = ['reposicion','recepcion'].includes(moduleName) ? moduleName : 'inventario';
+  document.title = currentModule === 'recepcion' ? 'Sucaneitor · Control de remitos' : currentModule === 'reposicion' ? 'Sucaneitor · Reposición' : 'Sucaneitor · Inventario';
   localStorage.setItem('sc_module', currentModule);
   if (options.showSessions !== false) {
     mostrarPantallaSesion(true);
@@ -579,26 +582,43 @@ async function eliminarReposicionDisponible(encodedId) {
   }
 }
 
-async function cargarSesionesDisponibles() {
+async function cargarSesionesDisponibles(options = {}) {
+  const silent = !!options.silent;
+  const requestedModule = currentModule;
+  if (sessionLoadInFlight && sessionLoadModule === requestedModule) return sessionLoadInFlight;
   const requestSequence = ++sessionLoadSequence;
   const items = document.getElementById('sesiones-items');
   const count = document.getElementById('session-results-count');
-  items.innerHTML = '<div class="session-empty">Buscando sesiones disponibles…</div>';
-  count.textContent = 'Actualizando…';
+  if (!silent) {
+    items.innerHTML = '<div class="session-empty">Buscando sesiones disponibles…</div>';
+    count.textContent = 'Actualizando…';
+  }
+  const requestPromise = (async () => {
+    try {
+      const endpoint = requestedModule === 'reposicion' ? '/api/reposiciones' : requestedModule === 'recepcion' ? '/api/recepciones' : '/api/sesiones';
+      const res = await fetchWithTimeout(`${location.origin}${endpoint}`, {}, 15000);
+      if (!res.ok) throw new Error('No se pudo consultar las sesiones');
+      const sesiones = await res.json();
+      if (requestSequence !== sessionLoadSequence || currentModule !== requestedModule) return;
+      availableSessions = Array.isArray(sesiones) ? sesiones : [];
+      populateSessionLocationFilter(availableSessions);
+      renderAvailableSessions();
+    } catch(e) {
+      if (requestSequence !== sessionLoadSequence || currentModule !== requestedModule || silent) return;
+      availableSessions = [];
+      count.textContent = 'No se pudieron cargar las sesiones.';
+      items.innerHTML = '<div class="session-empty">No pudimos consultar Sucaneitor. Revisá tu conexión a internet y tocá “Actualizar”.</div>';
+    }
+  })();
+  sessionLoadInFlight = requestPromise;
+  sessionLoadModule = requestedModule;
   try {
-    const endpoint = currentModule === 'reposicion' ? '/api/reposiciones' : currentModule === 'recepcion' ? '/api/recepciones' : '/api/sesiones';
-    const res = await fetchWithTimeout(`${location.origin}${endpoint}`, {}, 15000);
-    if (!res.ok) throw new Error('No se pudo consultar las sesiones');
-    const sesiones = await res.json();
-    if (requestSequence !== sessionLoadSequence) return;
-    availableSessions = Array.isArray(sesiones) ? sesiones : [];
-    populateSessionLocationFilter(availableSessions);
-    renderAvailableSessions();
-  } catch(e) {
-    if (requestSequence !== sessionLoadSequence) return;
-    availableSessions = [];
-    count.textContent = 'No se pudieron cargar las sesiones.';
-    items.innerHTML = '<div class="session-empty">No pudimos consultar Sucaneitor. Revisá tu conexión a internet y tocá “Actualizar”.</div>';
+    await requestPromise;
+  } finally {
+    if (sessionLoadInFlight === requestPromise) {
+      sessionLoadInFlight = null;
+      sessionLoadModule = '';
+    }
   }
 }
 
@@ -1202,6 +1222,7 @@ async function selectMatch(idx) {
 function closeModal() {
   const wasBarcodeAssignment = !!document.getElementById('assignment-search');
   document.getElementById('modal-overlay').classList.remove('show');
+  if (currentModule === 'recepcion' && typeof receiptScanNoticeOpen !== 'undefined') receiptScanNoticeOpen = false;
   if (window._matchCameraBarcode) {
     window._matchCameraBarcode = '';
     resumeCameraScanning(200);

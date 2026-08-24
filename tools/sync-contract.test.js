@@ -49,5 +49,10 @@ assert.doesNotMatch(operations, /<option value="(?:CEN|CDA|CDE)"/,
 assert.match(reposition, /function repoCanEdit\(\)/);
 assert.match(reposition, /repoState\?\.can_edit !== false/);
 assert.match(reposition, /classList\.toggle\('repo-readonly'/);
+assert.match(operations, /cargarSesionesDisponibles\(\{silent:true\}\)/,
+  'Las actualizaciones en tiempo real del directorio no deben tapar la lista con un cargador');
+const directoryWatcher = cloud.slice(cloud.indexOf('cloud.watchSessionDirectory'), cloud.indexOf('cloud.checkUrgentOrders'));
+assert.doesNotMatch(directoryWatcher, /event:'\*',schema:'public',table:'op_(?:inventario|reposicion|recepcion)_participantes'/,
+  'Los heartbeats de participantes no deben recargar continuamente el selector de sesiones');
 
 console.log('sync-contract: OK');

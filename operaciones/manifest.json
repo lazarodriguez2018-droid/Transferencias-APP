@@ -1,7 +1,7 @@
 {
   "name": "Sucaneitor Operaciones",
   "short_name": "Sucaneitor",
-  "description": "Inventario y reposición colaborativa de mercadería Sucan",
+  "description": "Inventario, reposición, pedidos entre locales y control de remitos",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f0f13",

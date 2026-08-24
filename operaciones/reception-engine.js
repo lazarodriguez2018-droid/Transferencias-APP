@@ -193,5 +193,13 @@
     }));
   }
 
-  return {clean, normalize, parseWorkbook, status, summary, differenceRows};
+  function transferRows(reception, type) {
+    const source = type === 'extras' ? (reception?.extras || []) : (reception?.items || []);
+    const quantityField = type === 'extras' ? 'cantidad' : 'recibido';
+    return source
+      .map(item => [clean(item.codigo), Math.trunc(Math.max(0, Number(item[quantityField]) || 0))])
+      .filter(row => row[0] && row[1] > 0);
+  }
+
+  return {clean, normalize, parseWorkbook, status, summary, differenceRows, transferRows};
 });
