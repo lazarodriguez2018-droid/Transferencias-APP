@@ -5,8 +5,10 @@ const path = require('path');
 const root = path.resolve(__dirname, '..', '..');
 const read = file => fs.readFileSync(path.join(root,file),'utf8');
 const migration = read('supabase/migrations/20260824010000_reposicion_colaborativa_tiempo_real.sql');
+const fixMigration = read('supabase/migrations/20260824020000_reposicion_colaborativa_fix.sql');
 const cloud = read('operaciones/cloud-api.js');
 const app = read('operaciones/reposition-app.js');
+const html = read('operaciones/index.html');
 
 // El contrato productivo debe resolver la carrera en PostgreSQL, no sólo en pantalla.
 assert.match(migration,/for update skip locked/i);
@@ -22,6 +24,13 @@ assert.match(cloud,/subscribe\(status=>callback\(\{kind:'status',status\}\)\)/);
 assert.match(app,/setInterval\(repoHeartbeat,45000\)/);
 assert.match(app,/repoUpdateQuantity\(encodedCode,\{delta:change\}/);
 assert.match(app,/repoItemClaimedByOther/);
+assert.match(fixMigration,/nombre_usuario/,
+  'Las funciones productivas no deben confundir el nombre del usuario con la columna del producto');
+assert.doesNotMatch(fixMigration,/asignado_nombre\s*=\s*nombre\s*[,\n]/i);
+assert.match(html,/>← Anterior<\/button>/);
+assert.match(html,/>Saltar →<\/button>/);
+assert.doesNotMatch(app,/>Tomar este producto<\/button>|>Ver mi producto asignado →<\/button>/,
+  'La coordinación debe ser invisible y conservar los botones originales');
 
 // Simulación determinista del resultado esperado con muchos dispositivos.
 class Coordinator {
@@ -72,3 +81,4 @@ assert.ok(replacement && replacement.code !== target.code,
   'Después de completar se debe asignar otro producto pendiente');
 
 console.log('reposition-collaboration: OK');
+
