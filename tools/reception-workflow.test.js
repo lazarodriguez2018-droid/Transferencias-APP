@@ -19,6 +19,9 @@ assert.match(html,/Control de productos completado|receipt-finished/,'Debe exist
 assert.match(html,/id="receipt-orders-list"/,'La recepción debe mostrar pedidos de clientes vinculados');
 assert.match(app,/function closeReceiptSearchResults/,'La búsqueda debe poder cerrarse sin borrar el texto');
 assert.match(app,/function receiptConfirmExpected/,'El flujo principal debe permitir confirmar la cantidad indicada por el remito');
+assert.match(app,/title:'Confirmar recepción'[\s\S]*Según remito[\s\S]*Registrado[\s\S]*Al confirmar/,'La confirmación debe mostrar las cantidades antes de guardar');
+assert.match(app,/secondaryText:'Modificar cantidad'/,'La confirmación debe permitir modificar la cantidad');
+assert.match(app,/quantity===1\?'unidad':'unidades'/,'Las cantidades deben respetar singular y plural');
 assert.doesNotMatch(`${html}\n${app}`,/tachad|tachar/i,'La interfaz debe usar terminología profesional de verificación');
 assert.match(app,/unidad agregada|unidades agregadas/,'El escáner debe confirmar claramente la cantidad agregada');
 assert.match(app,/downloadReceiptTransfer/,'La recepción debe generar remitos de importación');

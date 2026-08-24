@@ -13,6 +13,7 @@ assert.strictEqual(/\b(?:alert|confirm|prompt)\s*\(/.test(executable), false, 'N
 assert(html.includes('id="app-dialog-overlay"'), 'Falta el diálogo corporativo');
 assert(app.includes('function appConfirm('), 'Falta confirmación corporativa');
 assert(app.includes('function appPrompt('), 'Falta formulario corporativo');
+assert(app.includes('options.secondaryText'), 'El diálogo corporativo debe admitir una acción secundaria');
 assert(repo.includes('REPO_NOT_FOUND_REASONS'), 'Falta catálogo de motivos');
 assert(repo.includes("{code:'stock_insuficiente', label:'Stock insuficiente'}"), 'Falta Stock insuficiente');
 assert(repo.includes("{code:'otro', label:'Otro'}"), 'Falta la opción Otro');

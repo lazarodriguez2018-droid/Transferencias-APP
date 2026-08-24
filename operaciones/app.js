@@ -1260,8 +1260,12 @@ function openAppDialog(options = {}) {
   body.innerHTML = options.bodyHtml || appDialogMessageHtml(options.message || '');
   error.textContent = '';
   error.style.display = 'none';
+  const secondaryButton = options.secondaryText
+    ? `<button class="btn btn-s" type="button" onclick="resolveAppDialog(false,decodeURIComponent('${encodeURIComponent(String(options.secondaryValue || 'secondary'))}'))">${esc(options.secondaryText)}</button>`
+    : '';
   actions.innerHTML = `
     <button class="btn btn-s" type="button" onclick="resolveAppDialog(false)">${esc(options.cancelText || 'Cancelar')}</button>
+    ${secondaryButton}
     <button class="btn ${esc(confirmClass)}" id="app-dialog-confirm" type="button" onclick="resolveAppDialog(true)">${esc(options.confirmText || 'Confirmar')}</button>`;
   appDialogValidator = typeof options.validate === 'function' ? options.validate : null;
   appDialogLastFocus = document.activeElement;
@@ -1278,12 +1282,14 @@ function openAppDialog(options = {}) {
   });
 }
 
-async function resolveAppDialog(confirmed) {
+async function resolveAppDialog(confirmed, directValue) {
   if (!appDialogResolver) return;
   const body = document.getElementById('app-dialog-body');
   const error = document.getElementById('app-dialog-error');
   let value = null;
-  if (confirmed && appDialogValidator) {
+  if (arguments.length > 1) {
+    value = directValue;
+  } else if (confirmed && appDialogValidator) {
     try {
       const result = await appDialogValidator(body);
       if (result && result.ok === false) {

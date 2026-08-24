@@ -106,6 +106,8 @@ async function refreshReceptionState(render=true) {
 function receiptStatus(item) { return SucaneitorReception.status(item); }
 function receiptStatusLabel(status) { return {pendiente:'Pendiente de verificación',parcial:'Recepción parcial',exacto:'Recepción confirmada',sobrante:'Excedente recibido',no_recibido:'No recibido'}[status]||status; }
 function receiptStatusClass(status) { return status==='exacto'?'exact':status==='sobrante'?'over':status==='no_recibido'?'missing':'short'; }
+function receiptQuantityText(value) { const quantity=Math.max(0,Number(value)||0);return `${quantity} ${quantity===1?'unidad':'unidades'}`; }
+async function receiptWaitForDialogHistory() { for(let attempt=0;attempt<12&&history.state?.operationsOverlay==='app-dialog-overlay';attempt+=1)await new Promise(resolve=>setTimeout(resolve,25)); }
 
 function renderReceiptAll() {
   if(!receiptState)return;
@@ -128,7 +130,7 @@ function renderReceiptCurrent() {
   if(!item){card.innerHTML='<div class="repo-empty">El remito no contiene productos.</div>';return;} receiptCurrentCode=item.codigo;
   const status=receiptStatus(item),missing=Math.max(0,Number(item.esperado)-Number(item.recibido)),extra=Math.max(0,Number(item.recibido)-Number(item.esperado));
   const isChecked=status==='exacto';
-  const actions=receiptCanEdit()?`<div class="receipt-check-actions"><button class="btn ${isChecked?'btn-g':'btn-p'}" ${isChecked?'disabled':''} onclick="receiptConfirmExpected('${receiptEncode(item.codigo)}','control')">${isChecked?'✓ Recepción confirmada':`✓ Confirmar ${item.esperado} unidades`}</button><button class="btn btn-s" onclick="receiptEditQty('${receiptEncode(item.codigo)}')">Editar cantidad</button></div><div class="repo-inline" style="margin-top:9px"><button class="btn btn-s" onclick="receiptChangeQty('${receiptEncode(item.codigo)}',1,'nombre')">+1 unidad</button><button class="btn btn-s" onclick="openReceiptScanner('expected')">▣ Escanear</button></div>`:`<div class="repo-status-banner warn">Recepción en modo consulta.</div>`;
+  const actions=receiptCanEdit()?`<div class="receipt-check-actions"><button class="btn ${isChecked?'btn-g':'btn-p'}" ${isChecked?'disabled':''} onclick="receiptConfirmExpected('${receiptEncode(item.codigo)}','control')">${isChecked?'✓ Recepción confirmada':`✓ Confirmar ${receiptQuantityText(item.esperado)}`}</button><button class="btn btn-s" onclick="receiptEditQty('${receiptEncode(item.codigo)}')">Editar cantidad</button></div><div class="repo-inline" style="margin-top:9px"><button class="btn btn-s" onclick="receiptChangeQty('${receiptEncode(item.codigo)}',1,'nombre')">+1 unidad</button><button class="btn btn-s" onclick="openReceiptScanner('expected')">▣ Escanear</button></div>`:`<div class="repo-status-banner warn">Recepción en modo consulta.</div>`;
   card.innerHTML=`<span class="receipt-flag ${receiptStatusClass(status)}">${receiptStatusLabel(status)}</span><div class="repo-source-name" style="margin-top:12px">PRODUCTO DEL REMITO</div><h2 class="repo-product-name">${esc(item.nombre)}</h2><div class="repo-source-name">SKU ${esc(item.codigo)}${item.barras?` · Barras ${esc(item.barras)}`:' · Sin código de barras'}${item.descripcion_archivo&&item.descripcion_archivo!==item.nombre?`<br>En archivo: ${esc(item.descripcion_archivo)}`:''}</div><div class="repo-quantities"><div class="repo-quantity"><span>Esperado</span><strong>${item.esperado}</strong></div><div class="repo-quantity"><span>Recibido</span><strong>${item.recibido}</strong></div><div class="repo-quantity pending"><span>${extra?'Sobra':'Falta'}</span><strong>${extra||missing}</strong></div></div>${actions}${item.updated_by?`<div class="tm mt2">Último cambio: ${esc(item.updated_by)}</div>`:''}`;
 }
 
@@ -138,8 +140,14 @@ function receiptOpenNextPending() { const next=receiptState?.items.find(item=>Nu
 
 async function receiptConfirmExpected(encodedCode,source='control') {
   const code=receiptDecode(encodedCode),item=receiptState?.items.find(row=>String(row.codigo)===code);if(!item)return;
+  const choice=await openAppDialog({
+    title:'Confirmar recepción',subtitle:item.nombre,icon:'✓',confirmText:`Confirmar ${receiptQuantityText(item.esperado)}`,cancelText:'Cancelar',secondaryText:'Modificar cantidad',secondaryValue:'modify',
+    bodyHtml:`<div class="app-dialog-product"><strong>${esc(item.nombre)}</strong><span>SKU ${esc(item.codigo)}</span></div><div class="receipt-confirm-quantities"><div><span>Según remito</span><strong>${receiptQuantityText(item.esperado)}</strong></div><div><span>Registrado</span><strong>${receiptQuantityText(item.recibido)}</strong></div><div class="final"><span>Al confirmar</span><strong>${receiptQuantityText(item.esperado)}</strong></div></div><p class="app-dialog-message">Confirmá que la cantidad física recibida coincide con la indicada en el remito. Si es diferente, elegí “Modificar cantidad”.</p>`
+  });
+  if(choice==='modify'){await receiptWaitForDialogHistory();await receiptEditQty(encodedCode);return;}
+  if(choice!==true)return;
   const saved=await receiptSetAbsolute(encodedCode,item.esperado,`confirmado_${source}`);if(!saved)return;
-  toast(`✓ Recepción confirmada · ${item.nombre} · ${item.esperado} unidades`,'s');
+  toast(`✓ Recepción confirmada · ${item.nombre} · ${receiptQuantityText(item.esperado)}`,'s');
   if(source==='control'){
     const input=document.getElementById('receipt-search-input');if(input)input.value='';closeReceiptSearchResults();
     const next=receiptState.items.find(row=>Number(row.recibido)<Number(row.esperado)&&!row.no_recibido);receiptCurrentCode=next?.codigo||'';renderReceiptCurrent();
