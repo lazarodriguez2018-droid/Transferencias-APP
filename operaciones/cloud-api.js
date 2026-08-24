@@ -67,6 +67,21 @@
     }
     return result;
   }
+  async function catalogWithSafeFallback() {
+    const products = await paginate('productos','codigo,barras,nombre,fabricante,marca','nombre');
+    if (products.some(product => clean(product.barras))) return {products, fallback:false};
+    try {
+      const response = await nativeFetch('/products.json', {cache:'no-store'});
+      if (!response.ok) return {products, fallback:false};
+      const bundled = await response.json();
+      if (Array.isArray(bundled) && bundled.some(product => clean(product.barras))) {
+        return {products:bundled, fallback:true};
+      }
+    } catch (error) {
+      console.warn('No se pudo abrir el padrón de respaldo:', error);
+    }
+    return {products, fallback:false};
+  }
   async function selectInBatches(table, columns, foreignKey, ids, order) {
     const rows = [];
     for (let index = 0; index < ids.length; index += 100) {
@@ -302,7 +317,7 @@
     try {
       if(path==='/api/ping') return json({ok:true,server:'Sucaneitor Operaciones Web'});
       if(path==='/api/locales' && method==='GET') { const locales=await paginate('locales','id,nombre,almacen','nombre'); return json({ok:true,locales}); }
-      if(path==='/api/padron' && method==='GET') { const products=await paginate('productos','codigo,barras,nombre,fabricante,marca','nombre'); return json({ok:true,padron:products,total:products.length}); }
+      if(path==='/api/padron' && method==='GET') { const catalog=await catalogWithSafeFallback(); return json({ok:true,padron:catalog.products,total:catalog.products.length,fallback:catalog.fallback}); }
       if(path==='/api/padron' && method==='POST') { if(!cloud.isSupervisor()) return json({ok:false,error:'Solo supervisores pueden modificar el padrón'},403); const {data:total,error}=await cloud.db.rpc('reemplazar_padron_productos',{payload:data.padron||[]}); if(error)throw error; return json({ok:true,total}); }
       if(path==='/api/sesiones') return json(await listInventorySessions());
       if(path==='/api/reposiciones') return json(await listRepositions());

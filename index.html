@@ -346,6 +346,9 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         <a class="operations-card replenishment" href="/operaciones?module=reposicion"><span class="operations-icon">⇄</span><div><h2>Reposición</h2><p>Juntar mercadería, cubrir pedidos aceptados y generar remitos.</p><strong>Entrar a Reposición →</strong></div></a>
         <button class="operations-card orders" type="button" onclick="navigateTo('misPedidos')"><span class="operations-icon">📦</span><div><h2>Pedidos entre locales</h2><p>Solicitudes por clientes, aceptación y seguimiento del envío.</p><strong>Entrar a Pedidos →</strong></div></button>
       </div>
+      <div id="hub-admin-padron" style="display:none;justify-content:center;margin-top:16px">
+        <button class="btn btn-ghost btn-sm" type="button" onclick="navigateTo('config').then(()=>document.getElementById('config-padron-card').scrollIntoView({behavior:'smooth',block:'start'}))">🏷️ Administrar padrón de mercaderías</button>
+      </div>
     </div>
 
     <!-- DASHBOARD (admin only) -->
@@ -661,7 +664,10 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
 
     <!-- CONFIGURACIÓN (admin) -->
     <div id="view-config" style="display:none">
-      <div class="page-header"><div><h1>⚙️ Configuración</h1><p>Administrá locales, recorridos, transportes y el padrón central</p></div></div>
+      <div class="page-header">
+        <div><h1>⚙️ Configuración</h1><p>Administrá locales, recorridos, transportes y el padrón central</p></div>
+        <button class="btn btn-primary btn-sm" onclick="document.getElementById('config-padron-card').scrollIntoView({behavior:'smooth',block:'start'})">🏷️ Actualizar padrón</button>
+      </div>
 
       <!-- LOCALES -->
       <div class="card" style="margin-bottom:16px">
@@ -727,16 +733,23 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
       </div>
 
       <!-- PRODUCTOS -->
-      <div class="card">
+      <div class="card" id="config-padron-card">
         <div class="card-header"><h3>🏷️ Padrón de productos</h3></div>
         <div class="card-body">
           <p style="font-size:13px;color:var(--text2);margin-bottom:12px">
-            Subí un nuevo <strong>.xlsx</strong> para reemplazar el padrón principal. El sistema también muestra productos desde <strong>padrón extra</strong>.
+            Subí el padrón oficial en formato <strong>.xls o .xlsx</strong>. Antes de reemplazarlo se mostrarán las cantidades de productos y códigos de barras detectados.
           </p>
-          <input type="file" id="file-padron" accept=".xlsx" style="display:none" onchange="handlePadronUpload(event)">
-          <button class="btn btn-primary btn-sm" onclick="document.getElementById('file-padron').click()">📁 Subir nuevo padrón (.xlsx)</button>
+          <input type="file" id="file-padron" accept=".xls,.xlsx" style="display:none" onchange="handlePadronUpload(event)">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-primary btn-sm" onclick="document.getElementById('file-padron').click()">📁 Seleccionar padrón (.xls / .xlsx)</button>
+            <button class="btn btn-ghost btn-sm" onclick="restoreBundledCatalog()">↺ Restaurar padrón incluido</button>
+          </div>
+          <div id="products-barcode-warning" class="info-banner" style="display:none;margin-top:12px">
+            ⚠️ El padrón publicado no tiene códigos de barras. Podés restaurar el archivo oficial incluido en esta versión o subir uno nuevo.
+          </div>
           <p style="font-size:12px;color:var(--text3);margin-top:10px">
             Padrón principal: <strong id="products-count">0</strong> ·
+            Con código de barras: <strong id="products-barcode-count">0</strong> ·
             Padrón extra: <strong id="products-extra-count">0</strong> ·
             Total visible: <strong id="products-total-count">0</strong>
           </p>
@@ -748,7 +761,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
             </div>
             <div style="overflow-x:auto;max-height:300px">
               <table class="admin-table">
-                <thead><tr><th>Código</th><th>Nombre</th><th>Marca</th><th>Fuente</th></tr></thead>
+                <thead><tr><th>Código</th><th>Código de barras</th><th>Nombre</th><th>Marca</th><th>Fuente</th></tr></thead>
                 <tbody id="admin-products-body"></tbody>
               </table>
             </div>
@@ -1119,6 +1132,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   </div>
 </div>
 
-<script src="app.js?v=unified-loading-v3"></script>
+<script src="barcode-utils.js?v=barcode-catalog-v1"></script>
+<script src="app.js?v=barcode-catalog-v1"></script>
 </body>
 </html>
