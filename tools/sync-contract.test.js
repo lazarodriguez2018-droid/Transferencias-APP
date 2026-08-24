@@ -10,6 +10,7 @@ const cloud = read('operaciones/cloud-api.js');
 const cloudConfig = read('operaciones/cloud-config.js');
 const reposition = read('operaciones/reposition-app.js');
 const realtime = read('supabase/migrations/20260822030000_realtime_operaciones.sql');
+const receptionMigration = read('supabase/migrations/20260824170000_recepcion_remitos.sql');
 
 const productionProject = 'akqqpodyijzjdoibkint';
 assert.match(portal, new RegExp(productionProject), 'El portal debe usar el proyecto principal Transfeapp');
@@ -28,6 +29,12 @@ assert.doesNotMatch(portal + cloudConfig, /fjpsggtfssibyuxupggd/,
 ].forEach(table => {
   assert.match(cloud, new RegExp(`table:\\s*'${table}'`), `Falta observar ${table} en el cliente web`);
   assert.match(realtime, new RegExp(`'${table}'`), `Falta publicar ${table} en Realtime`);
+});
+[
+  'op_recepciones','op_recepcion_items','op_recepcion_extras','op_recepcion_participantes'
+].forEach(table => {
+  assert.match(cloud,new RegExp(`table:\\s*'${table}'`),`Falta observar ${table} en el cliente web`);
+  assert.match(receptionMigration,new RegExp(`'${table}'`),`Falta publicar ${table} en Realtime`);
 });
 assert.match(realtime, /alter publication supabase_realtime add table public\.%I/);
 

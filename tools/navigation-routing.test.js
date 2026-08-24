@@ -19,14 +19,15 @@ assert.match(operationsHtml, /<base href="\/operaciones\/">/,
   'Operaciones debe conservar su base al publicarse como URL limpia');
 assert.match(portalHtml, /href="\/operaciones\?module=inventario"/);
 assert.match(portalHtml, /href="\/operaciones\?module=reposicion"/);
+assert.match(portalHtml, /href="\/operaciones\?module=recepcion"/);
 assert.match(operationsHtml, /href="\/"[^>]*>← Volver al inicio<\/a>/);
 assert.doesNotMatch(operationsHtml, /id="module-screen"|¿Qué vas a hacer\?|Usar sin servidor|URL del servidor|Modo Red Local/,
   'Operaciones no debe conservar el selector blanco ni opciones del servidor local');
-assert.match(operationsHtml, /app\.js\?v=repo-finish-delete-v1/,
+assert.match(operationsHtml, /app\.js\?v=reception-v1/,
   'El navegador debe solicitar la versión nueva y no reutilizar archivos antiguos');
 assert.doesNotMatch(operationsJs, /module-screen|sc_server_url|input-server-url/,
   'La navegación y las sesiones deben funcionar únicamente sobre la web alojada');
-assert.match(operationsJs, /if \(requestedModule !== 'inventario' && requestedModule !== 'reposicion'\) \{\s*location\.replace\('\/'\);/,
+assert.match(operationsJs, /if \(!\['inventario','reposicion','recepcion'\]\.includes\(requestedModule\)\) \{\s*location\.replace\('\/'\);/,
   'Abrir Operaciones sin un módulo válido debe volver al inicio principal');
 assert.match(operationsJs, /function backToModules\(\)[\s\S]*location\.href = '\/';/,
   'Volver desde Operaciones debe llevar al inicio principal');

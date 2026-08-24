@@ -5,8 +5,9 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
 const repo = fs.readFileSync(path.join(root, 'reposition-app.js'), 'utf8');
+const reception = fs.readFileSync(path.join(root, 'reception-app.js'), 'utf8');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-const executable = `${app}\n${repo}`.replace(/\/\/[^\n]*/g, '');
+const executable = `${app}\n${repo}\n${reception}`.replace(/\/\/[^\n]*/g, '');
 
 assert.strictEqual(/\b(?:alert|confirm|prompt)\s*\(/.test(executable), false, 'No deben quedar cuadros nativos del navegador');
 assert(html.includes('id="app-dialog-overlay"'), 'Falta el diálogo corporativo');

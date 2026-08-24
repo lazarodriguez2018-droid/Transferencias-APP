@@ -1,0 +1,20 @@
+const assert=require('assert');
+const fs=require('fs');
+const path=require('path');
+const root=path.resolve(__dirname,'..');
+const read=file=>fs.readFileSync(path.join(root,file),'utf8');
+const migration=read('supabase/migrations/20260824170000_recepcion_remitos.sql');
+const app=read('operaciones/reception-app.js');
+const html=read('operaciones/index.html');
+
+assert.match(migration,/unique\(numero_remito,fecha_remito,origen_local,destino_local\)/,'Un remito no debe cargarse dos veces');
+assert.match(migration,/op_recepcion_cantidad[\s\S]*for update/,'Las cantidades simultáneas deben actualizarse de forma atómica');
+assert.match(migration,/cantidad_recibida[\s\S]*cantidad_preparada/,'La recepción debe comparar lo recibido con lo enviado para pedidos');
+assert.match(migration,/estado=case when t\.solicitada>0 and t\.recibida>=t\.solicitada then 'completo' else 'incompleto' end/,'El cierre debe completar o marcar incompleto el pedido vinculado');
+assert.match(migration,/cliente_aviso_pendiente[\s\S]*true/,'Los pedidos recibidos deben generar un aviso al cliente');
+assert.match(migration,/pendientes_al_cerrar/,'El cierre debe admitir pendientes y conservar la advertencia');
+assert.match(app,/Buscar primero por nombre o SKU|searchReceiptProducts/,'La búsqueda por nombre y SKU debe ser el flujo principal');
+assert.match(app,/Cada lectura válida suma una unidad/,'El escáner debe sumar una unidad');
+assert.match(html,/No existen más productos para controlar|receipt-finished/,'Debe existir un cierre notorio del recorrido');
+assert.match(html,/id="receipt-orders-list"/,'La recepción debe mostrar pedidos de clientes vinculados');
+console.log('reception-workflow: OK');

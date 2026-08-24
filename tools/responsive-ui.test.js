@@ -27,7 +27,7 @@ assert.doesNotMatch(operationsHtml, /data:image\//,
 assert.match(portalHtml, /id="global-spinner"[\s\S]*spinner-icon[\s\S]*📦[\s\S]*spinner-ring/,
   'Pedidos debe conservar el indicador corporativo de carga');
 assert.match(operationsHtml, /id="operations-boot"[\s\S]*operations-boot-icon[\s\S]*📦[\s\S]*operations-boot-spinner/,
-  'Inventario y Reposición deben usar el mismo indicador de carga que Pedidos');
+  'Inventario, Reposición y Recepción deben usar el mismo indicador de carga que Pedidos');
 assert.match(operationsHtml, /id="operations-boot-text">Cargando\.\.\.<\/span>/,
   'El mensaje base de carga debe ser uniforme');
 

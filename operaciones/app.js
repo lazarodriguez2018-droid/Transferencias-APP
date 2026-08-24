@@ -100,7 +100,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const requestedModule = initialParams.get('module');
   const requestedSession = initialParams.get('session');
   const requestedTab = initialParams.get('tab');
-  if (requestedModule !== 'inventario' && requestedModule !== 'reposicion') {
+  if (!['inventario','reposicion','recepcion'].includes(requestedModule)) {
     location.replace('/');
     return;
   }
@@ -125,7 +125,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       setPadronStatus(`${pdata.restored ? '✅ Padrón central restaurado' : pdata.fallback ? '⚠️ Padrón de respaldo activo' : '✅ Padrón central'}: ${padron.length} productos · ${barcodeProducts} con barras`);
       populateLocationControls();
       if (!window.SucanCloud.isSupervisor()) {
-        ['inventory-padron-upload','repo-padron-upload'].forEach(id => { const card=document.getElementById(id); if(card) card.style.display='none'; });
+        ['inventory-padron-upload','repo-padron-upload','receipt-padron-upload'].forEach(id => { const card=document.getElementById(id); if(card) card.style.display='none'; });
       }
       window.SucanCloud.watchCatalog(scheduleCatalogRefresh);
       window.SucanCloud.watchSessionDirectory(scheduleSessionDirectoryRefresh);
@@ -209,7 +209,7 @@ function scheduleCatalogRefresh() {
 }
 
 function selectModule(moduleName, options = {}) {
-  currentModule = moduleName === 'reposicion' ? 'reposicion' : 'inventario';
+  currentModule = ['reposicion','recepcion'].includes(moduleName) ? moduleName : 'inventario';
   localStorage.setItem('sc_module', currentModule);
   if (options.showSessions !== false) {
     mostrarPantallaSesion(true);
@@ -242,6 +242,7 @@ function activeOperationsTab() {
   if (currentModule === 'reposicion') {
     return document.querySelector('#repo-tabs .tab.active')?.id?.replace('repo-tab-','') || '';
   }
+  if (currentModule === 'recepcion') return document.querySelector('#receipt-tabs .tab.active')?.id?.replace('receipt-tab-','') || '';
   return document.querySelector('#main-tabs .tab.active')?.id?.replace('tab-','') || '';
 }
 
@@ -261,6 +262,8 @@ function leaveOperationsWorkspace({notify = true} = {}) {
   if (serverSSE) { serverSSE.close(); serverSSE = null; }
   clearTimeout(clientCountTimer); clientCountTimer = null;
   closeRepoScanner();
+  if (typeof closeReceiptScanner === 'function') closeReceiptScanner();
+  if (typeof disconnectReceptionRealtime === 'function') disconnectReceptionRealtime();
   if (notify && currentModule === 'inventario' && serverOnline && sessionId) {
     fetch(`${serverUrl}/api/sesion/salir`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId})}).catch(()=>{});
   }
@@ -269,18 +272,20 @@ function leaveOperationsWorkspace({notify = true} = {}) {
   document.getElementById('main-nav').style.display = 'none';
   document.getElementById('main-tabs').style.display = 'none';
   document.getElementById('repo-tabs').style.display = 'none';
+  document.getElementById('receipt-tabs').style.display = 'none';
 }
 
 async function handleOperationsPopState(event) {
   const state = event.state;
   if (!state || state.sucaneitorModule !== currentModule) return;
   const routeAlreadyCurrent = operationsRouteIsCurrent(state);
-  const overlays = ['modal-overlay','app-dialog-overlay','repo-camera-modal'];
+  const overlays = ['modal-overlay','app-dialog-overlay','repo-camera-modal','receipt-camera-modal'];
   const visibleOverlay = overlays.map(id => document.getElementById(id)).find(element => element?.classList.contains('show'));
   if (visibleOverlay && state.operationsOverlay !== visibleOverlay.id) {
     suppressOperationsOverlayHistory = true;
     if (visibleOverlay.id === 'app-dialog-overlay') resolveAppDialog(false);
     else if (visibleOverlay.id === 'repo-camera-modal' && typeof closeRepoScanner === 'function') closeRepoScanner();
+    else if (visibleOverlay.id === 'receipt-camera-modal' && typeof closeReceiptScanner === 'function') closeReceiptScanner();
     else closeModal();
     requestAnimationFrame(() => { suppressOperationsOverlayHistory = false; });
   }
@@ -301,12 +306,13 @@ async function handleOperationsPopState(event) {
   if (state.stage === 'workspace' && state.sessionId) {
     if (sessionId !== state.sessionId) await unirseASesion(state.sessionId,state.sessionName || '',{history:'none',tab:state.tab});
     else if (currentModule === 'reposicion') showRepoTab(state.tab || 'preparar',{history:'none'});
+    else if (currentModule === 'recepcion') showReceiptTab(state.tab || 'control',{history:'none'});
     else showTab(state.tab || 'conteo',{history:'none'});
   }
 }
 
 function setupOperationsOverlayHistory() {
-  ['modal-overlay','app-dialog-overlay','repo-camera-modal'].forEach(id => {
+  ['modal-overlay','app-dialog-overlay','repo-camera-modal','receipt-camera-modal'].forEach(id => {
     const overlay = document.getElementById(id);
     if (!overlay) return;
     overlay.dataset.historyVisible = overlay.classList.contains('show') ? '1' : '0';
@@ -330,12 +336,15 @@ function backToModules() {
   if (repoSSE) { repoSSE.close(); repoSSE = null; }
   if (serverSSE) { serverSSE.close(); serverSSE = null; }
   closeRepoScanner();
+  if (typeof closeReceiptScanner === 'function') closeReceiptScanner();
+  if (typeof disconnectReceptionRealtime === 'function') disconnectReceptionRealtime();
   currentModule = '';
   sessionId = ''; sessionNombre = ''; repoState = null;
   document.getElementById('session-screen').style.display = 'none';
   document.getElementById('main-nav').style.display = 'none';
   document.getElementById('main-tabs').style.display = 'none';
   document.getElementById('repo-tabs').style.display = 'none';
+  document.getElementById('receipt-tabs').style.display = 'none';
   document.querySelectorAll('.page,.repo-page').forEach(page => page.classList.remove('active'));
   location.href = '/';
 }
@@ -349,16 +358,17 @@ function mostrarPantallaSesion(loadSessions = true) {
   document.getElementById('main-nav').style.display = 'none';
   document.getElementById('main-tabs').style.display = 'none';
   document.getElementById('repo-tabs').style.display = 'none';
+  document.getElementById('receipt-tabs').style.display = 'none';
 
   const isRepo = currentModule === 'reposicion';
-  document.getElementById('session-module-name').textContent = isRepo ? 'Reposición' : 'Inventario';
-  document.getElementById('session-module-subtitle').textContent = isRepo
-    ? 'Preparación colaborativa y generación de remitos'
-    : 'Sistema de conteo colaborativo';
+  const isReceipt = currentModule === 'recepcion';
+  document.getElementById('session-module-name').textContent = isRepo ? 'Reposición' : isReceipt ? 'Recepción' : 'Inventario';
+  document.getElementById('session-module-subtitle').textContent = isRepo ? 'Preparación colaborativa y generación de remitos' : isReceipt ? 'Control colaborativo de mercadería recibida' : 'Sistema de conteo colaborativo';
   document.getElementById('repo-file-fields').style.display = isRepo ? 'block' : 'none';
-  document.getElementById('create-session-title').textContent = isRepo ? 'Crear reposición nueva' : 'Crear sesión nueva';
+  document.getElementById('receipt-file-fields').style.display = isReceipt ? 'block' : 'none';
+  document.getElementById('create-session-title').textContent = isRepo ? 'Crear reposición nueva' : isReceipt ? 'Crear control de remito' : 'Crear sesión nueva';
   const sessionInput = document.getElementById('input-sesion-nombre');
-  sessionInput.placeholder = isRepo ? 'Nombre opcional (se completa desde el archivo)' : 'Ej: Inventario PDE marzo';
+  sessionInput.placeholder = isRepo || isReceipt ? 'Nombre opcional (se completa desde el archivo)' : 'Ej: Inventario PDE marzo';
   const profile = window.SucanCloud?.profile || {};
   const displayName = window.SucanCloud?.displayName || localStorage.getItem('sc_usuario') || 'Usuario';
   const localName = profile.local_nombre || '';
@@ -375,13 +385,11 @@ function mostrarPantallaSesion(loadSessions = true) {
   locationFilter.style.display = isSupervisor ? 'block' : 'none';
   if (!isSupervisor) locationFilter.value = '';
   const createLocationWrap = document.getElementById('session-create-location-wrap');
-  if (createLocationWrap) createLocationWrap.style.display = isSupervisor && !isRepo ? 'block' : 'none';
+  if (createLocationWrap) createLocationWrap.style.display = isSupervisor && !isRepo && !isReceipt ? 'block' : 'none';
   populateLocationControls();
   document.getElementById('session-search').value = '';
-  document.getElementById('available-sessions-title').textContent = isRepo ? 'Reposiciones disponibles' : 'Inventarios disponibles';
-  document.querySelector('#session-create-panel summary').lastChild.textContent = isRepo
-    ? ' Crear una reposición nueva'
-    : ' Crear un inventario nuevo';
+  document.getElementById('available-sessions-title').textContent = isRepo ? 'Reposiciones disponibles' : isReceipt ? 'Controles de remitos disponibles' : 'Inventarios disponibles';
+  document.querySelector('#session-create-panel summary').lastChild.textContent = isRepo ? ' Crear una reposición nueva' : isReceipt ? ' Crear un control de remito' : ' Crear un inventario nuevo';
 
   if (loadSessions) cargarSesionesDisponibles();
 }
@@ -391,6 +399,7 @@ function entrarApp(options = {}) {
     enterRepositionApp();
     return;
   }
+  if (currentModule === 'recepcion') { enterReceptionApp(options); return; }
   document.getElementById('session-screen').style.display = 'none';
   document.getElementById('main-nav').style.display = 'flex';
   document.getElementById('main-tabs').style.display = 'flex';
@@ -476,7 +485,7 @@ function renderAvailableSessions() {
   if (!visible.length) {
     items.innerHTML = `<div class="session-empty">${availableSessions.length
       ? 'No hay resultados con esos filtros. Probá otro nombre, local, almacén o usuario.'
-      : `Todavía no hay ${currentModule === 'reposicion' ? 'reposiciones' : 'inventarios'} disponibles para tu cuenta.`}</div>`;
+      : `Todavía no hay ${currentModule === 'reposicion' ? 'reposiciones' : currentModule === 'recepcion' ? 'controles de remitos' : 'inventarios'} disponibles para tu cuenta.`}</div>`;
     return;
   }
 
@@ -489,13 +498,15 @@ function renderAvailableSessions() {
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'sesion-item';
-    const route = currentModule === 'reposicion'
+    const route = currentModule === 'reposicion' || currentModule === 'recepcion'
       ? `<span class="session-route-pill">${esc(session.origin || '—')} → ${esc(session.destination || '—')}</span>`
       : session.local_nombre || session.almacen
         ? `<span class="session-route-pill">${esc(session.local_nombre || session.almacen)}${session.local_nombre && session.almacen ? ` · ${esc(session.almacen)}` : ''}</span>`
         : '';
     const details = currentModule === 'reposicion'
       ? `${session.estado === 'enviado' ? 'Enviada' : 'En preparación'} · ${summary.productos || 0} productos · ${summary.unidades_preparadas || 0}/${summary.unidades_pedidas || 0} unidades${session.remito_pendiente ? ' · remito pendiente' : ''}`
+      : currentModule === 'recepcion'
+        ? `Remito ${esc(session.document_number || '—')} · ${session.estado === 'cerrado' ? 'Cerrado' : 'En control'} · ${summary.productos || 0} productos · ${summary.unidades_recibidas || 0}/${summary.unidades_esperadas || 0} unidades${session.linked_orders ? ` · ${session.linked_orders} pedido${session.linked_orders === 1 ? '' : 's'} de cliente` : ''}`
       : `${session.productos || 0} productos · ${session.unidades || 0} unidades`;
     row.innerHTML = `
       <div style="flex:1;min-width:0">
@@ -504,7 +515,7 @@ function renderAvailableSessions() {
         <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.45">${details}</div>
         ${participants.length ? `<div style="margin-top:6px">${participants.slice(0, 4).map(person => `<span class="user-pill">👤 ${esc(person.nombre)}</span>`).join('')}${participants.length > 4 ? `<span class="user-pill">+${participants.length - 4}</span>` : ''}</div>` : ''}
       </div>
-      <span class="sesion-badge">${currentModule === 'reposicion' && (session.estado === 'enviado' || session.can_edit === false) ? 'Consultar →' : 'Entrar →'}</span>`;
+      <span class="sesion-badge">${(currentModule === 'reposicion' && (session.estado === 'enviado' || session.can_edit === false)) || (currentModule === 'recepcion' && (session.estado === 'cerrado' || session.can_edit === false)) ? 'Consultar →' : 'Entrar →'}</span>`;
     row.onclick = () => unirseASesion(session.id, session.nombre);
     entry.appendChild(row);
     if (currentModule === 'reposicion' && session.can_delete) {
@@ -519,8 +530,22 @@ function renderAvailableSessions() {
       };
       entry.appendChild(remove);
     }
+    if (currentModule === 'recepcion' && session.can_delete) {
+      const remove=document.createElement('button'); remove.type='button'; remove.className='session-delete'; remove.setAttribute('aria-label',`Eliminar recepción ${session.nombre}`); remove.innerHTML='<span aria-hidden="true">×</span><small>Eliminar</small>';
+      remove.onclick=event=>{event.stopPropagation();eliminarRecepcionDisponible(encodeURIComponent(String(session.id)));}; entry.appendChild(remove);
+    }
     items.appendChild(entry);
   });
+}
+
+async function eliminarRecepcionDisponible(encodedId) {
+  if(currentModule!=='recepcion')return;
+  const id=decodeURIComponent(String(encodedId||'')),session=availableSessions.find(item=>String(item.id)===id);
+  if(!session?.can_delete){toast('Solamente el local destino o un administrador puede eliminar una recepción abierta.','w');return;}
+  const confirmed=await appConfirm({title:'Eliminar control de remito',subtitle:`Remito ${session.document_number||'—'} · ${session.origin||'—'} → ${session.destination||'—'}`,tone:'danger',icon:'×',confirmText:'Eliminar definitivamente',message:'Se borrarán las cantidades controladas, participantes y archivo original. Los pedidos vinculados continuarán En viaje. Esta acción no se puede deshacer.'});
+  if(!confirmed)return; showOperationsLoading('Eliminando recepción...');
+  try{const response=await fetch('/api/recepcion/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reception_id:id})}),data=await response.json().catch(()=>({}));if(!response.ok||!data.ok)throw new Error(data.error||'No se pudo eliminar');availableSessions=availableSessions.filter(item=>String(item.id)!==id);populateSessionLocationFilter(availableSessions);renderAvailableSessions();toast('Recepción eliminada correctamente','s');}
+  catch(error){toast(error.message||'No se pudo eliminar la recepción','e');}finally{finishOperationsBoot();}
 }
 
 async function eliminarReposicionDisponible(encodedId) {
@@ -561,7 +586,7 @@ async function cargarSesionesDisponibles() {
   items.innerHTML = '<div class="session-empty">Buscando sesiones disponibles…</div>';
   count.textContent = 'Actualizando…';
   try {
-    const endpoint = currentModule === 'reposicion' ? '/api/reposiciones' : '/api/sesiones';
+    const endpoint = currentModule === 'reposicion' ? '/api/reposiciones' : currentModule === 'recepcion' ? '/api/recepciones' : '/api/sesiones';
     const res = await fetchWithTimeout(`${location.origin}${endpoint}`, {}, 15000);
     if (!res.ok) throw new Error('No se pudo consultar las sesiones');
     const sesiones = await res.json();
@@ -578,7 +603,7 @@ async function cargarSesionesDisponibles() {
 }
 
 async function unirseASesion(sid, nombre, options = {}) {
-  showOperationsLoading(currentModule === 'reposicion' ? 'Abriendo reposición...' : 'Abriendo inventario...');
+  showOperationsLoading(currentModule === 'reposicion' ? 'Abriendo reposición...' : currentModule === 'recepcion' ? 'Abriendo recepción...' : 'Abriendo inventario...');
   try {
     await unirseASesionInternal(sid, nombre, options);
   } finally {
@@ -594,6 +619,7 @@ async function unirseASesionInternal(sid, nombre, options = {}) {
     await joinReposition(sid, nombre, url, usuario, null, options);
     return;
   }
+  if (currentModule === 'recepcion') { await joinReception(sid,nombre,url,usuario,null,options); return; }
   try {
     const res = await fetch(`${url}/api/sesion/crear`, {
       method: 'POST',
@@ -617,7 +643,7 @@ async function unirseASesionInternal(sid, nombre, options = {}) {
 }
 
 async function crearSesion() {
-  showOperationsLoading(currentModule === 'reposicion' ? 'Creando reposición...' : 'Creando inventario...');
+  showOperationsLoading(currentModule === 'reposicion' ? 'Creando reposición...' : currentModule === 'recepcion' ? 'Creando control de remito...' : 'Creando inventario...');
   try {
     await crearSesionInternal();
   } finally {
@@ -633,6 +659,7 @@ async function crearSesionInternal() {
     await createRepositionSession(url, usuario, nombreSesion);
     return;
   }
+  if (currentModule === 'recepcion') { await createReceptionSession(url,usuario,nombreSesion); return; }
   if (!nombreSesion) { showSessionError('Ingresá un nombre para la sesión'); return; }
   const selectedLocation = document.getElementById('session-create-location')?.value || '';
   if (window.SucanCloud?.isSupervisor?.() && !selectedLocation) { showSessionError('Seleccioná el local del inventario'); return; }
@@ -681,6 +708,8 @@ function setPadronStatus(msg) {
   if (el) el.textContent = msg;
   const repoEl = document.getElementById('repo-padron-status');
   if (repoEl) repoEl.textContent = msg;
+  const receiptEl = document.getElementById('receipt-padron-status');
+  if (receiptEl) receiptEl.textContent = msg;
 }
 
 async function loadPadron(input) {
@@ -702,7 +731,7 @@ async function loadPadron(input) {
       title: 'Comprobar y reemplazar padrón',
       icon: '📋',
       confirmText: 'Reemplazar padrón',
-      message: `${file.name}\n\nProductos: ${stats.products}\nCon código de barras: ${stats.barcodeProducts}\nSin código de barras: ${stats.withoutBarcode}${stats.duplicateBarcodes ? `\nCódigos compartidos por variantes: ${stats.duplicateBarcodes}` : ''}\n\nEl cambio se sincronizará con Inventario y Reposición.`
+      message: `${file.name}\n\nProductos: ${stats.products}\nCon código de barras: ${stats.barcodeProducts}\nSin código de barras: ${stats.withoutBarcode}${stats.duplicateBarcodes ? `\nCódigos compartidos por variantes: ${stats.duplicateBarcodes}` : ''}\n\nEl cambio se sincronizará con Inventario, Reposición y Recepción.`
     });
     if (!confirmed) {
       toast('Carga cancelada. El padrón anterior no cambió.', 'i');
@@ -2492,6 +2521,9 @@ async function confirmBarcodeAssignment() {
     if (currentModule === 'reposicion' && typeof routeRepoScannedProduct === 'function') {
       await routeRepoScannedProduct({...product, barras: scannedCode}, scannedCode, 'asignacion');
       toast('Código asignado globalmente y producto comprobado', 's');
+    } else if (currentModule === 'recepcion' && typeof routeReceiptScannedProduct === 'function') {
+      await routeReceiptScannedProduct({...product,barras:scannedCode},scannedCode,'asignacion');
+      toast('Código asignado globalmente y producto recibido', 's');
     } else {
       await addItem({ ...product, barras: scannedCode }, 1, 'scanner');
       showSuccessfulScan(product, scannedCode, 'provisional');
@@ -2502,7 +2534,7 @@ async function confirmBarcodeAssignment() {
     currentAssignmentProduct = null;
     currentAssignmentPhoto = '';
     await loadBarcodeAssignments();
-    if (currentModule !== 'reposicion') resumeCameraScanning(1700);
+    if (currentModule !== 'reposicion' && currentModule !== 'recepcion') resumeCameraScanning(1700);
   } catch (e) {
     button.disabled = false;
     button.textContent = 'Confirmar asignación';
@@ -3088,7 +3120,7 @@ async function cambiarSesion() {
   const confirmed = await appConfirm({
     title: 'Salir de la sesión',
     subtitle: sessionNombre || 'Sesión actual',
-    message: currentModule === 'reposicion'
+    message: currentModule === 'reposicion' || currentModule === 'recepcion'
       ? 'Los avances ya sincronizados quedarán guardados. Volverás a la pantalla de acceso.'
       : 'El conteo guardado no se elimina. Volverás a la pantalla de acceso.',
     icon: '←', confirmText: 'Salir de la sesión'

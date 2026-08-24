@@ -896,6 +896,7 @@ const pn=prods.slice(0,2).map(p=>escHtml((p.nombre||'').substring(0,28))).join('
 const fecha=fmtDate(o.created_at);
 const urgente=o.urgente?' <span class="priority-badge">🔴 URGENTE</span>':'';
 const viejo=o._viejo?' <span class="priority-badge" style="color:#f7971e">⏰ +24hs</span>':'';
+const aviso=o.cliente_aviso_pendiente?' <span class="priority-badge" style="color:#f59e0b">📞 AVISAR CLIENTE</span>':'';
 const isMio=o.destino_local===appState.currentPerfil.local_nombre;
 const isAdmin=isSupervisorRole(appState.currentPerfil.role);
 const rol=isMio
@@ -904,7 +905,7 @@ const rol=isMio
 const escActiva=getEscalaActiva(o);
 return '<div class="order-card" onclick="openDetalle(\''+o.id+'\')">'+
 '<div class="order-top"><div>'+
-'<div class="order-id">'+rol+'  #'+o.id.slice(-8,-2).toUpperCase()+urgente+viejo+'</div>'+
+'<div class="order-id">'+rol+'  #'+o.id.slice(-8,-2).toUpperCase()+urgente+viejo+aviso+'</div>'+
 '<div class="order-title">'+escHtml(o.cliente||'Sin cliente')+(o.telefono?' · 📞 '+escHtml(o.telefono):'')+'</div>'+
 (escActiva?'<div class="order-route">📤 '+escHtml(o.origen_local)+' → 🔄 '+escHtml(escActiva.escala)+' → 📥 '+escHtml(o.destino_local)+(o.transporte?' · 🚛 '+escHtml(o.transporte):'')+'</div>':'<div class="order-route">📤 '+escHtml(o.origen_local)+' ('+escHtml(o.origen_almacen)+') → 📥 '+escHtml(o.destino_local)+' ('+escHtml(o.destino_almacen)+')'+(o.transporte?' · 🚛 '+escHtml(o.transporte):'')+'</div>')+
 '</div><span class="badge '+cls+'">'+icon+' '+label+'</span></div>'+
@@ -1545,6 +1546,7 @@ el('modal-detalle-body').innerHTML=
 '<div class="detail-section"><h4>Estado</h4><span class="badge '+cls+'" style="font-size:13px;padding:5px 12px">'+icon+' '+label+'</span>'+(o.urgente?' <span class="priority-badge">🔴 URGENTE</span>':'')+' </div>'+
 '<div class="detail-section"><h4>Ruta</h4><div class="route-box"><div class="route-local"><div class="rl-label">SALE DE</div><div class="rl-name">'+escHtml(o.origen_local)+'</div><div class="rl-code">'+escHtml(o.origen_almacen)+'</div></div><div class="arrow">→</div><div class="route-local"><div class="rl-label">LLEGA A</div><div class="rl-name">'+escHtml(o.destino_local)+'</div><div class="rl-code">'+escHtml(o.destino_almacen)+'</div></div></div></div>'+
 '<div class="detail-section"><h4>Cliente</h4><div class="detail-row"><span class="label">Nombre:</span><span class="value">'+escHtml(o.cliente||'–')+'</span></div><div class="detail-row"><span class="label">Teléfono:</span><span class="value">'+escHtml(o.telefono||'–')+'</span></div></div>'+
+(o.cliente_aviso_pendiente?'<div class="warning-box" style="margin-bottom:14px;border-color:#f59e0b;color:#f59e0b"><strong>📞 La mercadería ya fue recibida.</strong><br>Este pedido quedó completado y todavía hay que avisarle al cliente.</div>':'')+
 '<div class="detail-section"><h4>Info</h4><div class="detail-row"><span class="label">Creado:</span><span class="value">'+fmtDateTime(o.created_at)+'</span></div><div class="detail-row"><span class="label">Actualizado:</span><span class="value">'+fmtDateTime(o.updated_at)+'</span></div>'+extra+'</div>'+
 '<div class="detail-section"><h4>Productos ('+(o.pedido_productos||[]).length+')</h4>'+
 ((o.pedido_productos||[]).length > 5
@@ -1560,6 +1562,7 @@ actions+
 '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">'+
 '<button class="btn btn-ghost btn-sm" onclick="openChat(\''+o.id+'\')">💬 Chat del pedido</button>'+
 (o.telefono?'<button class="btn btn-success btn-sm" onclick="abrirWhatsApp(\''+escJsStr(o.telefono)+'\',\''+escJsStr(o.cliente||'')+'\')" style="background:#25d366;border-color:#25d366;color:#fff">💬 WhatsApp cliente</button>':'')+
+(o.cliente_aviso_pendiente&&canDestino?'<button class="btn btn-primary btn-sm" onclick="marcarClienteAvisado(\''+o.id+'\')">✅ Marcar cliente avisado</button>':'')+
 '<button class="btn btn-ghost btn-sm" onclick="generarEtiqueta(\''+o.id+'\')">🖨️ Etiqueta de envío</button>'+
 (['completo','incompleto'].includes(o.estado)?'<button class="btn btn-ghost btn-sm" onclick="exportarXLSPedido(\''+o.id+'\')" style="color:#22c55e;border-color:rgba(34,197,94,0.35)">📊 Exportar XLS comparativo</button>':'')+
 (isSupervisorRole(appState.currentPerfil.role)?
@@ -1837,7 +1840,7 @@ async function verProcesoCompleto(orderId){
   const cola=parseEscalaQueue(o).map(x=>x.nombre).join(' → ');
   const escActiva=getEscalaActiva(o);
   const rutaBase=escActiva?(o.origen_local+' → '+escActiva.escala+' → '+o.destino_local):(o.origen_local+' → '+o.destino_local);
-  const labels={pendiente:'Pedido creado',aceptado:'Aceptado por origen',listo:'Listo para envío',transito_escala:'En viaje a escala',en_escala:'Escala recibió',listo_escala:'Escala despacha',transito:'En viaje a destino',llegado:'Llegó a destino',completo:'Completado',incompleto:'Incompleto',denegado:'Denegado'};
+  const labels={pendiente:'Pedido creado',aceptado:'Aceptado por origen',listo:'Listo para envío',transito_escala:'En viaje a escala',en_escala:'Escala recibió',listo_escala:'Escala despacha',transito:'En viaje a destino',llegado:'Llegó a destino',completo:'Completado',incompleto:'Incompleto',denegado:'Denegado',cliente_avisado:'Cliente avisado'};
   const lines=(h||[]).map(r=>{
     const nom=(r.persona_nombre||(((r.perfiles&&r.perfiles.nombre)?r.perfiles.nombre:'')+' '+((r.perfiles&&r.perfiles.apellido)?r.perfiles.apellido:''))).trim();
     const etq=labels[r.estado]||r.estado;
@@ -2072,7 +2075,7 @@ const {data:o}=await db.from('pedidos').select('origen_local,destino_local,clien
 if(!o) return;
 const {data:users}=await db.from('perfiles').select('id,local_nombre,role').eq('approved',true);
 if(!users) return;
-const labels={aceptado:'✅ Pedido aceptado',denegado:'❌ Pedido denegado',listo:'📦 Listo para enviar',transito_escala:'🚚 En viaje a escala',en_escala:'📍 Llegó a escala',listo_escala:'📦 Sale de escala al destino',transito:'🚚 En viaje al destino final',llegado:'📍 Llegó a sucursal destino',completo:'✅ Pedido completado',incompleto:'⚠️ Pedido incompleto'};
+const labels={aceptado:'✅ Pedido aceptado',denegado:'❌ Pedido denegado',listo:'📦 Listo para enviar',transito_escala:'🚚 En viaje a escala',en_escala:'📍 Llegó a escala',listo_escala:'📦 Sale de escala al destino',transito:'🚚 En viaje al destino final',llegado:'📍 Llegó a sucursal destino',completo:'✅ Pedido completado',incompleto:'⚠️ Pedido incompleto',cliente_avisado:'📞 Cliente avisado'};
 const titulo=labels[estado]||estado;
 const cuerpo='#'+orderId.slice(-8,-2).toUpperCase()+' · '+o.origen_local+' → '+o.destino_local+(o.cliente?' · '+o.cliente:'');
 // Solo notificar a usuarios de los locales origen y destino (no a todos los admins)
@@ -3526,6 +3529,23 @@ const texto = encodeURIComponent('Hola '+( nombre||'')+'! Te contactamos desde S
 // Si el número no tiene código de país, agregar +598 (Uruguay)
 const numFinal = num.startsWith('+') ? num : '+598'+num;
 window.open('https://wa.me/'+numFinal.replace('+','')+'?text='+texto,'_blank');
+}
+
+async function marcarClienteAvisado(orderId){
+if(!orderId) return;
+const confirmed=await appConfirm({title:'Marcar cliente avisado',message:'Confirmá solamente después de haber contactado al cliente.',confirmText:'Sí, ya fue avisado',icon:'✅'});
+if(!confirmed) return;
+showSpinner();
+try{
+  const {data,error}=await db.rpc('op_marcar_cliente_avisado',{p_pedido:orderId});
+  if(error) throw error;
+  closeModal('modal-detalle');
+  notify(data===false?'El cliente ya figuraba como avisado.':'Cliente marcado como avisado.','success');
+  await updateBadges();
+  if(appState.activeView==='misPedidos') await renderMisPedidos();
+  else if(appState.activeView==='historial') await renderHistorial();
+}catch(error){notify(error.message||'No se pudo actualizar el pedido','error');}
+finally{hideSpinner();}
 }
 
 // ═══════════════════════════════════════════

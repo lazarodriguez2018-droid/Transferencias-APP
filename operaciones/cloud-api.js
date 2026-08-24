@@ -113,7 +113,21 @@
     const target = clean(value).toLocaleLowerCase('es');
     const {data,error} = await cloud.db.from('locales').select('nombre,almacen');
     if (error) throw error;
-    return (data || []).find(row => clean(row.nombre).toLocaleLowerCase('es') === target || clean(row.almacen).toLocaleLowerCase('es') === target) || {nombre:clean(value),almacen:clean(value)};
+    let aliases = [];
+    try {
+      const result = await cloud.db.from('op_local_aliases').select('alias,local_nombre');
+      if (!result.error) aliases = result.data || [];
+    } catch (_) {}
+    const direct = (data || []).find(row => clean(row.nombre).toLocaleLowerCase('es') === target || clean(row.almacen).toLocaleLowerCase('es') === target);
+    if (direct) return direct;
+    const alias = aliases.find(row => clean(row.alias).toLocaleLowerCase('es') === target);
+    if (alias) return (data || []).find(row => row.nombre === alias.local_nombre) || {nombre:alias.local_nombre,almacen:''};
+    const comparable = target.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\b(bloqueo|almacen|sucursal|local|entrada|salida)\b/g,' ').replace(/\s+/g,' ').trim();
+    const fuzzy = (data || []).find(row => {
+      const name=clean(row.nombre).toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
+      return name === comparable || comparable.endsWith(name) || name.endsWith(comparable);
+    });
+    return fuzzy || {nombre:clean(value),almacen:clean(value)};
   }
 
   cloud.ready = (async () => {
@@ -239,6 +253,58 @@
     return repoSnapshot(repoId);
   }
 
+  function receiptItem(row, catalogByCode) {
+    const product=catalogByCode?.get(clean(row.codigo));
+    return {codigo:row.codigo,nombre:clean(product?.nombre)||row.nombre,descripcion_archivo:row.descripcion_archivo||'',barras:clean(product?.barras)||row.barras||'',marca:clean(product?.marca)||row.marca||'',esperado:Number(row.esperado||0),recibido:Number(row.recibido||0),no_recibido:!!row.no_recibido,observacion:row.observacion||'',source_lines:row.source_lines||[],updated_by:row.updated_by_name||'',updated_at:row.updated_at};
+  }
+  function receiptSummary(receipt) {
+    const items=receipt.items||[],extras=receipt.extras||[];
+    const expected=items.reduce((sum,item)=>sum+Number(item.esperado||0),0),received=items.reduce((sum,item)=>sum+Number(item.recibido||0),0);
+    return {productos:items.length,unidades_esperadas:expected,unidades_recibidas:received,unidades_faltantes:items.reduce((sum,item)=>sum+Math.max(0,Number(item.esperado||0)-Number(item.recibido||0)),0),unidades_sobrantes:items.reduce((sum,item)=>sum+Math.max(0,Number(item.recibido||0)-Number(item.esperado||0)),0),pendientes:items.filter(item=>Number(item.recibido||0)<Number(item.esperado||0)&&!item.no_recibido).length,exactos:items.filter(item=>Number(item.recibido||0)===Number(item.esperado||0)).length,extras_productos:extras.filter(item=>Number(item.cantidad)>0).length,extras_unidades:extras.reduce((sum,item)=>sum+Number(item.cantidad||0),0)};
+  }
+  function canEditReception(receipt) {
+    return receipt?.estado==='en_control'&&(cloud.isSupervisor()||clean(receipt.destino_local||receipt.destination)===clean(cloud.profile?.local_nombre));
+  }
+  async function receptionSnapshot(receiptId) {
+    const [{data:receipt,error:re},{data:items,error:ie},{data:extras,error:xe},{data:parts,error:pe},{data:events,error:ee},{data:links,error:le}]=await Promise.all([
+      cloud.db.from('op_recepciones').select('*').eq('id',receiptId).single(),
+      cloud.db.from('op_recepcion_items').select('*').eq('recepcion_id',receiptId).order('nombre'),
+      cloud.db.from('op_recepcion_extras').select('*').eq('recepcion_id',receiptId).order('nombre'),
+      cloud.db.from('op_recepcion_participantes').select('*').eq('recepcion_id',receiptId).order('joined_at'),
+      cloud.db.from('op_recepcion_eventos').select('*').eq('recepcion_id',receiptId).order('created_at',{ascending:false}).limit(500),
+      cloud.db.from('op_recepcion_pedidos').select('pedido_id,coincidencia').eq('recepcion_id',receiptId)
+    ]);
+    if(re||ie||xe||pe||ee||le)throw re||ie||xe||pe||ee||le;
+    const codes=[...new Set([...(items||[]),...(extras||[])].map(row=>clean(row.codigo)).filter(Boolean))];
+    const products=await selectInBatches('productos','codigo,nombre,barras,marca','codigo',codes);
+    const catalogByCode=new Map(products.map(product=>[clean(product.codigo),product]));
+    const orderIds=(links||[]).map(link=>link.pedido_id);
+    const orders=orderIds.length?await selectInBatches('pedidos','id,cliente,telefono,estado,remito,cliente_aviso_pendiente,cliente_avisado_at,created_at,pedido_productos(codigo,nombre,cantidad,cantidad_aceptada,cantidad_preparada,cantidad_recibida)','id',orderIds,'created_at'):[];
+    const linkByOrder=new Map((links||[]).map(link=>[link.pedido_id,link]));
+    const snapshot={id:receipt.id,nombre:receipt.nombre,document_number:receipt.numero_remito,date:receipt.fecha_remito,origin:receipt.origen_local,destination:receipt.destino_local,estado:receipt.estado,original_filename:receipt.original_filename,original_file:receipt.original_path,import_meta:receipt.import_meta||{},observaciones_cierre:receipt.observaciones_cierre||'',created_at:receipt.created_at,updated_at:receipt.updated_at,closed_at:receipt.closed_at,can_edit:canEditReception(receipt),can_delete:canEditReception(receipt),items:(items||[]).map(row=>receiptItem(row,catalogByCode)),extras:(extras||[]).map(row=>({codigo:row.codigo,nombre:clean(catalogByCode.get(clean(row.codigo))?.nombre)||row.nombre,barras:clean(catalogByCode.get(clean(row.codigo))?.barras)||row.barras||'',cantidad:Number(row.cantidad||0),observacion:row.observacion||'',updated_by:row.updated_by_name||'',updated_at:row.updated_at})),participantes:(parts||[]).map(row=>({nombre:row.nombre,joined:asDate(row.joined_at),last_seen:row.last_seen})),orders:orders.map(order=>({...order,coincidencia:linkByOrder.get(order.id)?.coincidencia||'ruta_sku'})),log:(events||[]).map(row=>({ts:row.created_at,usuario:row.usuario_nombre,accion:row.accion,codigo:row.codigo,detalle:row.detalle||{}}))};
+    snapshot.summary=receiptSummary(snapshot); return snapshot;
+  }
+  async function listReceptions() {
+    const since=new Date(Date.now()-180*24*60*60*1000).toISOString();
+    const {data,error}=await cloud.db.from('op_recepciones').select('*').in('estado',['en_control','cerrado']).gte('created_at',since).order('updated_at',{ascending:false});
+    if(error)throw error; const receipts=data||[],ids=receipts.map(row=>row.id); if(!ids.length)return [];
+    const [items,extras,parts,links]=await Promise.all([
+      selectInBatches('op_recepcion_items','recepcion_id,esperado,recibido,no_recibido','recepcion_id',ids),
+      selectInBatches('op_recepcion_extras','recepcion_id,cantidad','recepcion_id',ids),
+      selectInBatches('op_recepcion_participantes','recepcion_id,nombre,joined_at','recepcion_id',ids,'joined_at'),
+      selectInBatches('op_recepcion_pedidos','recepcion_id,pedido_id','recepcion_id',ids)
+    ]);
+    const itemsBy=groupRows(items,'recepcion_id'),extrasBy=groupRows(extras,'recepcion_id'),partsBy=groupRows(parts,'recepcion_id'),linksBy=groupRows(links,'recepcion_id');
+    return receipts.map(row=>{const snapshot={items:itemsBy.get(row.id)||[],extras:extrasBy.get(row.id)||[]};return {id:row.id,nombre:row.nombre,document_number:row.numero_remito,date:row.fecha_remito,origin:row.origen_local,destination:row.destino_local,estado:row.estado,created_at:row.created_at,updated_at:row.updated_at,can_edit:canEditReception(row),can_delete:canEditReception(row),participantes:(partsBy.get(row.id)||[]).map(part=>({nombre:part.nombre,joined:asDate(part.joined_at)})),linked_orders:(linksBy.get(row.id)||[]).length,summary:receiptSummary(snapshot)};});
+  }
+  async function createReception(data) {
+    const origin=await localeFor(data.origin),destination=await localeFor(data.destination);
+    const {data:receiptId,error}=await cloud.db.rpc('op_crear_recepcion',{p_nombre:clean(data.nombre)||`Remito ${clean(data.document_number)}`,p_numero_remito:clean(data.document_number),p_fecha_remito:data.date,p_origen:origin.nombre,p_destino:destination.nombre,p_items:data.items||[],p_import_meta:data.import_meta||{},p_original_filename:clean(data.original_filename)||null});
+    if(error)throw error;
+    if(data.original_base64){try{const binary=atob(String(data.original_base64).split(',').pop()),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);const safe=clean(data.original_filename).replace(/[^A-Za-z0-9._-]+/g,'_')||'remito.xls',path=`${receiptId}/${safe}`;const {error:upError}=await cloud.db.storage.from('op-recepciones').upload(path,new Blob([bytes]),{upsert:true});if(!upError)await cloud.db.from('op_recepciones').update({original_path:path}).eq('id',receiptId);}catch(uploadError){console.warn('No se conservó el remito original',uploadError);}}
+    return receptionSnapshot(receiptId);
+  }
+
   async function listInventorySessions() {
     const {data,error}=await cloud.db.from('op_inventario_sesiones').select('*').eq('estado','abierta').order('updated_at',{ascending:false});
     if(error) throw error;
@@ -334,6 +400,7 @@
       if(path==='/api/padron' && method==='POST') { if(!cloud.isSupervisor()) return json({ok:false,error:'Solo supervisores pueden modificar el padrón'},403); const {data:total,error}=await cloud.db.rpc('reemplazar_padron_productos',{payload:data.padron||[]}); if(error)throw error; return json({ok:true,total}); }
       if(path==='/api/sesiones') return json(await listInventorySessions());
       if(path==='/api/reposiciones') return json(await listRepositions());
+      if(path==='/api/recepciones') return json(await listReceptions());
       if(path==='/api/sesion/crear' && method==='POST') {
         let session;
         if(data.session_id){ const {data:row,error}=await cloud.db.from('op_inventario_sesiones').select('*').eq('id',data.session_id).single(); if(error)throw error; session=row; }
@@ -356,6 +423,33 @@
       if(path==='/api/balance' && method==='GET') { const {data:row,error}=await cloud.db.from('op_inventario_balances').select('*').eq('sesion_id',url.searchParams.get('session_id')).maybeSingle(); if(error)throw error; return json({ok:true,balance:row?.balance||[],meta:row?.meta||null,updated:row?.updated_at||null}); }
       if(path==='/api/balance' && method==='POST') { const {error}=await cloud.db.from('op_inventario_balances').upsert({sesion_id:data.session_id,balance:data.balance||[],meta:data.meta||{},updated_by:cloud.user.id,updated_at:new Date().toISOString()},{onConflict:'sesion_id'}); if(error)throw error; return json({ok:true,total:(data.balance||[]).length}); }
       if(path==='/api/reposicion/crear' && method==='POST') { const repo=await createReposition(data); return json({ok:true,reposition_id:repo.id,repo}); }
+      if(path==='/api/recepcion/crear' && method==='POST') { const receipt=await createReception(data); return json({ok:true,reception_id:receipt.id,receipt}); }
+      if(path==='/api/recepcion/delete' && method==='POST') {
+        const receiptId=clean(data.reception_id); if(!receiptId)throw new Error('Recepción no indicada');
+        const {data:deleted,error}=await cloud.db.rpc('op_eliminar_recepcion',{p_recepcion:receiptId}); if(error)throw error;
+        if(deleted?.original_path){const {error:storageError}=await cloud.db.storage.from('op-recepciones').remove([deleted.original_path]);if(storageError)console.warn('La recepción se eliminó, pero no se pudo borrar el archivo',storageError);}
+        return json({ok:true,deleted});
+      }
+      if(path==='/api/recepcion/state') {
+        const rid=url.searchParams.get('rid');
+        const {error}=await cloud.db.from('op_recepcion_participantes').upsert({recepcion_id:rid,usuario_id:cloud.user.id,nombre:cloud.displayName,last_seen:new Date().toISOString()},{onConflict:'recepcion_id,usuario_id'}); if(error)throw error;
+        return json({ok:true,receipt:await receptionSnapshot(rid)});
+      }
+      if(path==='/api/recepcion/update_qty' && method==='POST') {
+        const {data:item,error}=await cloud.db.rpc('op_recepcion_cantidad',{p_recepcion:data.reception_id,p_codigo:data.codigo,p_delta:data.absolute==null?Number(data.delta||0):null,p_absoluta:data.absolute==null?null:Number(data.absolute),p_origen:data.source||'manual',p_usuario_nombre:cloud.displayName}); if(error)throw error;
+        const receipt=await receptionSnapshot(data.reception_id); return json({ok:true,item:receiptItem(item),summary:receipt.summary});
+      }
+      if(path==='/api/recepcion/no_recibido' && method==='POST') {
+        const {data:item,error}=await cloud.db.rpc('op_recepcion_no_recibido',{p_recepcion:data.reception_id,p_codigo:data.codigo,p_valor:!!data.value,p_observacion:clean(data.observation)||null,p_usuario_nombre:cloud.displayName}); if(error)throw error;
+        const receipt=await receptionSnapshot(data.reception_id); return json({ok:true,item:receiptItem(item),summary:receipt.summary});
+      }
+      if(path==='/api/recepcion/extra' && method==='POST') {
+        const {data:extra,error}=await cloud.db.rpc('op_recepcion_extra',{p_recepcion:data.reception_id,p_codigo:data.codigo,p_nombre:data.nombre||data.codigo,p_barras:data.barras||null,p_delta:data.absolute==null?Number(data.delta||0):null,p_absoluta:data.absolute==null?null:Number(data.absolute),p_observacion:data.observation||null,p_usuario_nombre:cloud.displayName}); if(error)throw error;
+        const receipt=await receptionSnapshot(data.reception_id); return json({ok:true,extra:{codigo:extra.codigo,nombre:extra.nombre,barras:extra.barras||'',cantidad:extra.cantidad,observacion:extra.observacion||'',updated_by:extra.updated_by_name||'',updated_at:extra.updated_at},summary:receipt.summary});
+      }
+      if(path==='/api/recepcion/extra/remove' && method==='POST') { const {error}=await cloud.db.from('op_recepcion_extras').delete().eq('recepcion_id',data.reception_id).eq('codigo',data.codigo);if(error)throw error;const receipt=await receptionSnapshot(data.reception_id);return json({ok:true,summary:receipt.summary}); }
+      if(path==='/api/recepcion/close' && method==='POST') { const result=await cloud.finalizeReception(data.reception_id,data.observations);return json({ok:true,result,receipt:await receptionSnapshot(data.reception_id)}); }
+      if(path==='/api/recepcion/original') { const {data:receipt,error}=await cloud.db.from('op_recepciones').select('original_path,original_filename').eq('id',url.searchParams.get('rid')).single();if(error)throw error;if(!receipt.original_path)return json({ok:false,error:'Archivo original no disponible'},404);const {data:signed,error:signError}=await cloud.db.storage.from('op-recepciones').createSignedUrl(receipt.original_path,60,{download:receipt.original_filename||'remito.xls'});if(signError)throw signError;return json({ok:true,url:signed.signedUrl}); }
       if(path==='/api/reposicion/delete' && method==='POST') {
         const repoId=clean(data.reposition_id);
         if(!repoId) throw new Error('Reposición no indicada');
@@ -453,6 +547,15 @@
       .subscribe(status=>callback({kind:'status',status}));
     cloud.channels.push(channel); return channel;
   };
+  cloud.watchReception = function (receiptId, callback) {
+    const channel=cloud.db.channel(`op-reception-${receiptId}`)
+      .on('postgres_changes',{event:'*',schema:'public',table:'op_recepcion_items',filter:`recepcion_id=eq.${receiptId}`},payload=>callback({kind:'item',event:payload.eventType,row:payload.new||null,old:payload.old||null}))
+      .on('postgres_changes',{event:'*',schema:'public',table:'op_recepcion_extras',filter:`recepcion_id=eq.${receiptId}`},payload=>callback({kind:'extra',event:payload.eventType,row:payload.new||null,old:payload.old||null}))
+      .on('postgres_changes',{event:'*',schema:'public',table:'op_recepcion_participantes',filter:`recepcion_id=eq.${receiptId}`},payload=>callback({kind:'participant',event:payload.eventType,row:payload.new||null,old:payload.old||null}))
+      .on('postgres_changes',{event:'*',schema:'public',table:'op_recepciones',filter:`id=eq.${receiptId}`},payload=>callback({kind:'reception',event:payload.eventType,row:payload.new||null,old:payload.old||null}))
+      .subscribe(status=>callback({kind:'status',status}));
+    cloud.channels.push(channel); return channel;
+  };
   cloud.watchCatalog = function (callback) {
     const channel=cloud.db.channel(`op-catalog-${cloud.user.id}`)
       .on('postgres_changes',{event:'UPDATE',schema:'public',table:'catalogo_version'},callback).subscribe();
@@ -463,7 +566,9 @@
       .on('postgres_changes',{event:'*',schema:'public',table:'op_inventario_sesiones'},callback)
       .on('postgres_changes',{event:'*',schema:'public',table:'op_inventario_participantes'},callback)
       .on('postgres_changes',{event:'*',schema:'public',table:'op_reposiciones'},callback)
-      .on('postgres_changes',{event:'*',schema:'public',table:'op_reposicion_participantes'},callback).subscribe();
+      .on('postgres_changes',{event:'*',schema:'public',table:'op_reposicion_participantes'},callback)
+      .on('postgres_changes',{event:'*',schema:'public',table:'op_recepciones'},callback)
+      .on('postgres_changes',{event:'*',schema:'public',table:'op_recepcion_participantes'},callback).subscribe();
     cloud.channels.push(channel); return channel;
   };
   cloud.checkUrgentOrders = async function (repo) {
@@ -487,6 +592,12 @@
     if(!clean(remito))throw new Error('Ingresá el número de remito');
     const {error}=await cloud.db.rpc('op_actualizar_remito',{p_reposicion:repoId,p_remito:clean(remito)}); if(error)throw error;
     return {id:repoId};
+  };
+  cloud.finalizeReception = async function (receiptId, observations) {
+    const {data,error}=await cloud.db.rpc('op_recepcion_cerrar',{p_recepcion:receiptId,p_observaciones:observations||null}); if(error)throw error; return data;
+  };
+  cloud.markCustomerNotified = async function (orderId) {
+    const {data,error}=await cloud.db.rpc('op_marcar_cliente_avisado',{p_pedido:orderId}); if(error)throw error; return data;
   };
   cloud.goPortal = () => { location.href=config.portalUrl; };
   cloud.goPedidos = () => { location.href=config.pedidosUrl; };
