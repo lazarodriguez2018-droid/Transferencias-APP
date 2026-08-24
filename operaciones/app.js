@@ -121,7 +121,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       companyLocations = locationsData.locales || [];
       invalidateSearchIndex();
       const barcodeProducts = padron.filter(product => clean(product.barras)).length;
-      setPadronStatus(`${pdata.fallback ? '⚠️ Padrón de respaldo activo' : '✅ Padrón central'}: ${padron.length} productos · ${barcodeProducts} con barras`);
+      setPadronStatus(`${pdata.restored ? '✅ Padrón central restaurado' : pdata.fallback ? '⚠️ Padrón de respaldo activo' : '✅ Padrón central'}: ${padron.length} productos · ${barcodeProducts} con barras`);
       populateLocationControls();
       if (!window.SucanCloud.isSupervisor()) {
         ['inventory-padron-upload','repo-padron-upload'].forEach(id => { const card=document.getElementById(id); if(card) card.style.display='none'; });

@@ -3,6 +3,7 @@
 
   const config = window.SUCANEITOR_CLOUD_CONFIG;
   const nativeFetch = window.fetch.bind(window);
+  let catalogRestoreAttempted = false;
   function deviceId() {
     const key = 'sucan_ops_device_id';
     try {
@@ -75,6 +76,12 @@
       if (!response.ok) return {products, fallback:false};
       const bundled = await response.json();
       if (Array.isArray(bundled) && bundled.some(product => clean(product.barras))) {
+        if (cloud.isSupervisor() && !catalogRestoreAttempted) {
+          catalogRestoreAttempted = true;
+          const {data:total,error} = await cloud.db.rpc('reemplazar_padron_productos',{payload:bundled});
+          if (!error) return {products:bundled, fallback:false, restored:true, total:total || bundled.length};
+          console.warn('No se pudo restaurar automáticamente el padrón central:', error);
+        }
         return {products:bundled, fallback:true};
       }
     } catch (error) {
@@ -317,7 +324,7 @@
     try {
       if(path==='/api/ping') return json({ok:true,server:'Sucaneitor Operaciones Web'});
       if(path==='/api/locales' && method==='GET') { const locales=await paginate('locales','id,nombre,almacen','nombre'); return json({ok:true,locales}); }
-      if(path==='/api/padron' && method==='GET') { const catalog=await catalogWithSafeFallback(); return json({ok:true,padron:catalog.products,total:catalog.products.length,fallback:catalog.fallback}); }
+      if(path==='/api/padron' && method==='GET') { const catalog=await catalogWithSafeFallback(); return json({ok:true,padron:catalog.products,total:catalog.products.length,fallback:catalog.fallback,restored:!!catalog.restored}); }
       if(path==='/api/padron' && method==='POST') { if(!cloud.isSupervisor()) return json({ok:false,error:'Solo supervisores pueden modificar el padrón'},403); const {data:total,error}=await cloud.db.rpc('reemplazar_padron_productos',{payload:data.padron||[]}); if(error)throw error; return json({ok:true,total}); }
       if(path==='/api/sesiones') return json(await listInventorySessions());
       if(path==='/api/reposiciones') return json(await listRepositions());
