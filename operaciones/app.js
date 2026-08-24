@@ -34,12 +34,28 @@ let companyLocations = [];
 let sessionDirectoryTimer = null;
 let catalogRefreshTimer = null;
 let suppressOperationsOverlayHistory = false;
+let operationsBootHideTimer = null;
+
+function showOperationsLoading(message = 'Cargando...') {
+  const boot = document.getElementById('operations-boot');
+  const text = document.getElementById('operations-boot-text');
+  if (!boot) return;
+  clearTimeout(operationsBootHideTimer);
+  operationsBootHideTimer = null;
+  if (text) text.textContent = message;
+  boot.style.display = 'flex';
+  requestAnimationFrame(() => boot.classList.remove('hidden'));
+}
 
 function finishOperationsBoot() {
   const boot = document.getElementById('operations-boot');
   if (!boot) return;
+  clearTimeout(operationsBootHideTimer);
   boot.classList.add('hidden');
-  setTimeout(() => { boot.style.display = 'none'; }, 180);
+  operationsBootHideTimer = setTimeout(() => {
+    boot.style.display = 'none';
+    operationsBootHideTimer = null;
+  }, 180);
 }
 
 function showOperationsBootError(message) {
@@ -507,6 +523,15 @@ async function cargarSesionesDisponibles() {
 }
 
 async function unirseASesion(sid, nombre, options = {}) {
+  showOperationsLoading(currentModule === 'reposicion' ? 'Abriendo reposición...' : 'Abriendo inventario...');
+  try {
+    await unirseASesionInternal(sid, nombre, options);
+  } finally {
+    finishOperationsBoot();
+  }
+}
+
+async function unirseASesionInternal(sid, nombre, options = {}) {
   const url = location.origin;
   const usuario = document.getElementById('input-usuario').value.trim() || 'Usuario';
 
@@ -537,6 +562,15 @@ async function unirseASesion(sid, nombre, options = {}) {
 }
 
 async function crearSesion() {
+  showOperationsLoading(currentModule === 'reposicion' ? 'Creando reposición...' : 'Creando inventario...');
+  try {
+    await crearSesionInternal();
+  } finally {
+    finishOperationsBoot();
+  }
+}
+
+async function crearSesionInternal() {
   const url = location.origin;
   const usuario = document.getElementById('input-usuario').value.trim() || 'Usuario';
   const nombreSesion = document.getElementById('input-sesion-nombre').value.trim();

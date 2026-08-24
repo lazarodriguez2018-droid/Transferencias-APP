@@ -93,6 +93,14 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
 </head>
 <body>
 
+<div id="global-spinner" style="display:flex" role="status" aria-live="polite" aria-label="Cargando Sucaneitor">
+  <div class="spinner-box">
+    <div class="spinner-icon" aria-hidden="true">📦</div>
+    <div class="spinner-ring" aria-hidden="true"></div>
+    <div class="spinner-txt">Cargando...</div>
+  </div>
+</div>
+
 <!-- ══════════════════ AUTH PAGE ══════════════════ -->
 <div id="auth-page" class="page active" style="display:flex">
   <div class="auth-card">
@@ -1111,6 +1119,6 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   </div>
 </div>
 
-<script src="app.js?v=unified-navigation-v2"></script>
+<script src="app.js?v=unified-loading-v3"></script>
 </body>
 </html>

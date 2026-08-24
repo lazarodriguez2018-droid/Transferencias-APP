@@ -3440,8 +3440,13 @@ const rc=el('cliente-search-results'); if(rc) rc.classList.remove('show');
 if(!e.target.closest('.conv-row-menu')&&!e.target.closest('.conv-action-btn')) closeChatMenus();
 });
 
-// Si hay sesión activa, cargar directo sin pasar por auth
+// Mantener el mismo cargador corporativo hasta conocer el destino real.
+showSpinner();
+try{
 await checkSession();
+} finally {
+hideSpinner();
+}
 }
 
 document.addEventListener('DOMContentLoaded', ()=>{
