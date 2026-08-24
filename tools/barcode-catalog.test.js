@@ -68,5 +68,7 @@ assert.match(portalApp, /raw:false/);
 assert.match(operationsApp, /raw: false/);
 assert.match(cloudApi, /catalogWithSafeFallback/);
 assert.match(cloudApi, /nativeFetch\('\/products\.json'/);
+assert.match(cloudApi, /cloud\.isSupervisor\(\) && !catalogRestoreAttempted/);
+assert.match(cloudApi, /reemplazar_padron_productos.*payload:bundled/);
 
 console.log('barcode-catalog: OK');
