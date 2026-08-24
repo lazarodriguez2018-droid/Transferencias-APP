@@ -40,8 +40,8 @@ assert.match(app,/repoState = repoHydrateStateFromCatalog\(data\.repo\)/,
   'Cada actualización completa en tiempo real debe reconciliar los productos con el padrón');
 assert.match(cloud,/items:\(items \|\| \[\]\)\.map\(row=>repoItem\(row,catalogByCode\)\)/,
   'La API debe devolver las reposiciones ya enriquecidas por SKU');
-assert.match(html,/cloud-api\.js\?v=receipt-directory-v2/);
-assert.match(html,/reposition-app\.js\?v=repo-finish-delete-v1/);
+assert.match(html,/cloud-api\.js\?v=quantity-control-v1/);
+assert.match(html,/reposition-app\.js\?v=quantity-control-v1/);
 assert.match(app,/No existen más productos para recoger/);
 assert.match(app,/Ver y modificar toda la lista/);
 assert.match(app,/Extra pedido por \$\{esc\(repoState\.destination/,

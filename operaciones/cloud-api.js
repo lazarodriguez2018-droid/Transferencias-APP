@@ -100,6 +100,14 @@
     }
     return rows;
   }
+  async function selectDirectoryDetail(table, columns, foreignKey, ids, order) {
+    try {
+      return {rows:await selectInBatches(table,columns,foreignKey,ids,order),available:true};
+    } catch (error) {
+      console.warn(`[Sucaneitor] No se pudo cargar el resumen de ${table}. Las sesiones igualmente permanecerán disponibles.`,error);
+      return {rows:[],available:false,error:error?.message || 'Resumen no disponible'};
+    }
+  }
   function groupRows(rows, key) {
     const groups = new Map();
     (rows || []).forEach(row => {
@@ -158,7 +166,7 @@
     ]);
     if (se || ie || ee || pe) throw se || ie || ee || pe;
     const countItems = {};
-    (items || []).forEach(item => { countItems[item.codigo] = {codigo:item.codigo,nombre:item.nombre,barras:item.barras || '',qty:item.cantidad,tipos:item.tipos || {}}; });
+    (items || []).forEach(item => { countItems[item.codigo] = {codigo:item.codigo,nombre:item.nombre,barras:item.barras || '',qty:item.cantidad,tipos:item.tipos || {},requiere_verificacion:!!item.requiere_verificacion,verificado_at:item.verificado_at||null,verificado_by:item.verificado_by_name||''}; });
     const log = (events || []).map(event => ({
       ts:new Date(event.created_at).toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit',second:'2-digit'}),
       tipo:event.tipo,codigo:event.codigo,nombre:event.nombre,qty:event.cantidad || 0
@@ -183,6 +191,7 @@
       motivo_codigo:row.motivo_codigo || '',motivo_label:row.motivo_label || '',motivo_otro:row.motivo_otro || '',
       comentario:row.comentario || '',motivo:[row.motivo_label,row.motivo_otro,row.comentario].filter(Boolean).join(' · '),
       pedidos_asignados:row.pedidos_asignados || [],updated_by:row.updated_by_name || '',updated_at:row.updated_at,
+      requiere_verificacion:!!row.requiere_verificacion,verificado_at:row.verificado_at||null,verificado_by:row.verificado_by_name||'',
       asignado_a:row.asignado_a || '',asignado_cliente:row.asignado_cliente || '',
       asignado_nombre:row.asignado_nombre || '',asignado_at:row.asignado_at || null
     };
@@ -195,6 +204,7 @@
       productos:items.length,unidades_pedidas:requested,unidades_preparadas:prepared,
       unidades_faltantes:items.reduce((sum,item)=>sum+Math.max(0,Number(item.pedido||0)-Number(item.preparado||0)),0),
       pendientes:items.filter(item=>Number(item.preparado||0)<Number(item.pedido||0)).length,
+      verificaciones_pendientes:items.filter(item=>item.requiere_verificacion).length,
       extras_productos:extras.filter(item=>Number(item.cantidad)>0).length,
       extras_unidades:extras.reduce((sum,item)=>sum+Math.max(0,Number(item.cantidad)||0),0)
     };
@@ -255,12 +265,12 @@
 
   function receiptItem(row, catalogByCode) {
     const product=catalogByCode?.get(clean(row.codigo));
-    return {codigo:row.codigo,nombre:clean(product?.nombre)||row.nombre,descripcion_archivo:row.descripcion_archivo||'',barras:clean(product?.barras)||row.barras||'',marca:clean(product?.marca)||row.marca||'',esperado:Number(row.esperado||0),recibido:Number(row.recibido||0),no_recibido:!!row.no_recibido,observacion:row.observacion||'',source_lines:row.source_lines||[],updated_by:row.updated_by_name||'',updated_at:row.updated_at};
+    return {codigo:row.codigo,nombre:clean(product?.nombre)||row.nombre,descripcion_archivo:row.descripcion_archivo||'',barras:clean(product?.barras)||row.barras||'',marca:clean(product?.marca)||row.marca||'',esperado:Number(row.esperado||0),recibido:Number(row.recibido||0),no_recibido:!!row.no_recibido,observacion:row.observacion||'',source_lines:row.source_lines||[],updated_by:row.updated_by_name||'',updated_at:row.updated_at,requiere_verificacion:!!row.requiere_verificacion,verificado_at:row.verificado_at||null,verificado_by:row.verificado_by_name||''};
   }
   function receiptSummary(receipt) {
     const items=receipt.items||[],extras=receipt.extras||[];
     const expected=items.reduce((sum,item)=>sum+Number(item.esperado||0),0),received=items.reduce((sum,item)=>sum+Number(item.recibido||0),0);
-    return {productos:items.length,unidades_esperadas:expected,unidades_recibidas:received,unidades_faltantes:items.reduce((sum,item)=>sum+Math.max(0,Number(item.esperado||0)-Number(item.recibido||0)),0),unidades_sobrantes:items.reduce((sum,item)=>sum+Math.max(0,Number(item.recibido||0)-Number(item.esperado||0)),0),pendientes:items.filter(item=>Number(item.recibido||0)<Number(item.esperado||0)&&!item.no_recibido).length,exactos:items.filter(item=>Number(item.recibido||0)===Number(item.esperado||0)).length,extras_productos:extras.filter(item=>Number(item.cantidad)>0).length,extras_unidades:extras.reduce((sum,item)=>sum+Number(item.cantidad||0),0)};
+    return {productos:items.length,unidades_esperadas:expected,unidades_recibidas:received,unidades_faltantes:items.reduce((sum,item)=>sum+Math.max(0,Number(item.esperado||0)-Number(item.recibido||0)),0),unidades_sobrantes:items.reduce((sum,item)=>sum+Math.max(0,Number(item.recibido||0)-Number(item.esperado||0)),0),pendientes:items.filter(item=>Number(item.recibido||0)<Number(item.esperado||0)&&!item.no_recibido).length,exactos:items.filter(item=>Number(item.recibido||0)===Number(item.esperado||0)).length,verificaciones_pendientes:items.filter(item=>item.requiere_verificacion).length,extras_productos:extras.filter(item=>Number(item.cantidad)>0).length,extras_unidades:extras.reduce((sum,item)=>sum+Number(item.cantidad||0),0)};
   }
   function canEditReception(receipt) {
     return receipt?.estado==='en_control'&&(cloud.isSupervisor()||clean(receipt.destino_local||receipt.destination)===clean(cloud.profile?.local_nombre));
@@ -288,14 +298,15 @@
     const since=new Date(Date.now()-180*24*60*60*1000).toISOString();
     const {data,error}=await cloud.db.from('op_recepciones').select('*').in('estado',['en_control','cerrado']).gte('created_at',since).order('updated_at',{ascending:false});
     if(error)throw error; const receipts=data||[],ids=receipts.map(row=>row.id); if(!ids.length)return [];
-    const [items,extras,parts,links]=await Promise.all([
-      selectInBatches('op_recepcion_items','recepcion_id,esperado,recibido,no_recibido','recepcion_id',ids),
-      selectInBatches('op_recepcion_extras','recepcion_id,cantidad','recepcion_id',ids),
-      selectInBatches('op_recepcion_participantes','recepcion_id,nombre,joined_at','recepcion_id',ids,'joined_at'),
-      selectInBatches('op_recepcion_pedidos','recepcion_id,pedido_id','recepcion_id',ids)
+    const [itemsResult,extrasResult,partsResult,linksResult]=await Promise.all([
+      selectDirectoryDetail('op_recepcion_items','recepcion_id,esperado,recibido,no_recibido','recepcion_id',ids),
+      selectDirectoryDetail('op_recepcion_extras','recepcion_id,cantidad','recepcion_id',ids),
+      selectDirectoryDetail('op_recepcion_participantes','recepcion_id,nombre,joined_at','recepcion_id',ids,'joined_at'),
+      selectDirectoryDetail('op_recepcion_pedidos','recepcion_id,pedido_id','recepcion_id',ids)
     ]);
+    const items=itemsResult.rows,extras=extrasResult.rows,parts=partsResult.rows,links=linksResult.rows;
     const itemsBy=groupRows(items,'recepcion_id'),extrasBy=groupRows(extras,'recepcion_id'),partsBy=groupRows(parts,'recepcion_id'),linksBy=groupRows(links,'recepcion_id');
-    return receipts.map(row=>{const snapshot={items:itemsBy.get(row.id)||[],extras:extrasBy.get(row.id)||[]};return {id:row.id,nombre:row.nombre,document_number:row.numero_remito,date:row.fecha_remito,origin:row.origen_local,destination:row.destino_local,estado:row.estado,created_at:row.created_at,updated_at:row.updated_at,can_edit:canEditReception(row),can_delete:canEditReception(row),participantes:(partsBy.get(row.id)||[]).map(part=>({nombre:part.nombre,joined:asDate(part.joined_at)})),linked_orders:(linksBy.get(row.id)||[]).length,summary:receiptSummary(snapshot)};});
+    return receipts.map(row=>{const snapshot={items:itemsBy.get(row.id)||[],extras:extrasBy.get(row.id)||[]};return {id:row.id,nombre:row.nombre,document_number:row.numero_remito,date:row.fecha_remito,origin:row.origen_local,destination:row.destino_local,estado:row.estado,created_at:row.created_at,updated_at:row.updated_at,can_edit:canEditReception(row),can_delete:canEditReception(row),summary_available:itemsResult.available&&extrasResult.available,participants_available:partsResult.available,links_available:linksResult.available,participantes:(partsBy.get(row.id)||[]).map(part=>({nombre:part.nombre,joined:asDate(part.joined_at)})),linked_orders:(linksBy.get(row.id)||[]).length,summary:receiptSummary(snapshot)};});
   }
   async function createReception(data) {
     const origin=await localeFor(data.origin),destination=await localeFor(data.destination);
@@ -310,14 +321,15 @@
     if(error) throw error;
     const sessions=data||[], ids=sessions.map(session=>session.id);
     if(!ids.length) return [];
-    const [items,parts]=await Promise.all([
-      selectInBatches('op_inventario_items','sesion_id,codigo,cantidad','sesion_id',ids),
-      selectInBatches('op_inventario_participantes','sesion_id,nombre,joined_at','sesion_id',ids,'joined_at')
+    const [itemsResult,partsResult]=await Promise.all([
+      selectDirectoryDetail('op_inventario_items','sesion_id,codigo,cantidad','sesion_id',ids),
+      selectDirectoryDetail('op_inventario_participantes','sesion_id,nombre,joined_at','sesion_id',ids,'joined_at')
     ]);
+    const items=itemsResult.rows,parts=partsResult.rows;
     const itemsBySession=groupRows(items,'sesion_id'), partsBySession=groupRows(parts,'sesion_id');
     return sessions.map(session=>{
       const sessionItems=itemsBySession.get(session.id)||[], sessionParts=partsBySession.get(session.id)||[];
-      return {id:session.id,nombre:session.nombre,creada:asDate(session.created_at),creada_fecha:session.created_at,updated_at:session.updated_at,usuarios:sessionParts.map(p=>({nombre:p.nombre,joined:asDate(p.joined_at)})),productos:sessionItems.length,unidades:sessionItems.reduce((s,i)=>s+Number(i.cantidad||0),0),local_nombre:session.local_nombre||'',almacen:session.almacen||''};
+      return {id:session.id,nombre:session.nombre,creada:asDate(session.created_at),creada_fecha:session.created_at,updated_at:session.updated_at,usuarios:sessionParts.map(p=>({nombre:p.nombre,joined:asDate(p.joined_at)})),details_available:itemsResult.available,participants_available:partsResult.available,productos:sessionItems.length,unidades:sessionItems.reduce((s,i)=>s+Number(i.cantidad||0),0),local_nombre:session.local_nombre||'',almacen:session.almacen||''};
     });
   }
   async function listRepositions() {
@@ -326,16 +338,17 @@
     if(error) throw error;
     const repos=data||[], ids=repos.map(row=>row.id);
     if(!ids.length) return [];
-    const [items,extras,parts]=await Promise.all([
-      selectInBatches('op_reposicion_items','*','reposicion_id',ids,'nombre'),
-      selectInBatches('op_reposicion_extras','*','reposicion_id',ids,'nombre'),
-      selectInBatches('op_reposicion_participantes','reposicion_id,nombre,joined_at','reposicion_id',ids,'joined_at')
+    const [itemsResult,extrasResult,partsResult]=await Promise.all([
+      selectDirectoryDetail('op_reposicion_items','reposicion_id,codigo,pedido_total,pedido_reposicion,pedido_clientes,preparado,no_encontrado,cerrado_incompleto','reposicion_id',ids),
+      selectDirectoryDetail('op_reposicion_extras','reposicion_id,cantidad','reposicion_id',ids),
+      selectDirectoryDetail('op_reposicion_participantes','reposicion_id,nombre,joined_at','reposicion_id',ids,'joined_at')
     ]);
+    const items=itemsResult.rows,extras=extrasResult.rows,parts=partsResult.rows;
     const itemsByRepo=groupRows(items,'reposicion_id'), extrasByRepo=groupRows(extras,'reposicion_id'), partsByRepo=groupRows(parts,'reposicion_id');
     return repos.map(row=>{
       const snapshot={items:(itemsByRepo.get(row.id)||[]).map(repoItem),extras:(extrasByRepo.get(row.id)||[]).map(extra=>({cantidad:extra.cantidad}))};
       const canEdit = canEditReposition(row);
-      return {id:row.id,nombre:row.nombre,origin:row.origen_local,destination:row.destino_local,estado:row.estado,remito:row.remito,remito_pendiente:row.remito_pendiente,created_at:row.created_at,updated_at:row.updated_at,can_edit:canEdit,can_delete:row.estado==='preparando'&&canEdit,participantes:(partsByRepo.get(row.id)||[]).map(part=>({nombre:part.nombre,joined:asDate(part.joined_at)})),summary:repoSummary(snapshot)};
+      return {id:row.id,nombre:row.nombre,origin:row.origen_local,destination:row.destino_local,estado:row.estado,remito:row.remito,remito_pendiente:row.remito_pendiente,created_at:row.created_at,updated_at:row.updated_at,can_edit:canEdit,can_delete:row.estado==='preparando'&&canEdit,participantes:(partsByRepo.get(row.id)||[]).map(part=>({nombre:part.nombre,joined:asDate(part.joined_at)})),summary_available:itemsResult.available&&extrasResult.available,participants_available:partsResult.available,summary:repoSummary(snapshot)};
     });
   }
 
@@ -415,8 +428,9 @@
       }
       if(path==='/api/sesion/salir' && method==='POST') { await cloud.db.from('op_inventario_participantes').delete().eq('sesion_id',data.session_id).eq('usuario_id',cloud.user.id); return json({ok:true}); }
       if(path==='/api/state') return json(await inventoryState(url.searchParams.get('sid')));
-      if(path==='/api/add' && method==='POST') { const {data:item,error}=await cloud.db.rpc('op_inventario_sumar',{p_sesion:data.session_id,p_codigo:data.codigo,p_nombre:data.nombre,p_barras:data.barras||'',p_cantidad:Number(data.qty)||1,p_tipo:data.tipo||'nombre'}); if(error)throw error; return json({ok:true,item:{codigo:item.codigo,nombre:item.nombre,barras:item.barras||'',qty:item.cantidad,tipos:item.tipos||{}}}); }
+      if(path==='/api/add' && method==='POST') { const {data:item,error}=await cloud.db.rpc('op_inventario_sumar',{p_sesion:data.session_id,p_codigo:data.codigo,p_nombre:data.nombre,p_barras:data.barras||'',p_cantidad:Number(data.qty)||1,p_tipo:data.tipo||'nombre'}); if(error)throw error; return json({ok:true,item:{codigo:item.codigo,nombre:item.nombre,barras:item.barras||'',qty:item.cantidad,tipos:item.tipos||{},requiere_verificacion:!!item.requiere_verificacion,verificado_at:item.verificado_at||null,verificado_by:item.verificado_by_name||''}}); }
       if(path==='/api/update_qty' && method==='POST') { const {error}=await cloud.db.rpc('op_inventario_ajustar',{p_sesion:data.session_id,p_codigo:data.codigo,p_delta:Number(data.delta)||0}); if(error)throw error; return json({ok:true}); }
+      if(path==='/api/inventario/verify_qty' && method==='POST') { const {data:item,error}=await cloud.db.rpc('op_verificar_inventario_cantidad',{p_sesion:data.session_id,p_codigo:data.codigo,p_cantidad:Number(data.cantidad)});if(error)throw error;return json({ok:true,item:{codigo:item.codigo,nombre:item.nombre,barras:item.barras||'',qty:item.cantidad,tipos:item.tipos||{},requiere_verificacion:!!item.requiere_verificacion,verificado_at:item.verificado_at||null,verificado_by:item.verificado_by_name||''}}); }
       if(path==='/api/remove' && method==='POST') { const {error}=await cloud.db.from('op_inventario_items').delete().eq('sesion_id',data.session_id).eq('codigo',data.codigo); if(error)throw error; return json({ok:true}); }
       if(path==='/api/clear' && method==='POST') { const {error}=await cloud.db.from('op_inventario_items').delete().eq('sesion_id',data.session_id); if(error)throw error; await cloud.db.from('op_inventario_eventos').delete().eq('sesion_id',data.session_id); return json({ok:true}); }
       if(path==='/api/set_almacen' && method==='POST') { const {error}=await cloud.db.from('op_inventario_sesiones').update({almacen:data.almacen,updated_at:new Date().toISOString()}).eq('id',data.session_id); if(error)throw error; return json({ok:true}); }
@@ -438,6 +452,10 @@
       if(path==='/api/recepcion/update_qty' && method==='POST') {
         const {data:item,error}=await cloud.db.rpc('op_recepcion_cantidad',{p_recepcion:data.reception_id,p_codigo:data.codigo,p_delta:data.absolute==null?Number(data.delta||0):null,p_absoluta:data.absolute==null?null:Number(data.absolute),p_origen:data.source||'manual',p_usuario_nombre:cloud.displayName}); if(error)throw error;
         const receipt=await receptionSnapshot(data.reception_id); return json({ok:true,item:receiptItem(item),summary:receipt.summary});
+      }
+      if(path==='/api/recepcion/verify_qty' && method==='POST') {
+        const {data:item,error}=await cloud.db.rpc('op_verificar_recepcion_cantidad',{p_recepcion:data.reception_id,p_codigo:data.codigo,p_cantidad:Number(data.cantidad),p_usuario_nombre:cloud.displayName});if(error)throw error;
+        return json({ok:true,item:receiptItem(item)});
       }
       if(path==='/api/recepcion/no_recibido' && method==='POST') {
         const {data:item,error}=await cloud.db.rpc('op_recepcion_no_recibido',{p_recepcion:data.reception_id,p_codigo:data.codigo,p_valor:!!data.value,p_observacion:clean(data.observation)||null,p_usuario_nombre:cloud.displayName}); if(error)throw error;
@@ -492,6 +510,10 @@
         const args={p_reposicion:data.reposition_id,p_codigo:data.codigo,p_delta:data.absolute==null?Number(data.delta||0):null,p_absoluta:data.absolute==null?null:Number(data.absolute),p_origen:data.source||'manual',p_usuario_nombre:cloud.displayName,p_cliente:cloud.clientId};
         const {data:item,error}=await cloud.db.rpc('op_reposicion_cantidad_colaborativa',args); if(error)throw error;
         const mapped=repoItem(item); const repo=await repoSnapshot(data.reposition_id); return json({ok:true,item:mapped,summary:repo.summary});
+      }
+      if(path==='/api/reposicion/verify_qty' && method==='POST') {
+        const {data:item,error}=await cloud.db.rpc('op_verificar_reposicion_cantidad',{p_reposicion:data.reposition_id,p_codigo:data.codigo,p_cantidad:Number(data.cantidad),p_usuario_nombre:cloud.displayName});if(error)throw error;
+        return json({ok:true,item:repoItem(item)});
       }
       if(path==='/api/reposicion/mark' && method==='POST') {
         const args={

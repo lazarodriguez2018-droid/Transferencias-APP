@@ -5,6 +5,7 @@ let sessionNombre = '';
 let usuarioNombre = '';
 let countItems = {};   // {codigo: {codigo, nombre, qty, tipos}}
 let actionLog = [];    // [{ts, tipo, codigo, nombre, qty}] — para el live log
+let inventoryVerificationContinuation = null;
 let balanceData = null;
 let almacen = '';
 let searchType = 'barras';
@@ -511,10 +512,14 @@ function renderAvailableSessions() {
         ? `<span class="session-route-pill">${esc(session.local_nombre || session.almacen)}${session.local_nombre && session.almacen ? ` · ${esc(session.almacen)}` : ''}</span>`
         : '';
     const details = currentModule === 'reposicion'
-      ? `${session.estado === 'enviado' ? 'Enviada' : 'En preparación'} · ${summary.productos || 0} productos · ${summary.unidades_preparadas || 0}/${summary.unidades_pedidas || 0} unidades${session.remito_pendiente ? ' · remito pendiente' : ''}`
+      ? session.summary_available === false
+        ? `${session.estado === 'enviado' ? 'Enviada' : 'En preparación'} · Abrí la reposición para consultar sus cantidades${session.remito_pendiente ? ' · remito pendiente' : ''}`
+        : `${session.estado === 'enviado' ? 'Enviada' : 'En preparación'} · ${summary.productos || 0} productos · ${summary.unidades_preparadas || 0}/${summary.unidades_pedidas || 0} unidades${session.remito_pendiente ? ' · remito pendiente' : ''}`
       : currentModule === 'recepcion'
-        ? `Remito ${esc(session.document_number || '—')} · ${session.estado === 'cerrado' ? 'Cerrado' : 'En control'} · ${summary.productos || 0} productos · ${summary.unidades_recibidas || 0}/${summary.unidades_esperadas || 0} unidades${session.linked_orders ? ` · ${session.linked_orders} pedido${session.linked_orders === 1 ? '' : 's'} de cliente` : ''}`
-      : `${session.productos || 0} productos · ${session.unidades || 0} unidades`;
+        ? session.summary_available === false
+          ? `Remito ${esc(session.document_number || '—')} · ${session.estado === 'cerrado' ? 'Cerrado' : 'En control'} · Abrí el control para consultar sus cantidades`
+          : `Remito ${esc(session.document_number || '—')} · ${session.estado === 'cerrado' ? 'Cerrado' : 'En control'} · ${summary.productos || 0} productos · ${summary.unidades_recibidas || 0}/${summary.unidades_esperadas || 0} unidades${session.linked_orders ? ` · ${session.linked_orders} pedido${session.linked_orders === 1 ? '' : 's'} de cliente` : ''}`
+        : session.details_available === false ? 'Abrí el inventario para consultar sus cantidades' : `${session.productos || 0} productos · ${session.unidades || 0} unidades`;
     row.innerHTML = `
       <div style="flex:1;min-width:0">
         <div style="font-weight:700;font-size:14px;line-height:1.35">${esc(session.nombre)}</div>
@@ -601,8 +606,9 @@ async function cargarSesionesDisponibles(options = {}) {
     try {
       const endpoint = requestedModule === 'reposicion' ? '/api/reposiciones' : requestedModule === 'recepcion' ? '/api/recepciones' : '/api/sesiones';
       const res = await fetchWithTimeout(`${location.origin}${endpoint}`, {}, 15000);
-      if (!res.ok) throw new Error('No se pudo consultar las sesiones');
-      const sesiones = await res.json();
+      const responseData = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(responseData?.error || 'No se pudieron consultar las sesiones');
+      const sesiones = responseData;
       if (requestSequence !== sessionLoadSequence || currentModule !== requestedModule) return;
       availableSessions = Array.isArray(sesiones) ? sesiones : [];
       populateSessionLocationFilter(availableSessions);
@@ -611,7 +617,10 @@ async function cargarSesionesDisponibles(options = {}) {
       if (requestSequence !== sessionLoadSequence || currentModule !== requestedModule || silent) return;
       availableSessions = [];
       count.textContent = 'No se pudieron cargar las sesiones.';
-      items.innerHTML = '<div class="session-empty">No pudimos consultar Sucaneitor. Revisá tu conexión a internet y tocá “Actualizar”.</div>';
+      const reason = String(e?.message || '').trim();
+      const detail = reason && !/failed to fetch|network|timeout|tiempo de espera/i.test(reason)
+        ? `<small style="display:block;margin-top:8px">Detalle: ${esc(reason)}</small>` : '';
+      items.innerHTML = `<div class="session-empty">No pudimos consultar Sucaneitor. Tocá “Actualizar” para volver a intentar.${detail}</div>`;
     }
   })();
   sessionLoadInFlight = requestPromise;
@@ -1145,11 +1154,13 @@ function showQtyModal(item, tipo) {
     </div>
     <div class="qty-presets" aria-label="Cantidades rápidas">
       ${[1,2,3,5,10,20,50].map(n=>`<button type="button" class="btn btn-s" onclick="setPendingQty(${n})">${n}</button>`).join('')}
-    </div>`;
+    </div>
+    <p class="app-dialog-message" id="inventory-qty-confirmation" style="margin:12px 0 0">Vas a registrar <strong>1 unidad</strong>. Confirmá solamente la cantidad física que contaste.</p>`;
   document.getElementById('modal-actions').innerHTML = `
     <button class="btn btn-s" onclick="closeModal()">Cancelar</button>
-    <button class="btn btn-p" id="confirm-qty-btn" onclick="confirmQty('${tipo}')">✅ Agregar</button>`;
+    <button class="btn btn-p" id="confirm-qty-btn" onclick="confirmQty('${tipo}')">Confirmar 1 unidad</button>`;
   document.getElementById('modal-overlay').classList.add('show');
+  document.getElementById('qty-input')?.addEventListener('input',updatePendingQtyConfirmation);
   setTimeout(() => { document.getElementById('qty-input')?.select(); }, 80);
 }
 
@@ -1157,8 +1168,11 @@ function setPendingQty(value) {
   const input = document.getElementById('qty-input');
   if (!input) return;
   input.value = Math.min(9999, Math.max(1, Number(value) || 1));
+  updatePendingQtyConfirmation();
   input.select();
 }
+
+function updatePendingQtyConfirmation(){const quantity=Math.max(1,Number.parseInt(document.getElementById('qty-input')?.value,10)||1),button=document.getElementById('confirm-qty-btn'),copy=document.getElementById('inventory-qty-confirmation');if(button)button.textContent=`Confirmar ${quantity} ${quantity===1?'unidad':'unidades'}`;if(copy)copy.innerHTML=`Vas a registrar <strong>${quantity} ${quantity===1?'unidad':'unidades'}</strong>. Confirmá solamente la cantidad física que contaste.${quantity>1?' Esta carga quedará incluida en el control final de cantidades.':''}`;}
 
 function stepPendingQty(delta) {
   const input = document.getElementById('qty-input');
@@ -1394,10 +1408,11 @@ async function addItem(item, qty, tipo) {
   const key = item.codigo;
   if (countItems[key]) {
     countItems[key].qty += qty;
+    if (qty > 1) countItems[key].requiere_verificacion = true;
     countItems[key].tipos = countItems[key].tipos || {};
     countItems[key].tipos[tipo] = (countItems[key].tipos[tipo] || 0) + qty;
   } else {
-    countItems[key] = { codigo: item.codigo, barras: item.barras||'', nombre: item.nombre, qty, tipos: { [tipo]: qty } };
+    countItems[key] = { codigo:item.codigo, barras:item.barras||'', nombre:item.nombre, qty, tipos:{[tipo]:qty}, requiere_verificacion:qty>1 };
   }
   if (tipo === 'scanner') totalScans++;
 
@@ -1553,7 +1568,7 @@ function renderCountTable() {
       .join('');
     return `<tr>
       <td style="font-family:'JetBrains Mono';font-size:11px;color:var(--accent)">${esc(item.codigo)}</td>
-      <td><div style="font-size:13px">${esc(item.nombre)}</div><div>${chips} ${balanceBadge(item.codigo)}</div></td>
+      <td><div style="font-size:13px">${esc(item.nombre)}</div><div>${chips} ${balanceBadge(item.codigo)}${item.requiere_verificacion?' <span class="chip" style="color:var(--yellow)">Control final pendiente</span>':''}</div></td>
       <td></td>
       <td><div class="qctrl">
         <button class="qbtn" onclick="updateQty('${escA(item.codigo)}',-1)">−</button>
@@ -1578,6 +1593,12 @@ function updateStats() {
     if (el) el.textContent = value;
   });
 }
+
+function inventoryVerificationItems(){return Object.values(countItems).filter(item=>item.requiere_verificacion&&Number(item.qty)>0);}
+function openInventoryQuantityVerification(continuation){if(typeof continuation==='function')inventoryVerificationContinuation=continuation;const pending=inventoryVerificationItems();if(!pending.length){const next=inventoryVerificationContinuation;inventoryVerificationContinuation=null;closeModal();if(next)setTimeout(next,30);return;}const item=pending[0];window._inventoryVerificationCode=String(item.codigo);document.getElementById('modal-title').textContent='Control final de cantidades';document.getElementById('modal-subtitle').textContent=`${pending.length} ${pending.length===1?'producto pendiente':'productos pendientes'}`;document.getElementById('modal-body').innerHTML=`<div class="app-dialog-product"><strong>${esc(item.nombre)}</strong><span>SKU ${esc(item.codigo)}</span></div><p class="app-dialog-message">Hay más de una unidad registrada. Comprobá la cantidad física antes de generar archivos o informes.</p><div class="receipt-confirm-quantities"><div><span>Registrado</span><strong>${item.qty}</strong></div><div class="final" style="grid-column:span 2"><span>A confirmar</span><strong id="inventory-verification-preview">${item.qty}</strong></div></div><label class="il" for="inventory-verification-qty">Cantidad física comprobada</label><div class="qty-stepper"><button class="qty-step" onclick="stepInventoryVerification(-1)">−</button><input id="inventory-verification-qty" class="input" type="number" min="0" inputmode="numeric" value="${item.qty}" oninput="updateInventoryVerificationPreview()" style="text-align:center;font-size:20px"><button class="qty-step" onclick="stepInventoryVerification(1)">+</button></div>`;document.getElementById('modal-actions').innerHTML='<button class="btn btn-s" onclick="closeModal()">Revisar después</button><button class="btn btn-p" onclick="confirmInventoryQuantityVerification()">Confirmar y continuar</button>';document.getElementById('modal-overlay').classList.add('show');setTimeout(()=>document.getElementById('inventory-verification-qty')?.select(),60);}
+function updateInventoryVerificationPreview(){const input=document.getElementById('inventory-verification-qty'),preview=document.getElementById('inventory-verification-preview');if(preview)preview.textContent=String(Math.max(0,Number.parseInt(input?.value,10)||0));}
+function stepInventoryVerification(delta){const input=document.getElementById('inventory-verification-qty');if(!input)return;input.value=String(Math.max(0,(Number.parseInt(input.value,10)||0)+delta));updateInventoryVerificationPreview();}
+async function confirmInventoryQuantityVerification(){const code=String(window._inventoryVerificationCode||''),quantity=Number.parseInt(document.getElementById('inventory-verification-qty')?.value,10);if(!code||!Number.isInteger(quantity)||quantity<0){toast('Ingresá una cantidad válida','e');return;}const button=document.querySelector('#modal-actions .btn-p');if(button){button.disabled=true;button.textContent='Guardando…';}try{if(serverOnline){const response=await fetch(`${serverUrl}/api/inventario/verify_qty`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId,codigo:code,cantidad:quantity})}),data=await response.json().catch(()=>({}));if(!response.ok||!data.ok)throw new Error(data.error||'No se pudo confirmar');countItems[code]=data.item;}else if(countItems[code])countItems[code]={...countItems[code],qty:quantity,requiere_verificacion:false,verificado_at:new Date().toISOString()};if(quantity===0)delete countItems[code];renderCountTable();updateStats();renderSearchContext();saveLocal();if(inventoryVerificationItems().length)openInventoryQuantityVerification();else{const next=inventoryVerificationContinuation;inventoryVerificationContinuation=null;closeModal();toast('Control final de cantidades completado','s');if(next)setTimeout(next,40);}}catch(error){toast(error.message||'No se pudo confirmar','e');if(button){button.disabled=false;button.textContent='Confirmar y continuar';}}}
 
 // ===== BALANCE / REPORTE =====
 async function loadBalance(input) {
@@ -1897,6 +1918,7 @@ function refreshReport() {
 
 // ===== GENERAR EXCEL =====
 async function generateReport() {
+  if (inventoryVerificationItems().length) { openInventoryQuantityVerification(()=>generateReport()); return; }
   if (!balanceData) { toast('❌ Cargá el balance primero', 'e'); return; }
   if (!window.XLSX) { toast('El generador de Excel todavía se está cargando', 'e'); return; }
   toast('📊 Generando Excel...', 'i');
@@ -1948,6 +1970,7 @@ async function generateReport() {
 }
 
 function exportAnalysisReport() {
+  if (inventoryVerificationItems().length) { openInventoryQuantityVerification(()=>exportAnalysisReport()); return; }
   if (!balanceData) { toast('Cargá el balance desde Dashboard', 'e'); return; }
   if (!window.XLSX) { toast('El generador de Excel todavía se está cargando', 'e'); return; }
   refreshReport();
@@ -1977,6 +2000,7 @@ function exportAnalysisReport() {
 
 // ===== EXPORTAR CONTEO =====
 function exportConteo() {
+  if (inventoryVerificationItems().length) { openInventoryQuantityVerification(()=>exportConteo()); return; }
   if (!window.XLSX) { toast('El generador de Excel todavía se está cargando', 'e'); return; }
   const { utils, write } = XLSX;
   const wb = utils.book_new();
