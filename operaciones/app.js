@@ -18,6 +18,11 @@ let compensationSuggestions = [];
 let currentModule = '';
 let repoState = null;
 let repoSSE = null;
+let repoHeartbeatTimer = null;
+let repoFallbackTimer = null;
+let repoClaimInFlight = null;
+let repoRefreshInFlight = false;
+let repoRefreshQueued = false;
 let repoCurrentIndex = 0;
 let repoParsedSource = null;
 let repoSourceBytes = null;
@@ -249,6 +254,7 @@ function operationsRouteIsCurrent(state) {
 function leaveOperationsWorkspace({notify = true} = {}) {
   if (scanActive) stopScanner();
   if (typeof stopRepoUrgentWatcher === 'function') stopRepoUrgentWatcher();
+  if (currentModule === 'reposicion' && sessionId && typeof repoReleaseAssignment === 'function') repoReleaseAssignment();
   if (repoSSE) { repoSSE.close(); repoSSE = null; }
   if (serverSSE) { serverSSE.close(); serverSSE = null; }
   clearTimeout(clientCountTimer); clientCountTimer = null;
@@ -318,6 +324,7 @@ function setupOperationsOverlayHistory() {
 
 function backToModules() {
   if (typeof stopRepoUrgentWatcher === 'function') stopRepoUrgentWatcher();
+  if (currentModule === 'reposicion' && sessionId && typeof repoReleaseAssignment === 'function') repoReleaseAssignment();
   if (repoSSE) { repoSSE.close(); repoSSE = null; }
   if (serverSSE) { serverSSE.close(); serverSSE = null; }
   closeRepoScanner();

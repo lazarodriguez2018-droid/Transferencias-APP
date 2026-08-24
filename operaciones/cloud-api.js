@@ -3,6 +3,17 @@
 
   const config = window.SUCANEITOR_CLOUD_CONFIG;
   const nativeFetch = window.fetch.bind(window);
+  function deviceId() {
+    const key = 'sucan_ops_device_id';
+    try {
+      let value = localStorage.getItem(key);
+      if (!value) {
+        value = globalThis.crypto?.randomUUID?.() || `device-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        localStorage.setItem(key,value);
+      }
+      return value;
+    } catch (_) { return `device-${Date.now()}-${Math.random().toString(36).slice(2)}`; }
+  }
   const cloud = window.SucanCloud = {
     db: null,
     user: null,
@@ -10,6 +21,7 @@
     displayName: 'Usuario',
     ready: null,
     channels: [],
+    clientId: deviceId(),
     isSupervisor() { return ['admin','supervisor_general'].includes(this.profile?.role); }
   };
 
@@ -132,7 +144,9 @@
       no_encontrado:!!row.no_encontrado,cerrado_incompleto:!!row.cerrado_incompleto,
       motivo_codigo:row.motivo_codigo || '',motivo_label:row.motivo_label || '',motivo_otro:row.motivo_otro || '',
       comentario:row.comentario || '',motivo:[row.motivo_label,row.motivo_otro,row.comentario].filter(Boolean).join(' · '),
-      pedidos_asignados:row.pedidos_asignados || [],updated_by:row.updated_by_name || '',updated_at:row.updated_at
+      pedidos_asignados:row.pedidos_asignados || [],updated_by:row.updated_by_name || '',updated_at:row.updated_at,
+      asignado_a:row.asignado_a || '',asignado_cliente:row.asignado_cliente || '',
+      asignado_nombre:row.asignado_nombre || '',asignado_at:row.asignado_at || null
     };
   }
   function repoSummary(repo) {
@@ -151,23 +165,25 @@
     return repo?.estado === 'preparando' && (cloud.isSupervisor() || clean(repo?.origen_local || repo?.origin) === clean(cloud.profile?.local_nombre));
   }
   async function repoSnapshot(repoId) {
-    const [{data:repo,error:re},{data:items,error:ie},{data:extras,error:xe},{data:parts,error:pe},{data:events,error:ee}] = await Promise.all([
+    const [{data:repo,error:re},{data:items,error:ie},{data:extras,error:xe},{data:parts,error:pe},{data:devices,error:de},{data:events,error:ee}] = await Promise.all([
       cloud.db.from('op_reposiciones').select('*').eq('id',repoId).single(),
       cloud.db.from('op_reposicion_items').select('*').eq('reposicion_id',repoId).order('nombre'),
       cloud.db.from('op_reposicion_extras').select('*').eq('reposicion_id',repoId).order('nombre'),
       cloud.db.from('op_reposicion_participantes').select('*').eq('reposicion_id',repoId).order('joined_at'),
+      cloud.db.from('op_reposicion_dispositivos').select('cliente_id,usuario_id,nombre,last_seen').eq('reposicion_id',repoId).gt('last_seen',new Date(Date.now()-3*60*1000).toISOString()).order('last_seen',{ascending:false}),
       cloud.db.from('op_reposicion_eventos').select('*').eq('reposicion_id',repoId).order('created_at',{ascending:false}).limit(500)
     ]);
-    if (re || ie || xe || pe || ee) throw re || ie || xe || pe || ee;
+    if (re || ie || xe || pe || de || ee) throw re || ie || xe || pe || de || ee;
     const snapshot = {
       id:repo.id,nombre:repo.nombre,origin:repo.origen_local,destination:repo.destino_local,estado:repo.estado,
       started_at:repo.started_at,created_at:repo.created_at,updated_at:repo.updated_at,
       original_filename:repo.original_filename,original_file:repo.original_path,import_meta:repo.import_meta || {},
       transporte:repo.transporte,remito:repo.remito,remito_pendiente:repo.remito_pendiente,
       can_edit:canEditReposition(repo),can_update_remito:cloud.isSupervisor() || clean(repo.origen_local) === clean(cloud.profile?.local_nombre),
+      viewer_client_id:cloud.clientId,
       items:(items || []).map(repoItem),
       extras:(extras || []).map(row=>({codigo:row.codigo,nombre:row.nombre,barras:row.barras || '',cantidad:row.cantidad,nota:row.nota || '',updated_by:row.updated_by_name || '',updated_at:row.updated_at})),
-      participantes:(parts || []).map(row=>({nombre:row.nombre,joined:asDate(row.joined_at)})),
+      participantes:(devices || []).map(row=>({nombre:row.nombre,cliente_id:row.cliente_id,usuario_id:row.usuario_id,last_seen:row.last_seen,joined:asDate(row.last_seen)})),
       log:(events || []).map(row=>({ts:row.created_at,usuario:row.usuario_nombre,accion:row.accion,codigo:row.codigo,detalle:row.detalle || {}})),exports:[]
     };
     snapshot.summary = repoSummary(snapshot);
@@ -312,9 +328,49 @@
       if(path==='/api/balance' && method==='GET') { const {data:row,error}=await cloud.db.from('op_inventario_balances').select('*').eq('sesion_id',url.searchParams.get('session_id')).maybeSingle(); if(error)throw error; return json({ok:true,balance:row?.balance||[],meta:row?.meta||null,updated:row?.updated_at||null}); }
       if(path==='/api/balance' && method==='POST') { const {error}=await cloud.db.from('op_inventario_balances').upsert({sesion_id:data.session_id,balance:data.balance||[],meta:data.meta||{},updated_by:cloud.user.id,updated_at:new Date().toISOString()},{onConflict:'sesion_id'}); if(error)throw error; return json({ok:true,total:(data.balance||[]).length}); }
       if(path==='/api/reposicion/crear' && method==='POST') { const repo=await createReposition(data); return json({ok:true,reposition_id:repo.id,repo}); }
-      if(path==='/api/reposicion/state') { const rid=url.searchParams.get('rid'); await cloud.db.from('op_reposicion_participantes').upsert({reposicion_id:rid,usuario_id:cloud.user.id,nombre:cloud.displayName,last_seen:new Date().toISOString()},{onConflict:'reposicion_id,usuario_id'}); return json({ok:true,repo:await repoSnapshot(rid)}); }
-      if(path==='/api/reposicion/update_qty' && method==='POST') { const args={p_reposicion:data.reposition_id,p_codigo:data.codigo,p_delta:data.absolute==null?Number(data.delta||0):null,p_absoluta:data.absolute==null?null:Number(data.absolute),p_origen:data.source||'manual',p_usuario_nombre:cloud.displayName}; const {data:item,error}=await cloud.db.rpc('op_reposicion_cantidad',args); if(error)throw error; const mapped=repoItem(item); const repo=await repoSnapshot(data.reposition_id); return json({ok:true,item:mapped,summary:repo.summary}); }
-      if(path==='/api/reposicion/mark' && method==='POST') { const updates={updated_by:cloud.user.id,updated_by_name:cloud.displayName,updated_at:new Date().toISOString(),comentario:clean(data.comentario),motivo_codigo:clean(data.motivo_codigo),motivo_label:clean(data.motivo_label)||({stock_insuficiente:'Stock insuficiente',otro:'Otro',cantidad_incompleta:'Cantidad incompleta'}[data.motivo_codigo]||''),motivo_otro:clean(data.motivo_otro)}; updates[data.field]=!!data.value; if(data.field==='no_encontrado'&&data.value)updates.cerrado_incompleto=true; const {data:item,error}=await cloud.db.from('op_reposicion_items').update(updates).eq('reposicion_id',data.reposition_id).eq('codigo',data.codigo).select().single(); if(error)throw error; await cloud.db.from('op_reposicion_eventos').insert({reposicion_id:data.reposition_id,usuario_id:cloud.user.id,usuario_nombre:cloud.displayName,accion:data.field,codigo:data.codigo,detalle:updates}); const repo=await repoSnapshot(data.reposition_id); return json({ok:true,item:repoItem(item),summary:repo.summary}); }
+      if(path==='/api/reposicion/state') {
+        const rid=url.searchParams.get('rid');
+        const [participantResult,touchResult]=await Promise.all([
+          cloud.db.from('op_reposicion_participantes').upsert({reposicion_id:rid,usuario_id:cloud.user.id,nombre:cloud.displayName,last_seen:new Date().toISOString()},{onConflict:'reposicion_id,usuario_id'}),
+          cloud.db.rpc('op_reposicion_tocar',{p_reposicion:rid,p_cliente:cloud.clientId,p_usuario_nombre:cloud.displayName})
+        ]);
+        if(participantResult.error||touchResult.error)throw participantResult.error||touchResult.error;
+        return json({ok:true,repo:await repoSnapshot(rid)});
+      }
+      if(path==='/api/reposicion/claim' && method==='POST') {
+        const {data:item,error}=await cloud.db.rpc('op_reposicion_reclamar',{
+          p_reposicion:data.reposition_id,p_codigo:data.codigo||null,p_cliente:cloud.clientId,
+          p_usuario_nombre:cloud.displayName,p_excluir_codigo:data.exclude_codigo||null
+        });
+        if(error)throw error;
+        return json({ok:true,item:item?repoItem(item):null,viewer_client_id:cloud.clientId});
+      }
+      if(path==='/api/reposicion/release' && method==='POST') {
+        const {data:released,error}=await cloud.db.rpc('op_reposicion_liberar',{
+          p_reposicion:data.reposition_id,p_cliente:cloud.clientId,p_codigo:data.codigo||null,p_usuario_nombre:cloud.displayName
+        });
+        if(error)throw error; return json({ok:true,released:Number(released)||0});
+      }
+      if(path==='/api/reposicion/heartbeat' && method==='POST') {
+        const {error}=await cloud.db.rpc('op_reposicion_tocar',{p_reposicion:data.reposition_id,p_cliente:cloud.clientId,p_usuario_nombre:cloud.displayName});
+        if(error)throw error; return json({ok:true,at:new Date().toISOString()});
+      }
+      if(path==='/api/reposicion/update_qty' && method==='POST') {
+        const args={p_reposicion:data.reposition_id,p_codigo:data.codigo,p_delta:data.absolute==null?Number(data.delta||0):null,p_absoluta:data.absolute==null?null:Number(data.absolute),p_origen:data.source||'manual',p_usuario_nombre:cloud.displayName,p_cliente:cloud.clientId};
+        const {data:item,error}=await cloud.db.rpc('op_reposicion_cantidad_colaborativa',args); if(error)throw error;
+        const mapped=repoItem(item); const repo=await repoSnapshot(data.reposition_id); return json({ok:true,item:mapped,summary:repo.summary});
+      }
+      if(path==='/api/reposicion/mark' && method==='POST') {
+        const args={
+          p_reposicion:data.reposition_id,p_codigo:data.codigo,p_campo:data.field,p_valor:!!data.value,
+          p_motivo_codigo:clean(data.motivo_codigo)||null,
+          p_motivo_label:clean(data.motivo_label)||({stock_insuficiente:'Stock insuficiente',otro:'Otro',cantidad_incompleta:'Cantidad incompleta'}[data.motivo_codigo]||null),
+          p_motivo_otro:clean(data.motivo_otro)||null,p_comentario:clean(data.comentario)||null,
+          p_usuario_nombre:cloud.displayName,p_cliente:cloud.clientId
+        };
+        const {data:item,error}=await cloud.db.rpc('op_reposicion_marcar_colaborativa',args); if(error)throw error;
+        const repo=await repoSnapshot(data.reposition_id); return json({ok:true,item:repoItem(item),summary:repo.summary});
+      }
       if(path==='/api/reposicion/extra' && method==='POST') { const {data:existing}=await cloud.db.from('op_reposicion_extras').select('*').eq('reposicion_id',data.reposition_id).eq('codigo',data.codigo).maybeSingle(); const qty=data.absolute==null?Number(existing?.cantidad||0)+Number(data.delta||1):Number(data.absolute); if(qty<0)throw new Error('Cantidad inválida'); const {data:row,error}=await cloud.db.from('op_reposicion_extras').upsert({reposicion_id:data.reposition_id,codigo:data.codigo,nombre:data.nombre||existing?.nombre||data.codigo,barras:data.barras||existing?.barras||null,cantidad:qty,nota:data.nota||existing?.nota||'',updated_by:cloud.user.id,updated_by_name:cloud.displayName,updated_at:new Date().toISOString()},{onConflict:'reposicion_id,codigo'}).select().single(); if(error)throw error; const repo=await repoSnapshot(data.reposition_id); return json({ok:true,extra:{codigo:row.codigo,nombre:row.nombre,barras:row.barras||'',cantidad:row.cantidad,nota:row.nota||'',updated_by:cloud.displayName,updated_at:row.updated_at},summary:repo.summary}); }
       if(path==='/api/reposicion/extra/remove' && method==='POST') { const {error}=await cloud.db.from('op_reposicion_extras').delete().eq('reposicion_id',data.reposition_id).eq('codigo',data.codigo); if(error)throw error; const repo=await repoSnapshot(data.reposition_id); return json({ok:true,codigo:data.codigo,summary:repo.summary}); }
       if(path==='/api/reposicion/export_log' && method==='POST') { await cloud.db.from('op_reposicion_eventos').insert({reposicion_id:data.reposition_id,usuario_id:cloud.user.id,usuario_nombre:cloud.displayName,accion:'exportar',detalle:{tipo:data.tipo,nombre:data.nombre}}); return json({ok:true}); }
@@ -351,10 +407,11 @@
   };
   cloud.watchReposition = function (repoId, callback) {
     const channel=cloud.db.channel(`op-repo-${repoId}`)
-      .on('postgres_changes',{event:'*',schema:'public',table:'op_reposicion_items',filter:`reposicion_id=eq.${repoId}`},callback)
-      .on('postgres_changes',{event:'*',schema:'public',table:'op_reposicion_extras',filter:`reposicion_id=eq.${repoId}`},callback)
-      .on('postgres_changes',{event:'*',schema:'public',table:'op_reposicion_participantes',filter:`reposicion_id=eq.${repoId}`},callback)
-      .on('postgres_changes',{event:'UPDATE',schema:'public',table:'op_reposiciones',filter:`id=eq.${repoId}`},callback).subscribe();
+      .on('postgres_changes',{event:'*',schema:'public',table:'op_reposicion_items',filter:`reposicion_id=eq.${repoId}`},payload=>callback({kind:'item',event:payload.eventType,item:payload.new?.codigo?repoItem(payload.new):null,old:payload.old||null}))
+      .on('postgres_changes',{event:'*',schema:'public',table:'op_reposicion_extras',filter:`reposicion_id=eq.${repoId}`},payload=>callback({kind:'extra',event:payload.eventType,row:payload.new||null,old:payload.old||null}))
+      .on('postgres_changes',{event:'*',schema:'public',table:'op_reposicion_dispositivos',filter:`reposicion_id=eq.${repoId}`},payload=>callback({kind:'device',event:payload.eventType,row:payload.new||null,old:payload.old||null}))
+      .on('postgres_changes',{event:'UPDATE',schema:'public',table:'op_reposiciones',filter:`id=eq.${repoId}`},payload=>callback({kind:'repository',event:payload.eventType,row:payload.new||null}))
+      .subscribe(status=>callback({kind:'status',status}));
     cloud.channels.push(channel); return channel;
   };
   cloud.watchCatalog = function (callback) {
