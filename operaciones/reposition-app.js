@@ -438,46 +438,21 @@ function renderRepoCurrent() {
   const reasonHtml = registeredReason ? `<div class="app-dialog-product" style="margin-top:10px"><strong>${esc(registeredReason + reasonDetail)}</strong>${item.comentario ? `<span style="font-family:'DM Sans','Segoe UI',sans-serif">${esc(item.comentario)}</span>` : ''}</div>` : '';
   const orders = item.pedidos_asignados || [];
   const sourceHtml = (Number(item.pedido_clientes) > 0 || Number(item.pedido_reposicion) > 0) ? `<div class="repo-order-coverage"><div><span>Reposición automática</span><strong>${Number(item.pedido_reposicion)||0}</strong></div><div><span>Pedidos aceptados</span><strong>${Number(item.pedido_clientes)||0}</strong></div><div><span>Total físico</span><strong>${Number(item.pedido)||0}</strong></div></div>${orders.length ? `<div class="repo-client-orders"><strong>Clientes:</strong> ${orders.map(order=>`${esc(order.cliente || 'Sin nombre')} ×${Number(order.cantidad)||0}${order.urgente?' · URGENTE':''}`).join(' · ')}</div>` : ''}` : '';
-  const ownedByMe = repoItemOwnedByMe(item);
-  const claimedByOther = repoItemClaimedByOther(item);
-  const assignmentHtml = ownedByMe
-    ? `<div class="repo-assignment mine"><strong>Asignado a vos</strong><span>Los demás dispositivos ya están trabajando con otros productos.</span></div>`
-    : claimedByOther
-      ? `<div class="repo-assignment busy"><strong>Lo está juntando ${esc(item.asignado_nombre || 'otra persona')}</strong><span>Se actualiza en tiempo real. Elegí otro producto para no duplicarlo.</span></div>`
-      : `<div class="repo-assignment free"><strong>Producto disponible</strong><span>Tomalo antes de empezar a juntarlo.</span></div>`;
-  const activeControls = `
+  const controls = repoCanEdit() ? `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:9px">
       <button class="btn btn-p" style="min-height:58px;font-size:16px" onclick="repoFound('${code}')">✓ Encontrado</button>
       <button class="btn btn-s" style="min-height:58px" onclick="openRepoScanner('requested',true)">▣ Escanear para comprobación</button>
     </div>
     <div class="repo-fast"><button class="btn btn-s" onclick="repoChangeQty('${code}',1,'rapido')">+1</button><button class="btn btn-s" onclick="repoChangeQty('${code}',5,'rapido')">+5</button><button class="btn btn-s" onclick="repoEditQty('${code}')">Editar cantidad</button></div>
-    <div class="repo-inline" style="margin-top:12px"><button class="btn btn-s" onclick="repoMark('${code}','no_encontrado')">No encontrado</button><button class="btn btn-s" onclick="repoMark('${code}','cerrado_incompleto')">Cerrar incompleto</button></div>`;
-  const controls = !repoCanEdit()
-    ? `<div class="app-dialog-product" style="margin-top:14px"><strong>${repoState.estado === 'preparando' ? 'Seguimiento en tiempo real' : 'Preparación cerrada'}</strong><span>${repoState.estado === 'preparando' ? 'El local de origen está preparando esta mercadería. Los cambios aparecerán automáticamente.' : 'Esta mercadería ya fue marcada como enviada. El detalle queda en modo consulta.'}</span></div>`
-    : ownedByMe
-      ? activeControls
-      : claimedByOther
-        ? `<button class="btn btn-s btn-full" onclick="repoShowMyAssignment('${code}')">Ver mi producto asignado →</button>`
-        : `<button class="btn btn-p btn-full" onclick="repoTakeProduct('${code}')">Tomar este producto</button>`;
+    <div class="repo-inline" style="margin-top:12px"><button class="btn btn-s" onclick="repoMark('${code}','no_encontrado')">No encontrado</button><button class="btn btn-s" onclick="repoMark('${code}','cerrado_incompleto')">Cerrar incompleto</button></div>`
+    : `<div class="app-dialog-product" style="margin-top:14px"><strong>${repoState.estado === 'preparando' ? 'Seguimiento en tiempo real' : 'Preparación cerrada'}</strong><span>${repoState.estado === 'preparando' ? 'El local de origen está preparando esta mercadería. Los cambios aparecerán automáticamente.' : 'Esta mercadería ya fue marcada como enviada. El detalle queda en modo consulta.'}</span></div>`;
   card.innerHTML = `
     <div class="repo-status-banner ${bannerClass}">${repoCurrentIndex + 1} de ${repoState.items.length} · ${label}</div>
     <span class="eyebrow">PRODUCTO ACTUAL</span>
     <h2 class="repo-product-name">${esc(item.nombre)}</h2>
     <div class="repo-source-name">SKU <strong>${esc(item.codigo)}</strong>${item.barras ? ` · Barras ${esc(item.barras)}` : ' · Sin código de barras en el padrón'}${item.descripcion_archivo && item.descripcion_archivo !== item.nombre ? `<br>Archivo: ${esc(item.descripcion_archivo)}` : ''}</div>
-    <div class="repo-quantities"><div class="repo-quantity"><span>Total físico</span><strong>${item.pedido}</strong></div><div class="repo-quantity"><span>Juntado</span><strong>${item.preparado}</strong></div><div class="repo-quantity pending"><span>Falta</span><strong>${pending}</strong></div></div>${assignmentHtml}${sourceHtml}${reasonHtml}
+    <div class="repo-quantities"><div class="repo-quantity"><span>Total físico</span><strong>${item.pedido}</strong></div><div class="repo-quantity"><span>Juntado</span><strong>${item.preparado}</strong></div><div class="repo-quantity pending"><span>Falta</span><strong>${pending}</strong></div></div>${sourceHtml}${reasonHtml}
     ${controls}`;
-}
-
-async function repoTakeProduct(encodedCode) {
-  const code = repoDecoded(encodedCode);
-  const item = repoState?.items.find(row => String(row.codigo) === code);
-  if (!item) return;
-  const claimed = await repoEnsureClaim(item);
-  if (claimed) toast(`Producto asignado a vos: ${item.nombre}`,'s');
-}
-
-function repoShowMyAssignment(encodedCode) {
-  return repoClaimNext({excludeCode:repoDecoded(encodedCode)});
 }
 
 async function repoFound(encodedCode) {
@@ -720,15 +695,8 @@ function renderRepoList() {
     const code = repoEncoded(item.codigo);
     const reason = item.motivo_label || item.motivo || '';
     const source = Number(item.pedido_clientes) > 0 ? ` · Repo ${Number(item.pedido_reposicion)||0} · Clientes ${Number(item.pedido_clientes)||0}` : '';
-    const assignment = repoItemOwnedByMe(item) ? ' · Asignado a vos' : repoItemClaimedByOther(item) ? ` · Juntando: ${esc(item.asignado_nombre || 'otra persona')}` : '';
-    const actions=!repoCanEdit()
-      ? `<strong>${item.preparado}/${item.pedido}</strong>`
-      : repoItemOwnedByMe(item)
-        ? `<div class="repo-row-actions"><button class="btn btn-s" onclick="repoChangeQty('${code}',-1,'lista')">−</button><input class="input repo-qty-input" type="number" min="0" inputmode="numeric" value="${item.preparado}" onchange="repoSetAbsolute('${code}',this.value,'lista')"><button class="btn btn-s" onclick="repoChangeQty('${code}',1,'lista')">+</button></div>`
-        : repoItemClaimedByOther(item)
-          ? `<span class="repo-assignment-pill busy">${esc(item.asignado_nombre || 'En preparación')}</span>`
-          : `<button class="btn btn-s" onclick="repoTakeProduct('${code}')">${repoItemPending(item) ? 'Tomar producto' : 'Tomar para editar'}</button>`;
-    return `<article class="repo-row ${rowClass}"><div onclick="repoOpenItem('${code}')" style="cursor:pointer"><h3>${esc(item.nombre)}</h3><div class="repo-row-meta">SKU ${esc(item.codigo)} · Total físico ${item.pedido}${source} · Stock archivo ${item.stock_origen} · ${esc(status.replaceAll('_',' '))}${reason ? ` · ${esc(reason)}` : ''}${assignment}${item.updated_by ? ` · Último cambio: ${esc(item.updated_by)}` : ''}</div></div>${actions}</article>`;
+    const actions=repoCanEdit()?`<div class="repo-row-actions"><button class="btn btn-s" onclick="repoChangeQty('${code}',-1,'lista')">−</button><input class="input repo-qty-input" type="number" min="0" inputmode="numeric" value="${item.preparado}" onchange="repoSetAbsolute('${code}',this.value,'lista')"><button class="btn btn-s" onclick="repoChangeQty('${code}',1,'lista')">+</button></div>`:`<strong>${item.preparado}/${item.pedido}</strong>`;
+    return `<article class="repo-row ${rowClass}"><div onclick="repoOpenItem('${code}')" style="cursor:pointer"><h3>${esc(item.nombre)}</h3><div class="repo-row-meta">SKU ${esc(item.codigo)} · Total físico ${item.pedido}${source} · Stock archivo ${item.stock_origen} · ${esc(status.replaceAll('_',' '))}${reason ? ` · ${esc(reason)}` : ''}${item.updated_by ? ` · Último cambio: ${esc(item.updated_by)}` : ''}</div></div>${actions}</article>`;
   }).join('') + (rows.length > visibleRows.length ? `<button class="btn btn-s btn-full" onclick="repoShowMoreItems()">Mostrar ${Math.min(200,rows.length-visibleRows.length)} más · quedan ${rows.length-visibleRows.length}</button>` : '') : '<div class="repo-empty">No hay productos para este filtro.</div>';
 }
 
@@ -1179,3 +1147,4 @@ async function editRepoRemito() {
   try { await window.SucanCloud.updateDispatchRemito(sessionId,value); repoState.remito=String(value).trim(); repoState.remito_pendiente=false; renderRepoSummary(); toast('Remito actualizado en la reposición y sus pedidos','s'); }
   catch(error){ toast(error.message||'No se pudo actualizar','e'); }
 }
+
