@@ -120,7 +120,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       padron = pdata.padron || [];
       companyLocations = locationsData.locales || [];
       invalidateSearchIndex();
-      setPadronStatus(`✅ Padrón central: ${padron.length} productos`);
+      const barcodeProducts = padron.filter(product => clean(product.barras)).length;
+      setPadronStatus(`${pdata.fallback ? '⚠️ Padrón de respaldo activo' : '✅ Padrón central'}: ${padron.length} productos · ${barcodeProducts} con barras`);
       populateLocationControls();
       if (!window.SucanCloud.isSupervisor()) {
         ['inventory-padron-upload','repo-padron-upload'].forEach(id => { const card=document.getElementById(id); if(card) card.style.display='none'; });
@@ -638,42 +639,32 @@ function setPadronStatus(msg) {
 async function loadPadron(input) {
   const file = input.files[0];
   if (!file) return;
+  input.value = '';
   toast('Procesando padrón...', 'i');
   try {
+    if (!window.SucaneitorBarcode) throw new Error('No se pudo iniciar el validador del padrón');
     const { read, utils } = XLSX;
     const data = await file.arrayBuffer();
     const wb = read(data, { type: 'array' });
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = utils.sheet_to_json(ws, { header: 1, defval: '' });
-
-    let headerRow = -1;
-    for (let i = 0; i < rows.length; i++) {
-      if (rows[i].some(c => /código|codigo/i.test(String(c)))) { headerRow = i; break; }
+    const rows = utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+    const parsed = window.SucaneitorBarcode.parseCatalogRows(rows);
+    if (!parsed.ok) throw new Error(parsed.error);
+    const stats = parsed.stats;
+    const confirmed = await appConfirm({
+      title: 'Comprobar y reemplazar padrón',
+      icon: '📋',
+      confirmText: 'Reemplazar padrón',
+      message: `${file.name}\n\nProductos: ${stats.products}\nCon código de barras: ${stats.barcodeProducts}\nSin código de barras: ${stats.withoutBarcode}${stats.duplicateBarcodes ? `\nCódigos compartidos por variantes: ${stats.duplicateBarcodes}` : ''}\n\nEl cambio se sincronizará con Inventario y Reposición.`
+    });
+    if (!confirmed) {
+      toast('Carga cancelada. El padrón anterior no cambió.', 'i');
+      return;
     }
-    let ci = 1, bi = 2, ni = 3, mi = 9, fi = 8;
-    if (headerRow >= 0) {
-      rows[headerRow].forEach((c, i) => {
-        const s = String(c).toLowerCase();
-        if (/^código$|^codigo$/.test(s)) ci = i;
-        else if (/código de barras|codigo de barras|barras/.test(s)) bi = i;
-        else if (s.includes('nombre')) ni = i;
-        else if (s.includes('marca')) mi = i;
-        else if (s.includes('fabricante')) fi = i;
-      });
-    }
-
-    padron = [];
-    for (let i = (headerRow >= 0 ? headerRow + 1 : 8); i < rows.length; i++) {
-      const r = rows[i];
-      const codigo = clean(r[ci]);
-      const nombre = clean(r[ni]);
-      if (codigo && nombre && nombre.toLowerCase() !== 'nan') {
-        padron.push({ codigo, barras: clean(r[bi]), nombre, fabricante: clean(r[fi]), marca: clean(r[mi]) });
-      }
-    }
+    padron = parsed.products;
     invalidateSearchIndex();
-    setPadronStatus(`✅ Padrón: ${padron.length} productos`);
-    toast(`✅ Padrón: ${padron.length} productos`, 's');
+    setPadronStatus(`✅ Padrón: ${padron.length} productos · ${stats.barcodeProducts} con barras`);
+    toast(`✅ Padrón validado: ${padron.length} productos`, 's');
     saveLocal();
     // Guardar el padrón central para que todos los dispositivos lo compartan.
     if (serverUrl && serverOnline) {
@@ -688,7 +679,7 @@ async function loadPadron(input) {
           throw new Error(err || 'No se pudo guardar el padrón');
         }
         const ans = await up.json().catch(() => ({}));
-        toast(`☁️ Padrón global sincronizado (${ans.total || padron.length})`, 's');
+        toast(`☁️ Padrón global sincronizado (${ans.total || padron.length} productos · ${stats.barcodeProducts} con barras)`, 's');
         await loadBarcodeAssignments();
       } catch (e) {
         console.warn('No se pudo sincronizar el padrón central:', e);
@@ -711,14 +702,13 @@ async function loadPadron(input) {
 // Estrategia: normalizar AMBOS (padron y scanned) antes de comparar.
 
 function normCode(code) {
-  let s = String(code || '').trim();
-  // Quitar espacios
-  s = s.replace(/\s/g, '');
-  return s;
+  if (window.SucaneitorBarcode) return window.SucaneitorBarcode.normalizeBarcode(code);
+  return String(code || '').trim().replace(/\s/g, '').toUpperCase();
 }
 
 // Generar variantes de un código para búsqueda flexible
 function codeVariants(code) {
+  if (window.SucaneitorBarcode) return window.SucaneitorBarcode.barcodeVariants(code);
   const s = normCode(code);
   const variants = new Set([s]);
   // Sin ceros iniciales

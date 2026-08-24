@@ -511,6 +511,8 @@ avatarEl.textContent = appState.currentPerfil.nombre[0]+appState.currentPerfil.a
 }
 safeSet('sidebar-local-badge', appState.currentPerfil.local_nombre+' ('+appState.currentPerfil.almacen+')');
 if(isAdmin) el('admin-nav').style.display='block';
+const hubAdminPadron=el('hub-admin-padron');
+if(hubAdminPadron) hubAdminPadron.style.display=isAdmin?'flex':'none';
 // Load caches
 const [{data:locs},{data:trans}]=await Promise.all([
 db.from('locales').select('*').order('nombre'),
@@ -2945,20 +2947,25 @@ await renderTransportes(); notify('Eliminado','info');
 }
 
 async function renderAdminProducts(){
-const [baseCountRes,extraCountRes]=await Promise.all([
+const [baseCountRes,barcodeCountRes,extraCountRes]=await Promise.all([
 db.from('productos').select('*',{count:'exact',head:true}),
+db.from('productos').select('*',{count:'exact',head:true}).not('barras','is',null).neq('barras',''),
 db.from('padron_extra').select('*',{count:'exact',head:true})
 ]);
 const baseCount=baseCountRes.count||0;
+const barcodeCount=barcodeCountRes.count||0;
 const extraCount=extraCountRes.error?0:(extraCountRes.count||0);
 safeSet('products-count', baseCount);
+safeSet('products-barcode-count', barcodeCount);
 safeSet('products-extra-count', extraCount);
 safeSet('products-total-count', baseCount+extraCount);
+const barcodeWarning=el('products-barcode-warning');
+if(barcodeWarning) barcodeWarning.style.display=barcodeCount===0?'block':'none';
 const q=(el('admin-search-prod')&&el('admin-search-prod').value.trim())||'';
 let qBase=db.from('productos').select('codigo,nombre,marca,barras,fabricante').order('nombre').limit(100);
 let qExtra=db.from('padron_extra').select('*').order('nombre').limit(100);
 if(q){
-qBase=qBase.or('nombre.ilike.%'+q+'%,codigo.ilike.%'+q+'%');
+qBase=qBase.or('nombre.ilike.%'+q+'%,codigo.ilike.%'+q+'%,barras.ilike.%'+q+'%');
 qExtra=qExtra.ilike('nombre','%'+q+'%');
 }
 const [baseRes,extraRes]=await Promise.all([qBase,qExtra]);
@@ -2967,6 +2974,7 @@ const extra=(extraRes.error?[]:(extraRes.data||[]).map(normalizeExtraProduct)).m
 const merged=[...base,...extra].sort((a,b)=>String(a.nombre||'').localeCompare(String(b.nombre||''))).slice(0,100);
 el('admin-products-body').innerHTML=(merged||[]).map(p=>
 '<tr><td style="font-family:\'DM Mono\',monospace;font-size:11px">'+p.codigo+'</td>'+
+'<td style="font-family:\'DM Mono\',monospace;font-size:11px">'+(p.barras||'–')+'</td>'+
 '<td style="font-size:13px">'+p.nombre+'</td>'+
 '<td style="font-size:12px;color:var(--text2)">'+(p.marca||'–')+'</td>'+
 '<td style="font-size:12px;color:var(--text3)">'+p._fuente+'</td></tr>').join('');
@@ -3022,50 +3030,71 @@ notify('Producto extra eliminado','info');
 async function handlePadronUpload(e){
 if(!requireAdminAction('importar productos')) return;
 const f=e.target.files[0]; if(!f) return;
-if(typeof XLSX==='undefined') return notify('XLSX no cargado','error');
+e.target.value='';
+if(typeof XLSX==='undefined') return notify('No se pudo iniciar el lector de Excel','error');
+if(!window.SucaneitorBarcode) return notify('No se pudo iniciar el validador del padrón','error');
 notify('Procesando archivo...','info');
 const r=new FileReader();
 r.onload=async function(ev){
 try{
-const wb=XLSX.read(ev.target.result,{type:'binary'});
+const wb=XLSX.read(ev.target.result,{type:'array'});
 const ws=wb.Sheets[wb.SheetNames[0]];
-const rows=XLSX.utils.sheet_to_json(ws,{header:1});
-let hi=-1;
-for(let i=0;i<Math.min(rows.length,15);i++){
-if(rows[i]&&rows[i].some(c=>String(c||'').toLowerCase().includes('nombre'))){hi=i;break;}
-}
-if(hi===-1) return notify('No se encontró fila de encabezados','error');
-const headers=rows[hi].map(h=>String(h||'').toLowerCase().trim());
-const iC=headers.findIndex(h=>h==='código'||h==='codigo');
-const iN=headers.findIndex(h=>h==='nombre');
-const iM=headers.findIndex(h=>h==='marca');
-const iB=headers.findIndex(h=>/^(c[oó]digo de barras|codigo barras|c[oó]digo barra|barras|barcode|ean|gtin)$/.test(h));
-const iF=headers.findIndex(h=>h==='fabricante');
-if(iN===-1) return notify('No se encontró columna Nombre','error');
-const products=[];
-for(let i=hi+1;i<rows.length;i++){
-const row=rows[i]; if(!row||!row[iN]) continue;
-const codigo=String(iC>=0?row[iC]||'':'').trim();
-const nombre=String(row[iN]||'').trim();
-if(!codigo||!nombre) continue;
-products.push({
-codigo,
-nombre,
-marca:String(iM>=0?row[iM]||'':'').trim(),
-barras:String(iB>=0?row[iB]||'':'').trim(),
-fabricante:String(iF>=0?row[iF]||'':'').trim()
-});
-}
-if(!products.length) return notify('Sin productos válidos','error');
+const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
+const parsed=window.SucaneitorBarcode.parseCatalogRows(rows);
+if(!parsed.ok) return notify(parsed.error,'error');
+const stats=parsed.stats;
+const duplicateText=stats.duplicateBarcodes
+?'<br><strong>'+stats.duplicateBarcodes+'</strong> códigos están compartidos por variantes; al escanear se pedirá elegir el SKU.'
+:'';
+showConfirm(
+'Archivo: <strong>'+escHtml(f.name)+'</strong><br><br>'+
+'Productos: <strong>'+stats.products+'</strong><br>'+
+'Con código de barras: <strong>'+stats.barcodeProducts+'</strong><br>'+
+'Sin código de barras: <strong>'+stats.withoutBarcode+'</strong>'+duplicateText+
+'<br><br>El cambio se sincronizará con Inventario y Reposición.',
+async()=>{
+try{
+notify('Actualizando padrón compartido...','info');
 // Un único procedimiento transaccional: si algo falla, el padrón anterior queda intacto.
+const {data:total,error}=await db.rpc('reemplazar_padron_productos',{payload:parsed.products});
+if(error) throw error;
+appState.productsCache=[];
+notify('Padrón actualizado: '+(total||parsed.products.length)+' productos · '+stats.barcodeProducts+' códigos de barras','success');
+await Promise.all([renderAdminProducts(),renderPadronExtra()]);
+}catch(err){notify('No se reemplazó el padrón: '+err.message,'error');}
+},
+{title:'Comprobar y reemplazar padrón',btnLabel:'Reemplazar padrón',btnClass:'btn-primary'}
+);
+}catch(err){notify('Error: '+err.message,'error');}
+};
+r.readAsArrayBuffer(f);
+}
+
+async function restoreBundledCatalog(){
+if(!requireAdminAction('restaurar productos')) return;
+try{
+notify('Comprobando padrón incluido...','info');
+const response=await fetch('/products.json',{cache:'no-store'});
+if(!response.ok) throw new Error('No se pudo abrir el padrón incluido');
+const products=await response.json();
+if(!Array.isArray(products)||!products.length) throw new Error('El padrón incluido está vacío');
+const barcodeProducts=products.filter(product=>window.SucaneitorBarcode?.normalizeBarcode(product.barras)).length;
+if(!barcodeProducts) throw new Error('El padrón incluido no contiene códigos de barras');
+showConfirm(
+'Se restaurarán <strong>'+products.length+'</strong> productos, de los cuales <strong>'+barcodeProducts+'</strong> tienen código de barras.<br><br>El cambio quedará disponible en Inventario y Reposición.',
+async()=>{
+try{
+notify('Restaurando padrón compartido...','info');
 const {data:total,error}=await db.rpc('reemplazar_padron_productos',{payload:products});
 if(error) throw error;
 appState.productsCache=[];
-notify('Padrón central actualizado: '+(total||products.length)+' productos','success');
+notify('Padrón restaurado: '+(total||products.length)+' productos · '+barcodeProducts+' con barras','success');
 await Promise.all([renderAdminProducts(),renderPadronExtra()]);
-}catch(err){notify('Error: '+err.message,'error');}
-};
-r.readAsBinaryString(f); e.target.value='';
+}catch(error){notify('No se restauró el padrón: '+error.message,'error');}
+},
+{title:'Restaurar padrón oficial incluido',btnLabel:'Restaurar padrón',btnClass:'btn-primary'}
+);
+}catch(error){notify(error.message,'error');}
 }
 
 // ═══════════════════════════════════════════

@@ -581,7 +581,7 @@ html[data-theme="dark"] body{background:radial-gradient(ellipse at 18% 8%,#1a104
 <div class="page repo-page" id="repo-page-config">
   <div class="page-heading"><div><span class="eyebrow">CONFIGURACIÓN COMPARTIDA</span><h1>Configuración</h1><p>El padrón es el mismo que utiliza Inventario.</p></div></div>
   <section class="card"><div class="card-title">Sesión activa</div><div id="repo-config-session"></div><button class="btn btn-s mt2" onclick="cambiarSesion()">Cambiar sesión o módulo</button></section>
-  <section class="card" id="repo-padron-upload"><div class="card-title">Padrón de mercaderías</div><div class="upzone" onclick="document.getElementById('repo-padron-file').click()"><div class="icon">📋</div><p><strong>Cargar nuevo padrón global</strong><br>.xls o .xlsx</p></div><input type="file" id="repo-padron-file" accept=".xls,.xlsx" style="display:none" onchange="loadPadron(this)"><div id="repo-padron-status" class="tm mt2"></div></section>
+  <section class="card" id="repo-padron-upload"><div class="card-title">Padrón de mercaderías</div><p class="tm mb2">Solo supervisores. Se comprobarán Código, Código de Barras y Nombre antes de reemplazar el padrón compartido.</p><div class="upzone" onclick="document.getElementById('repo-padron-file').click()"><div class="icon">📋</div><p><strong>Cargar nuevo padrón global</strong><br>.xls o .xlsx</p></div><input type="file" id="repo-padron-file" accept=".xls,.xlsx" style="display:none" onchange="loadPadron(this)"><div id="repo-padron-status" class="tm mt2"></div></section>
   <section class="card"><div class="card-title">Archivo original</div><p class="tm">La planilla cargada queda conservada con el historial de esta reposición.</p><button class="btn btn-s mt2" onclick="downloadRepoOriginal()">Descargar archivo original</button></section>
 </div>
 
@@ -805,6 +805,7 @@ html[data-theme="dark"] body{background:radial-gradient(ellipse at 18% 8%,#1a104
 
   <div class="card" id="inventory-padron-upload">
     <div class="card-title">Padrón de Mercaderías</div>
+    <p class="tm mb2">Solo supervisores. Se comprobarán Código, Código de Barras y Nombre antes de reemplazar el padrón compartido.</p>
     <div class="upzone" onclick="document.getElementById('padron-file').click()">
       <div class="icon">📋</div>
       <p><strong>Toca para cargar</strong> nuevo Padrón (.xls / .xlsx)</p>
@@ -863,7 +864,8 @@ html[data-theme="dark"] body{background:radial-gradient(ellipse at 18% 8%,#1a104
 <script src="search-engine.js?v=inventory-v5"></script>
 <script src="reposition-engine.js?v=reposicion-dialogs-v3"></script>
 <script src="reposition-export.js?v=reposicion-dialogs-v3"></script>
-<script src="app.js?v=v12-realtime-fix"></script>
+<script src="/barcode-utils.js?v=barcode-catalog-v1"></script>
+<script src="app.js?v=barcode-catalog-v1"></script>
 <script src="reposition-app.js?v=reposicion-collab-v5"></script>
 </body>
 </html>
