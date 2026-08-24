@@ -268,7 +268,8 @@
     const itemsByRepo=groupRows(items,'reposicion_id'), extrasByRepo=groupRows(extras,'reposicion_id'), partsByRepo=groupRows(parts,'reposicion_id');
     return repos.map(row=>{
       const snapshot={items:(itemsByRepo.get(row.id)||[]).map(repoItem),extras:(extrasByRepo.get(row.id)||[]).map(extra=>({cantidad:extra.cantidad}))};
-      return {id:row.id,nombre:row.nombre,origin:row.origen_local,destination:row.destino_local,estado:row.estado,remito:row.remito,remito_pendiente:row.remito_pendiente,created_at:row.created_at,updated_at:row.updated_at,can_edit:canEditReposition(row),participantes:(partsByRepo.get(row.id)||[]).map(part=>({nombre:part.nombre,joined:asDate(part.joined_at)})),summary:repoSummary(snapshot)};
+      const canEdit = canEditReposition(row);
+      return {id:row.id,nombre:row.nombre,origin:row.origen_local,destination:row.destino_local,estado:row.estado,remito:row.remito,remito_pendiente:row.remito_pendiente,created_at:row.created_at,updated_at:row.updated_at,can_edit:canEdit,can_delete:row.estado==='preparando'&&canEdit,participantes:(partsByRepo.get(row.id)||[]).map(part=>({nombre:part.nombre,joined:asDate(part.joined_at)})),summary:repoSummary(snapshot)};
     });
   }
 
@@ -355,6 +356,17 @@
       if(path==='/api/balance' && method==='GET') { const {data:row,error}=await cloud.db.from('op_inventario_balances').select('*').eq('sesion_id',url.searchParams.get('session_id')).maybeSingle(); if(error)throw error; return json({ok:true,balance:row?.balance||[],meta:row?.meta||null,updated:row?.updated_at||null}); }
       if(path==='/api/balance' && method==='POST') { const {error}=await cloud.db.from('op_inventario_balances').upsert({sesion_id:data.session_id,balance:data.balance||[],meta:data.meta||{},updated_by:cloud.user.id,updated_at:new Date().toISOString()},{onConflict:'sesion_id'}); if(error)throw error; return json({ok:true,total:(data.balance||[]).length}); }
       if(path==='/api/reposicion/crear' && method==='POST') { const repo=await createReposition(data); return json({ok:true,reposition_id:repo.id,repo}); }
+      if(path==='/api/reposicion/delete' && method==='POST') {
+        const repoId=clean(data.reposition_id);
+        if(!repoId) throw new Error('Reposición no indicada');
+        const {data:deleted,error}=await cloud.db.rpc('op_eliminar_reposicion',{p_reposicion:repoId});
+        if(error) throw error;
+        if(deleted?.original_path) {
+          const {error:storageError}=await cloud.db.storage.from('op-reposiciones').remove([deleted.original_path]);
+          if(storageError) console.warn('La reposición se eliminó, pero no se pudo borrar su archivo original',storageError);
+        }
+        return json({ok:true,deleted});
+      }
       if(path==='/api/reposicion/state') {
         const rid=url.searchParams.get('rid');
         const [participantResult,touchResult]=await Promise.all([
@@ -437,7 +449,7 @@
       .on('postgres_changes',{event:'*',schema:'public',table:'op_reposicion_items',filter:`reposicion_id=eq.${repoId}`},payload=>callback({kind:'item',event:payload.eventType,item:payload.new?.codigo?repoItem(payload.new):null,old:payload.old||null}))
       .on('postgres_changes',{event:'*',schema:'public',table:'op_reposicion_extras',filter:`reposicion_id=eq.${repoId}`},payload=>callback({kind:'extra',event:payload.eventType,row:payload.new||null,old:payload.old||null}))
       .on('postgres_changes',{event:'*',schema:'public',table:'op_reposicion_dispositivos',filter:`reposicion_id=eq.${repoId}`},payload=>callback({kind:'device',event:payload.eventType,row:payload.new||null,old:payload.old||null}))
-      .on('postgres_changes',{event:'UPDATE',schema:'public',table:'op_reposiciones',filter:`id=eq.${repoId}`},payload=>callback({kind:'repository',event:payload.eventType,row:payload.new||null}))
+      .on('postgres_changes',{event:'*',schema:'public',table:'op_reposiciones',filter:`id=eq.${repoId}`},payload=>callback({kind:'repository',event:payload.eventType,row:payload.new||null,old:payload.old||null}))
       .subscribe(status=>callback({kind:'status',status}));
     cloud.channels.push(channel); return channel;
   };

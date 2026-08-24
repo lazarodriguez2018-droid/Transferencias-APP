@@ -24,6 +24,7 @@ let repoClaimInFlight = null;
 let repoRefreshInFlight = false;
 let repoRefreshQueued = false;
 let repoCurrentIndex = 0;
+let repoExhausted = false;
 let repoParsedSource = null;
 let repoSourceBytes = null;
 let repoScanner = null;
@@ -263,7 +264,7 @@ function leaveOperationsWorkspace({notify = true} = {}) {
   if (notify && currentModule === 'inventario' && serverOnline && sessionId) {
     fetch(`${serverUrl}/api/sesion/salir`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId})}).catch(()=>{});
   }
-  sessionId = ''; sessionNombre = ''; repoState = null;
+  sessionId = ''; sessionNombre = ''; repoState = null; repoExhausted = false;
   serverOnline = true;
   document.getElementById('main-nav').style.display = 'none';
   document.getElementById('main-tabs').style.display = 'none';
@@ -483,6 +484,8 @@ function renderAvailableSessions() {
   visible.forEach(session => {
     const summary = session.summary || {};
     const participants = session.usuarios || session.participantes || [];
+    const entry = document.createElement('div');
+    entry.className = 'session-entry';
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'sesion-item';
@@ -503,8 +506,52 @@ function renderAvailableSessions() {
       </div>
       <span class="sesion-badge">${currentModule === 'reposicion' && (session.estado === 'enviado' || session.can_edit === false) ? 'Consultar →' : 'Entrar →'}</span>`;
     row.onclick = () => unirseASesion(session.id, session.nombre);
-    items.appendChild(row);
+    entry.appendChild(row);
+    if (currentModule === 'reposicion' && session.can_delete) {
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'session-delete';
+      remove.setAttribute('aria-label', `Eliminar reposición ${session.nombre}`);
+      remove.innerHTML = '<span aria-hidden="true">×</span><small>Eliminar</small>';
+      remove.onclick = event => {
+        event.stopPropagation();
+        eliminarReposicionDisponible(encodeURIComponent(String(session.id)));
+      };
+      entry.appendChild(remove);
+    }
+    items.appendChild(entry);
   });
+}
+
+async function eliminarReposicionDisponible(encodedId) {
+  if (currentModule !== 'reposicion') return;
+  const id = decodeURIComponent(String(encodedId || ''));
+  const session = availableSessions.find(item => String(item.id) === id);
+  if (!session?.can_delete) {
+    toast('Solamente el local de origen o un administrador puede eliminar una reposición en preparación.','w');
+    return;
+  }
+  const confirmed = await appConfirm({
+    title: 'Eliminar reposición',
+    subtitle: `${session.origin || '—'} → ${session.destination || '—'}`,
+    tone: 'danger', icon: '×', confirmText: 'Eliminar definitivamente',
+    bodyHtml: `<div class="app-dialog-product"><strong>${esc(session.nombre)}</strong><span>${session.summary?.productos || 0} productos · ${session.summary?.unidades_preparadas || 0}/${session.summary?.unidades_pedidas || 0} unidades juntadas</span></div><p class="app-dialog-message">Se borrarán la preparación, sus cantidades, participantes y archivos. Los pedidos aceptados vinculados volverán a quedar disponibles para otra reposición. Esta acción no se puede deshacer.</p>`
+  });
+  if (!confirmed) return;
+  showOperationsLoading('Eliminando reposición...');
+  try {
+    const response = await fetch('/api/reposicion/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reposition_id:id})});
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo eliminar la reposición');
+    availableSessions = availableSessions.filter(item => String(item.id) !== id);
+    populateSessionLocationFilter(availableSessions);
+    renderAvailableSessions();
+    toast('Reposición eliminada correctamente','s');
+  } catch (error) {
+    toast(error.message || 'No se pudo eliminar la reposición','e');
+  } finally {
+    finishOperationsBoot();
+  }
 }
 
 async function cargarSesionesDisponibles() {

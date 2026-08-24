@@ -170,6 +170,17 @@
     return result;
   }
 
+  function pickupState(repo) {
+    const items = repo && Array.isArray(repo.items) ? repo.items : [];
+    const pending = items.filter(item => ['pendiente','parcial'].includes(status(item)));
+    return {
+      total: items.length,
+      remaining: pending.length,
+      assigned: pending.filter(item => clean(item.asignado_cliente)).length,
+      completed: pending.length === 0
+    };
+  }
+
   function mainTransferRows(repo) {
     return (repo.items || []).filter(item => Number(item.preparado) > 0)
       .map(item => {
@@ -218,6 +229,7 @@
     parseWorkbook,
     status,
     summary,
+    pickupState,
     mainTransferRows,
     orderTransferRows,
     extraTransferRows,
