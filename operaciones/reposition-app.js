@@ -7,6 +7,8 @@ let repoTemplateBytes = null;
 let repoListRenderLimit = 200;
 let repoUrgentTimer = null;
 const repoUrgentSnoozed = new Map();
+let repoCatalogIndex = null;
+let repoCatalogIndexSource = null;
 
 const REPO_NOT_FOUND_REASONS = [
   {code:'stock_insuficiente', label:'Stock insuficiente'},
@@ -15,6 +17,31 @@ const REPO_NOT_FOUND_REASONS = [
 
 function repoApi(path, options) {
   return fetch(`${serverUrl}${path}`, options);
+}
+
+function repoProductFromCatalog(code) {
+  if (repoCatalogIndexSource !== padron || !repoCatalogIndex) {
+    repoCatalogIndexSource = padron;
+    repoCatalogIndex = new Map((padron || []).map(product => [String(product.codigo || '').trim(), product]));
+  }
+  return repoCatalogIndex.get(String(code || '').trim()) || null;
+}
+
+function repoHydrateItemFromCatalog(item) {
+  if (!item) return item;
+  const product = repoProductFromCatalog(item.codigo);
+  if (!product) return item;
+  const barcode = String(product.barras || item.barras || '').trim();
+  const brand = String(product.marca || item.marca || '').trim();
+  if (barcode === String(item.barras || '').trim() && brand === String(item.marca || '').trim()) return item;
+  return {...item, barras:barcode, marca:brand};
+}
+
+function repoHydrateStateFromCatalog(state) {
+  if (!state) return state;
+  state.items = (state.items || []).map(repoHydrateItemFromCatalog);
+  state.extras = (state.extras || []).map(repoHydrateItemFromCatalog);
+  return state;
 }
 
 async function waitForXlsx(timeoutMs = 8000) {
@@ -120,6 +147,7 @@ async function joinReposition(rid, nombre, url, usuario, initialRepo, options = 
         invalidateSearchIndex();
       }
     } catch (error) {}
+    repoHydrateStateFromCatalog(repoState);
     await loadBarcodeAssignments();
     if (repoCanEdit()) await repoClaimNext({render:false,silent:true});
     enterRepositionApp(options);
@@ -178,6 +206,7 @@ function repoItemClaimedByOther(item) {
 
 function repoMergeItem(item) {
   if (!repoState || !item?.codigo) return -1;
+  item = repoHydrateItemFromCatalog(item);
   const index = repoState.items.findIndex(row => String(row.codigo) === String(item.codigo));
   if (index >= 0) repoState.items[index] = item;
   return index;
@@ -257,7 +286,7 @@ async function repoRefreshState({claimIfNeeded = true} = {}) {
       const response = await fetch(`/api/reposicion/state?rid=${encodeURIComponent(sessionId)}`);
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo sincronizar');
-      repoState = data.repo;
+      repoState = repoHydrateStateFromCatalog(data.repo);
       let index = repoState.items.findIndex(repoItemOwnedByMe);
       if (index < 0 && currentCode != null) index = repoState.items.findIndex(item => String(item.codigo) === String(currentCode));
       repoCurrentIndex = index >= 0 ? index : repoFindInitialIndex();
@@ -336,20 +365,21 @@ function connectRepositionSSE() {
   }
   repoSSE = new EventSource(`${serverUrl}/api/reposicion/events?rid=${encodeURIComponent(sessionId)}`);
   repoSSE.addEventListener('init', event => {
-    repoState = JSON.parse(event.data);
+    repoState = repoHydrateStateFromCatalog(JSON.parse(event.data));
     renderRepositionAll();
   });
   repoSSE.addEventListener('update', event => {
     const data = JSON.parse(event.data);
     const index = repoState.items.findIndex(item => String(item.codigo) === String(data.item.codigo));
-    if (index >= 0) repoState.items[index] = data.item;
+    if (index >= 0) repoState.items[index] = repoHydrateItemFromCatalog(data.item);
     if (data.log) { repoState.log = repoState.log || []; repoState.log.unshift(data.log); }
     renderRepositionAll();
   });
   repoSSE.addEventListener('extra', event => {
     const data = JSON.parse(event.data);
     const index = repoState.extras.findIndex(item => String(item.codigo) === String(data.extra.codigo));
-    if (index >= 0) repoState.extras[index] = data.extra; else repoState.extras.push(data.extra);
+    const extra = repoHydrateItemFromCatalog(data.extra);
+    if (index >= 0) repoState.extras[index] = extra; else repoState.extras.push(extra);
     renderRepositionAll();
   });
   repoSSE.addEventListener('extra_remove', event => {
@@ -545,7 +575,7 @@ async function repoUpdateQuantity(encodedCode, change, source) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo actualizar');
     const index = repoState.items.findIndex(row => String(row.codigo) === code);
-    repoState.items[index] = data.item;
+    repoState.items[index] = repoHydrateItemFromCatalog(data.item);
     tactileFeedback(24);
     if (Number(data.item.preparado) >= Number(data.item.pedido) && source !== 'lista') {
       await repoClaimNext({excludeCode:code,render:false,silent:true});
@@ -636,7 +666,7 @@ async function repoMark(encodedCode, field) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo guardar');
     const index = repoState.items.findIndex(row => String(row.codigo) === code);
-    repoState.items[index] = data.item;
+    repoState.items[index] = repoHydrateItemFromCatalog(data.item);
     await repoClaimNext({excludeCode:code,render:false,silent:true});
     renderRepositionAll();
   } catch (error) { toast(error.message, 'e'); }
@@ -767,7 +797,8 @@ async function repoUpdateExtra(productOrCode, value, absolute = false) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo guardar el extra');
     const index = repoState.extras.findIndex(item => String(item.codigo) === code);
-    if (index >= 0) repoState.extras[index] = data.extra; else repoState.extras.push(data.extra);
+    const extra = repoHydrateItemFromCatalog(data.extra);
+    if (index >= 0) repoState.extras[index] = extra; else repoState.extras.push(extra);
     renderRepositionAll();
     toast('Extra actualizado en su remito separado', 's');
   } catch (error) { toast(error.message, 'e'); }
@@ -1095,7 +1126,7 @@ async function checkRepoUrgentOrders() {
         bodyHtml:`<div class="app-dialog-product"><strong>${esc(order.cliente || 'Cliente sin nombre')}</strong><span>${esc(order.telefono || 'Sin teléfono')}</span></div><p class="app-dialog-message">Este pedido fue aceptado después de iniciar la preparación.</p><div class="app-dialog-product">${products}</div>`
       });
       if (confirmed) {
-        repoState=await window.SucanCloud.addUrgentOrder(sessionId,order.id);
+        repoState=repoHydrateStateFromCatalog(await window.SucanCloud.addUrgentOrder(sessionId,order.id));
         renderRepositionAll();
         toast('Pedido urgente agregado a la reposición actual','s');
       } else repoUrgentSnoozed.set(order.id, Date.now() + 5 * 60 * 1000);
@@ -1134,7 +1165,7 @@ async function confirmRepoDispatch() {
     await window.SucanCloud.finalizeDispatch({repoId:sessionId,transporte,remito,remitoPendiente:later,observaciones:notes});
     closeModal();
     const response=await fetch(`/api/reposicion/state?rid=${encodeURIComponent(sessionId)}`),data=await response.json();
-    if(data.ok) repoState=data.repo;
+    if(data.ok) repoState=repoHydrateStateFromCatalog(data.repo);
     stopRepoUrgentWatcher(); renderRepositionAll(); showRepoTab('resumen');
     toast('Mercadería marcada como enviada','s');
   } catch(error){ toast(error.message || 'No se pudo confirmar el envío','e'); }

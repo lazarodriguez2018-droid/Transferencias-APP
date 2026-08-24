@@ -157,9 +157,11 @@
     };
   }
 
-  function repoItem(row) {
+  function repoItem(row, catalogByCode) {
+    const product = catalogByCode?.get(clean(row.codigo));
     return {
-      codigo:row.codigo,nombre:row.nombre,descripcion_archivo:row.descripcion_archivo || '',barras:row.barras || '',marca:row.marca || '',
+      codigo:row.codigo,nombre:row.nombre,descripcion_archivo:row.descripcion_archivo || '',
+      barras:clean(product?.barras) || row.barras || '',marca:clean(product?.marca) || row.marca || '',
       pedido:Number(row.pedido_total || Math.max(row.pedido_reposicion || 0,row.pedido_clientes || 0)),
       pedido_reposicion:Number(row.pedido_reposicion || 0),pedido_clientes:Number(row.pedido_clientes || 0),
       stock_origen:Number(row.stock_origen || 0),preparado:Number(row.preparado || 0),
@@ -196,6 +198,9 @@
       cloud.db.from('op_reposicion_eventos').select('*').eq('reposicion_id',repoId).order('created_at',{ascending:false}).limit(500)
     ]);
     if (re || ie || xe || pe || de || ee) throw re || ie || xe || pe || de || ee;
+    const productCodes = [...new Set([...(items || []), ...(extras || [])].map(row => clean(row.codigo)).filter(Boolean))];
+    const catalogRows = await selectInBatches('productos','codigo,barras,marca','codigo',productCodes);
+    const catalogByCode = new Map(catalogRows.map(product => [clean(product.codigo),product]));
     const snapshot = {
       id:repo.id,nombre:repo.nombre,origin:repo.origen_local,destination:repo.destino_local,estado:repo.estado,
       started_at:repo.started_at,created_at:repo.created_at,updated_at:repo.updated_at,
@@ -203,8 +208,8 @@
       transporte:repo.transporte,remito:repo.remito,remito_pendiente:repo.remito_pendiente,
       can_edit:canEditReposition(repo),can_update_remito:cloud.isSupervisor() || clean(repo.origen_local) === clean(cloud.profile?.local_nombre),
       viewer_client_id:cloud.clientId,
-      items:(items || []).map(repoItem),
-      extras:(extras || []).map(row=>({codigo:row.codigo,nombre:row.nombre,barras:row.barras || '',cantidad:row.cantidad,nota:row.nota || '',updated_by:row.updated_by_name || '',updated_at:row.updated_at})),
+      items:(items || []).map(row=>repoItem(row,catalogByCode)),
+      extras:(extras || []).map(row=>({codigo:row.codigo,nombre:row.nombre,barras:clean(catalogByCode.get(clean(row.codigo))?.barras) || row.barras || '',cantidad:row.cantidad,nota:row.nota || '',updated_by:row.updated_by_name || '',updated_at:row.updated_at})),
       participantes:(devices || []).map(row=>({nombre:row.nombre,cliente_id:row.cliente_id,usuario_id:row.usuario_id,last_seen:row.last_seen,joined:asDate(row.last_seen)})),
       log:(events || []).map(row=>({ts:row.created_at,usuario:row.usuario_nombre,accion:row.accion,codigo:row.codigo,detalle:row.detalle || {}})),exports:[]
     };
