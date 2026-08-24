@@ -625,9 +625,9 @@ html[data-theme="dark"] body{background:radial-gradient(ellipse at 18% 8%,#1a104
   <div class="repo-access-banner" id="receipt-access-banner"><strong>Modo consulta</strong>La recepción se controla desde el local destino. Podés verla, pero no modificar cantidades.</div>
   <div id="receipt-kpis-control" class="repo-kpis"></div>
   <section class="card receipt-primary-search receipt-edit-only">
-    <div class="card-title">Buscar y tachar productos del remito</div>
+    <div class="card-title">Buscar y verificar productos del remito</div>
     <input id="receipt-search-input" class="input receipt-search-input" type="search" autocomplete="off" placeholder="Ej: dog chow adulto 21 kg, 12549078…" onfocus="searchReceiptProducts(this.value,'expected')" oninput="searchReceiptProducts(this.value,'expected')">
-    <div class="receipt-flow-guide"><span><strong>1.</strong> Buscá el producto.</span><span><strong>2.</strong> Tocá “Tachar” si llegó lo indicado.</span><span><strong>3.</strong> Si difiere, editá la cantidad.</span></div>
+    <div class="receipt-flow-guide"><span><strong>1.</strong> Buscá el producto.</span><span><strong>2.</strong> Confirmá la cantidad indicada.</span><span><strong>3.</strong> Si difiere, registrá la cantidad real.</span></div>
     <div id="receipt-search-results" class="repo-search-results receipt-search-results"></div>
   </section>
   <div class="repo-workspace">
@@ -643,7 +643,7 @@ html[data-theme="dark"] body{background:radial-gradient(ellipse at 18% 8%,#1a104
 <div class="page receipt-page" id="receipt-page-lista">
   <div class="page-heading"><div><span class="eyebrow">TODO EL REMITO</span><h1>Productos esperados</h1><p>Las cantidades se actualizan en tiempo real entre todos los usuarios.</p></div></div>
   <div id="receipt-kpis-lista" class="repo-kpis"></div>
-  <div class="repo-list-toolbar"><input id="receipt-list-search" class="input" type="search" placeholder="Filtrar por nombre o SKU" oninput="renderReceiptList()"><select id="receipt-list-filter" class="input repo-filter" onchange="renderReceiptList()"><option value="all">Toda la lista</option><option value="pending">Sin tachar o parciales</option><option value="exact">Tachados exactos</option><option value="short">Con faltantes</option><option value="over">Con sobrantes</option><option value="not_received">No llegaron</option></select></div>
+  <div class="repo-list-toolbar"><input id="receipt-list-search" class="input" type="search" placeholder="Filtrar por nombre o SKU" oninput="renderReceiptList()"><select id="receipt-list-filter" class="input repo-filter" onchange="renderReceiptList()"><option value="all">Toda la lista</option><option value="pending">Pendientes o parciales</option><option value="exact">Recepciones confirmadas</option><option value="short">Con faltantes</option><option value="over">Con excedentes</option><option value="not_received">No recibidos</option></select></div>
   <div id="receipt-items-list" class="repo-list"></div>
 </div>
 
@@ -956,7 +956,7 @@ html[data-theme="dark"] body{background:radial-gradient(ellipse at 18% 8%,#1a104
 <script src="/barcode-utils.js?v=barcode-catalog-v1"></script>
 <script src="app.js?v=receipt-directory-v2"></script>
 <script src="reposition-app.js?v=repo-finish-delete-v1"></script>
-<script src="reception-app.js?v=receipt-checklist-v3"></script>
+<script src="reception-app.js?v=receipt-terminology-v4"></script>
 </body>
 </html>
 
