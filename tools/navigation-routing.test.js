@@ -22,7 +22,7 @@ assert.match(portalHtml, /href="\/operaciones\?module=reposicion"/);
 assert.match(operationsHtml, /href="\/"[^>]*>← Volver al inicio<\/a>/);
 assert.doesNotMatch(operationsHtml, /id="module-screen"|¿Qué vas a hacer\?|Usar sin servidor|URL del servidor|Modo Red Local/,
   'Operaciones no debe conservar el selector blanco ni opciones del servidor local');
-assert.match(operationsHtml, /app\.js\?v=v8-sync-navigation/,
+assert.match(operationsHtml, /app\.js\?v=v10-unified-loading/,
   'El navegador debe solicitar la versión nueva y no reutilizar archivos antiguos');
 assert.doesNotMatch(operationsJs, /module-screen|sc_server_url|input-server-url/,
   'La navegación y las sesiones deben funcionar únicamente sobre la web alojada');
@@ -59,10 +59,16 @@ assert.match(realtimeMigration, /'pedido_productos'/,
 assert.match(portalJs, /classList\.toggle\('hub-mode',view==='hub'\)/);
 assert.match(portalJs, /window\.addEventListener\('popstate', restoreNavigationState\)/,
   'El botón Atrás debe restaurar la sección anterior del portal');
+assert.match(portalJs, /view!==appState\.activeView\|\|!appState\.navigationReady/,
+  'Atrás no debe renderizar otra vez una sección que ya está visible');
 assert.match(portalJs, /function closeModal[\s\S]*return new Promise[\s\S]*history\.back\(\)/,
   'Cerrar una ventana debe esperar a que el historial vuelva antes de abrir otra vista');
 assert.match(operationsJs, /window\.addEventListener\('popstate', handleOperationsPopState\)/,
   'El botón Atrás debe recorrer sesión y pestañas de Operaciones');
+assert.match(operationsJs, /if \(routeAlreadyCurrent\) return;/,
+  'Cerrar una ventana de Operaciones no debe volver a renderizar la pantalla anterior');
+assert.match(operationsJs, /selectModule\(requestedModule,\{showSessions:!requestedSession\}\)/,
+  'Un enlace directo a una sesión no debe mostrar antes el selector de sesiones');
 assert.match(portalCss, /#app-page\.hub-mode \.sidebar[\s\S]*display:none !important/,
   'El selector inicial no debe mostrar la barra lateral');
 

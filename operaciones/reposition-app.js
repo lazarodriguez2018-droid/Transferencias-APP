@@ -202,10 +202,17 @@ function connectRepositionSSE() {
 
 function showRepoTab(name, options = {}) {
   if (currentModule !== 'reposicion') return;
+  const page = document.getElementById(`repo-page-${name}`);
+  const tab = document.getElementById(`repo-tab-${name}`);
+  if (!page || !tab) return;
+  if (options.force !== true && page.classList.contains('active') && tab.classList.contains('active')) {
+    if (sessionId) updateOperationsHistory(options.history || 'push','workspace',name);
+    return;
+  }
   document.querySelectorAll('.page,.repo-page').forEach(page => page.classList.remove('active'));
   document.querySelectorAll('#repo-tabs .tab').forEach(tab => tab.classList.remove('active'));
-  document.getElementById(`repo-page-${name}`)?.classList.add('active');
-  document.getElementById(`repo-tab-${name}`)?.classList.add('active');
+  page.classList.add('active');
+  tab.classList.add('active');
   window.scrollTo({top:0, behavior:'auto'});
   if (name === 'lista') renderRepoList();
   if (name === 'extras') renderRepoExtras();

@@ -93,6 +93,14 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
 </head>
 <body>
 
+<div id="global-spinner" style="display:flex" role="status" aria-live="polite" aria-label="Cargando Sucaneitor">
+  <div class="spinner-box">
+    <div class="spinner-icon" aria-hidden="true">📦</div>
+    <div class="spinner-ring" aria-hidden="true"></div>
+    <div class="spinner-txt">Cargando...</div>
+  </div>
+</div>
+
 <!-- ══════════════════ AUTH PAGE ══════════════════ -->
 <div id="auth-page" class="page active" style="display:flex">
   <div class="auth-card">
@@ -157,13 +165,44 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         <button class="btn btn-primary" id="btn-reg-step1">Continuar →</button>
       </div>
       <div id="reg-step2" style="display:none">
-        <div style="font-size:42px;text-align:center;margin-bottom:12px">✉️</div>
-        <p style="font-size:14px;color:var(--text2);line-height:1.6;margin-bottom:16px;text-align:center">
-          Te enviamos un enlace de confirmación a <strong id="reg-email-display"></strong>.
-          Abrilo desde tu correo y volverás automáticamente a Sucaneitor.
-        </p>
-        <button class="btn btn-primary" id="btn-reg-step2" style="margin-bottom:10px">Ya confirmé mi correo</button>
-        <button class="btn btn-ghost" id="btn-reg-back">← Usar otro correo</button>
+        <div class="verification-head">
+          <div class="verification-icon">✉</div>
+          <div>
+            <h2>Confirmá tu correo</h2>
+            <p>Enviamos un enlace y un código a <strong id="reg-email-display"></strong>.</p>
+          </div>
+        </div>
+
+        <section class="verification-option" aria-labelledby="reg-code-title">
+          <div class="verification-step">1</div>
+          <div class="verification-copy">
+            <h3 id="reg-code-title">Ingresar el código</h3>
+            <p>Copiá el código que aparece en el correo.</p>
+          </div>
+          <label class="sr-only" for="reg-code">Código de confirmación</label>
+          <input class="form-input verification-code" type="text" id="reg-code"
+            inputmode="numeric" autocomplete="one-time-code" enterkeyhint="done"
+            maxlength="6" placeholder="000000" aria-describedby="reg-code-help">
+          <div class="verification-help" id="reg-code-help">Es el código de 6 números del correo.</div>
+          <button class="btn btn-primary" id="btn-reg-verify-code">Confirmar con código</button>
+        </section>
+
+        <div class="verification-divider"><span>o</span></div>
+
+        <section class="verification-option verification-link" aria-labelledby="reg-link-title">
+          <div class="verification-step">2</div>
+          <div class="verification-copy">
+            <h3 id="reg-link-title">Usar el enlace del correo</h3>
+            <p>Abrilo y volverás automáticamente a Sucaneitor.</p>
+          </div>
+          <button class="btn btn-ghost" id="btn-reg-step2">Ya abrí el enlace</button>
+        </section>
+
+        <div class="verification-actions">
+          <button class="verification-text-btn" id="btn-reg-resend">Reenviar correo</button>
+          <span aria-hidden="true">·</span>
+          <button class="verification-text-btn" id="btn-reg-back">Cambiar correo</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1080,6 +1119,6 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   </div>
 </div>
 
-<script src="app.js?v=unified-navigation-v2"></script>
+<script src="app.js?v=unified-loading-v3"></script>
 </body>
 </html>
