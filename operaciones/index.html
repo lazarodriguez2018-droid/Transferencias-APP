@@ -426,6 +426,8 @@ html[data-theme="dark"] body{background:radial-gradient(ellipse at 18% 8%,#1a104
 .operations-boot{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(15,15,19,.75);backdrop-filter:blur(4px);transition:opacity .16s ease}
 .receipt-current .repo-inline .btn,.receipt-order .repo-inline .btn{min-height:48px}
 .operations-boot.hidden{opacity:0;pointer-events:none}.operations-boot-card{display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center;color:var(--text)}.operations-boot-icon{font-size:48px;line-height:1;animation:operationsBootBounce 1s ease-in-out infinite}.operations-boot-spinner{width:48px;height:48px;border:3px solid rgba(108,99,255,.2);border-top-color:#6c63ff;border-radius:50%;animation:operationsBootSpin .8s linear infinite}.operations-boot-card strong{display:none}.operations-boot-card span{color:var(--muted);font-size:13px;letter-spacing:.5px}@keyframes operationsBootBounce{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-12px) scale(1.1)}}@keyframes operationsBootSpin{to{transform:rotate(360deg)}}
+.session-invite-fab{position:fixed;right:22px;bottom:22px;z-index:1250;display:none;align-items:center;gap:11px;max-width:250px;padding:13px 17px;border:1px solid color-mix(in srgb,var(--accent) 58%,var(--border));border-radius:16px;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 95%,#111),color-mix(in srgb,var(--accent2) 82%,#111));color:#fff;box-shadow:0 18px 50px rgba(31,22,95,.36);font:800 13px 'DM Sans';cursor:pointer;text-align:left}.session-invite-fab.show{display:flex}.session-invite-fab-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:rgba(255,255,255,.15);font-size:21px}.session-invite-fab small{display:block;margin-top:2px;color:rgba(255,255,255,.76);font-size:10px;font-weight:600}.session-invite-layer{position:fixed;inset:0;z-index:1900;display:none;background:rgba(5,6,13,.55);backdrop-filter:blur(4px)}.session-invite-layer.show{display:block}.session-invite-drawer{position:absolute;top:0;right:0;width:min(470px,100%);height:100%;overflow:auto;background:var(--bg);border-left:1px solid var(--border);box-shadow:-25px 0 70px rgba(0,0,0,.28);padding:max(20px,env(safe-area-inset-top)) 20px max(24px,env(safe-area-inset-bottom))}.session-invite-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px}.session-invite-head h2{font-size:23px;letter-spacing:-.035em}.session-invite-head p{margin-top:5px;color:var(--muted);font-size:12px;line-height:1.45}.session-invite-close{width:44px;height:44px;flex:0 0 auto;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);font-size:20px;cursor:pointer}.session-invite-card{padding:16px;border:1px solid var(--border);border-radius:16px;background:var(--surface);box-shadow:var(--shadow);margin-bottom:12px}.session-invite-session{display:flex;align-items:center;gap:11px}.session-invite-session-icon{display:grid;place-items:center;width:44px;height:44px;border-radius:13px;background:color-mix(in srgb,var(--accent) 13%,var(--surface));color:var(--accent);font-size:22px}.session-invite-session strong{display:block;font-size:14px}.session-invite-session span{display:block;margin-top:3px;color:var(--muted);font-size:11px}.session-invite-qr{display:grid;place-items:center;margin:14px auto;width:224px;min-height:224px;padding:12px;border-radius:18px;background:#fff;box-shadow:0 10px 30px rgba(0,0,0,.13)}.session-invite-qr canvas{display:block;max-width:100%;height:auto!important}.session-invite-url{display:flex;gap:7px}.session-invite-url input{min-width:0;flex:1;font:600 11px 'DM Mono',monospace}.session-invite-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.session-invite-actions .btn{min-height:48px}.session-invite-status{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 13px;border-radius:12px;background:var(--surface2);font-size:11px}.session-invite-status b{display:flex;align-items:center;gap:7px}.session-invite-dot{width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 0 5px color-mix(in srgb,var(--green) 13%,transparent)}.session-invite-status.paused .session-invite-dot{background:var(--yellow);box-shadow:0 0 0 5px color-mix(in srgb,var(--yellow) 13%,transparent)}.session-invite-help{padding:12px;border-radius:12px;background:color-mix(in srgb,var(--accent) 8%,var(--surface));color:var(--muted);font-size:11px;line-height:1.55}.session-invite-help strong{color:var(--text)}.session-guests-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.session-guests-head h3{font-size:14px}.session-guests-head span{padding:4px 8px;border-radius:99px;background:var(--surface2);color:var(--muted);font:700 10px 'DM Mono',monospace}.session-guest-list{display:grid;gap:8px}.session-guest{display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:center;gap:10px;padding:9px;border:1px solid var(--border);border-radius:12px;background:var(--surface2)}.session-guest-photo{width:44px;height:44px;object-fit:cover;border-radius:12px;background:var(--surface);border:1px solid var(--border)}.session-guest strong{display:block;font-size:12px}.session-guest span{display:block;margin-top:3px;color:var(--muted);font-size:10px}.session-guest .btn{padding:8px;min-width:40px}.session-invite-empty{padding:18px;text-align:center;color:var(--muted);font-size:11px}.session-invite-loading{display:grid;place-items:center;min-height:280px;text-align:center;color:var(--muted);font-size:12px}.session-invite-warning{padding:14px;border:1px solid color-mix(in srgb,var(--yellow) 45%,var(--border));border-radius:13px;background:color-mix(in srgb,var(--yellow) 9%,var(--surface));font-size:11px;line-height:1.5}.session-invite-warning strong{display:block;margin-bottom:4px;color:var(--text)}
+@media(max-width:760px){.session-invite-fab{right:12px;bottom:calc(78px + env(safe-area-inset-bottom));max-width:218px;padding:11px 13px}.session-invite-drawer{padding-left:14px;padding-right:14px}.session-invite-qr{width:210px;min-height:210px}.session-invite-actions{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -916,6 +918,21 @@ html[data-theme="dark"] body{background:radial-gradient(ellipse at 18% 8%,#1a104
   </div>
 </div>
 
+<!-- INVITACIÓN TEMPORAL PARA COLABORADORES -->
+<button class="session-invite-fab" id="session-invite-fab" type="button" onclick="openSessionInvitePanel()" aria-label="Invitar colaboradores a esta sesión">
+  <span class="session-invite-fab-icon" aria-hidden="true">▦</span>
+  <span>Invitar colaboradores<small>QR o enlace seguro</small></span>
+</button>
+<div class="session-invite-layer" id="session-invite-layer" aria-hidden="true" onclick="if(event.target===this)closeSessionInvitePanel()">
+  <aside class="session-invite-drawer" role="dialog" aria-modal="true" aria-labelledby="session-invite-title">
+    <header class="session-invite-head">
+      <div><h2 id="session-invite-title">Acceso para colaboradores</h2><p>Compartí esta tarea sin crear cuentas nuevas.</p></div>
+      <button class="session-invite-close" type="button" onclick="closeSessionInvitePanel()" aria-label="Cerrar">×</button>
+    </header>
+    <div id="session-invite-content" class="session-invite-loading">Preparando acceso seguro…</div>
+  </aside>
+</div>
+
 <!-- MODAL -->
 <div class="mo" id="modal-overlay">
   <div class="modal">
@@ -948,6 +965,7 @@ html[data-theme="dark"] body{background:radial-gradient(ellipse at 18% 8%,#1a104
 <div class="toast" id="toast"></div>
 
 <script src="html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script src="cloud-config.js"></script>
 <script src="cloud-api.js?v=receipt-directory-v2"></script>
 <script src="search-engine.js?v=inventory-v5"></script>
@@ -955,9 +973,10 @@ html[data-theme="dark"] body{background:radial-gradient(ellipse at 18% 8%,#1a104
 <script src="reception-engine.js?v=receipt-export-v2"></script>
 <script src="reposition-export.js?v=reposicion-dialogs-v3"></script>
 <script src="/barcode-utils.js?v=barcode-catalog-v1"></script>
-<script src="app.js?v=receipt-confirmation-v3"></script>
+<script src="app.js?v=guest-access-v1"></script>
 <script src="reposition-app.js?v=repo-finish-delete-v1"></script>
 <script src="reception-app.js?v=receipt-confirmation-v5"></script>
+<script src="session-invite.js?v=guest-access-v1"></script>
 </body>
 </html>
 

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <base href="/operaciones/">
+  <title>Colaborar · Sucaneitor</title>
+  <meta name="theme-color" content="#111119">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <link rel="icon" type="image/svg+xml" href="/logo.svg?v=2">
+  <link rel="apple-touch-icon" href="sucan_logo.png">
+  <link rel="stylesheet" href="invitado.css?v=guest-access-v1">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <div class="guest-boot" id="guest-boot"><img src="sucan_logo.png" alt=""><span class="guest-spinner"></span><p id="guest-boot-text">Verificando invitación…</p></div>
+
+  <main class="guest-shell">
+    <section class="guest-entry" id="guest-entry" hidden>
+      <header class="guest-brand"><img src="sucan_logo.png" alt="Sucaneitor"><div><strong>Sucaneitor</strong><span>Acceso para colaboradores</span></div></header>
+      <article class="guest-welcome-card">
+        <span class="guest-eyebrow" id="guest-module-label">SESIÓN COMPARTIDA</span>
+        <h1 id="guest-session-name">Colaborá en esta sesión</h1>
+        <p id="guest-session-route"></p>
+        <div class="guest-access-note"><span>✓</span><p><strong>No necesitás una cuenta.</strong> Solo podrás trabajar en esta sesión. No tendrás acceso a informes, configuración ni otros módulos.</p></div>
+      </article>
+      <form class="guest-form-card" id="guest-join-form">
+        <label class="guest-field"><span>Tu nombre</span><input id="guest-name" autocomplete="name" maxlength="80" placeholder="Nombre y apellido" required></label>
+        <div class="guest-photo-field"><span class="guest-field-label">Tu foto</span><button class="guest-photo-button" id="guest-photo-button" type="button" onclick="document.getElementById('guest-photo-input').click()"><span class="guest-photo-preview" id="guest-photo-preview">📷</span><span><strong id="guest-photo-title">Tomar una foto</strong><small>Es obligatoria para identificarte en la sesión.</small></span></button><input id="guest-photo-input" type="file" accept="image/*" capture="user" hidden></div>
+        <p class="guest-form-error" id="guest-join-error" role="alert"></p>
+        <button class="guest-primary" id="guest-join-button" type="submit">Ingresar a colaborar</button>
+        <p class="guest-privacy">La foto solo identifica tu participación y se elimina automáticamente después del período de conservación de la sesión.</p>
+      </form>
+    </section>
+
+    <section class="guest-error-screen" id="guest-error-screen" hidden><img src="sucan_logo.png" alt="Sucaneitor"><span>!</span><h1 id="guest-error-title">Este acceso no está disponible</h1><p id="guest-error-message">Pedile a la persona responsable un nuevo enlace.</p><button class="guest-secondary" type="button" onclick="location.reload()">Volver a intentar</button></section>
+
+    <section class="guest-workspace" id="guest-workspace" hidden>
+      <header class="guest-workspace-head"><div class="guest-session-mark"><img src="sucan_logo.png" alt=""><div><strong id="workspace-module">Sesión</strong><span id="workspace-session">Cargando…</span></div></div><div class="guest-identity"><img id="workspace-photo" alt="Tu foto"><span id="workspace-name"></span><i title="Conectado"></i></div></header>
+      <div class="guest-sync-line"><span class="guest-live-dot"></span><b>Sincronización activa</b><span id="guest-last-sync">Ahora</span></div>
+      <section class="guest-search-card"><div class="guest-search-head"><div><span class="guest-eyebrow">BUSCAR O ESCANEAR</span><p id="guest-search-help">Buscá por nombre, código o código de barras.</p></div><button class="guest-scan-button" type="button" onclick="openGuestScanner()">▣ Escanear</button></div><div class="guest-search-box"><input id="guest-search" type="search" enterkeyhint="search" autocomplete="off" placeholder="Nombre, código o barras…"><button type="button" aria-label="Borrar búsqueda" onclick="clearGuestSearch()">×</button></div><div class="guest-search-results" id="guest-search-results" hidden></div></section>
+      <section id="guest-module-content"></section>
+      <footer class="guest-locked-footer"><span>🔒</span><p><strong>Acceso limitado a esta sesión</strong>Para cambiar de tarea necesitás escanear la invitación correspondiente.</p></footer>
+    </section>
+  </main>
+
+  <div class="guest-modal-layer" id="guest-modal-layer" hidden><section class="guest-modal" role="dialog" aria-modal="true"><div class="guest-modal-icon" id="guest-modal-icon">?</div><h2 id="guest-modal-title">Confirmar</h2><p id="guest-modal-message"></p><div id="guest-modal-body"></div><p class="guest-modal-error" id="guest-modal-error"></p><div class="guest-modal-actions"><button class="guest-secondary" id="guest-modal-cancel" type="button">Cancelar</button><button class="guest-primary" id="guest-modal-confirm" type="button">Confirmar</button></div></section></div>
+  <div class="guest-scanner" id="guest-scanner" hidden><header><div><strong>Escanear producto</strong><span>Apuntá al código de barras</span></div><button type="button" onclick="closeGuestScanner()">×</button></header><div id="guest-scanner-reader"></div><p id="guest-scanner-status">La cámara detectará el código automáticamente.</p></div>
+  <div class="guest-toast" id="guest-toast" role="status"></div>
+
+  <script src="html5-qrcode.min.js"></script>
+  <script src="cloud-config.js"></script>
+  <script src="search-engine.js?v=inventory-v5"></script>
+  <script src="/barcode-utils.js?v=barcode-catalog-v1"></script>
+  <script src="invitado.js?v=guest-access-v1"></script>
+</body>
+</html>

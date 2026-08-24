@@ -258,6 +258,7 @@ function operationsRouteIsCurrent(state) {
 }
 
 function leaveOperationsWorkspace({notify = true} = {}) {
+  document.getElementById('session-invite-fab')?.classList.remove('show');
   if (scanActive) stopScanner();
   if (typeof stopRepoUrgentWatcher === 'function') stopRepoUrgentWatcher();
   if (currentModule === 'reposicion' && sessionId && typeof repoReleaseAssignment === 'function') repoReleaseAssignment();
@@ -282,13 +283,14 @@ async function handleOperationsPopState(event) {
   const state = event.state;
   if (!state || state.sucaneitorModule !== currentModule) return;
   const routeAlreadyCurrent = operationsRouteIsCurrent(state);
-  const overlays = ['modal-overlay','app-dialog-overlay','repo-camera-modal','receipt-camera-modal'];
+  const overlays = ['modal-overlay','app-dialog-overlay','repo-camera-modal','receipt-camera-modal','session-invite-layer'];
   const visibleOverlay = overlays.map(id => document.getElementById(id)).find(element => element?.classList.contains('show'));
   if (visibleOverlay && state.operationsOverlay !== visibleOverlay.id) {
     suppressOperationsOverlayHistory = true;
     if (visibleOverlay.id === 'app-dialog-overlay') resolveAppDialog(false);
     else if (visibleOverlay.id === 'repo-camera-modal' && typeof closeRepoScanner === 'function') closeRepoScanner();
     else if (visibleOverlay.id === 'receipt-camera-modal' && typeof closeReceiptScanner === 'function') closeReceiptScanner();
+    else if (visibleOverlay.id === 'session-invite-layer' && typeof closeSessionInvitePanel === 'function') closeSessionInvitePanel({history:false});
     else closeModal();
     requestAnimationFrame(() => { suppressOperationsOverlayHistory = false; });
   }
@@ -296,7 +298,8 @@ async function handleOperationsPopState(event) {
     const overlay = document.getElementById(state.operationsOverlay);
     if (overlay && !overlay.classList.contains('show')) {
       suppressOperationsOverlayHistory = true;
-      overlay.classList.add('show');
+      if (overlay.id === 'session-invite-layer' && typeof openSessionInvitePanel === 'function') openSessionInvitePanel();
+      else overlay.classList.add('show');
       requestAnimationFrame(() => { suppressOperationsOverlayHistory = false; });
     }
   }
@@ -315,7 +318,7 @@ async function handleOperationsPopState(event) {
 }
 
 function setupOperationsOverlayHistory() {
-  ['modal-overlay','app-dialog-overlay','repo-camera-modal','receipt-camera-modal'].forEach(id => {
+  ['modal-overlay','app-dialog-overlay','repo-camera-modal','receipt-camera-modal','session-invite-layer'].forEach(id => {
     const overlay = document.getElementById(id);
     if (!overlay) return;
     overlay.dataset.historyVisible = overlay.classList.contains('show') ? '1' : '0';
@@ -334,6 +337,7 @@ function setupOperationsOverlayHistory() {
 }
 
 function backToModules() {
+  document.getElementById('session-invite-fab')?.classList.remove('show');
   if (typeof stopRepoUrgentWatcher === 'function') stopRepoUrgentWatcher();
   if (currentModule === 'reposicion' && sessionId && typeof repoReleaseAssignment === 'function') repoReleaseAssignment();
   if (repoSSE) { repoSSE.close(); repoSSE = null; }
