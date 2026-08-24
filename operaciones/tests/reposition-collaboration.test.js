@@ -6,6 +6,7 @@ const root = path.resolve(__dirname, '..', '..');
 const read = file => fs.readFileSync(path.join(root,file),'utf8');
 const migration = read('supabase/migrations/20260824010000_reposicion_colaborativa_tiempo_real.sql');
 const fixMigration = read('supabase/migrations/20260824020000_reposicion_colaborativa_fix.sql');
+const lifecycleMigration = read('supabase/migrations/20260824130000_reposicion_cierre_eliminacion_pedidos_listos.sql');
 const cloud = read('operaciones/cloud-api.js');
 const app = read('operaciones/reposition-app.js');
 const html = read('operaciones/index.html');
@@ -39,8 +40,18 @@ assert.match(app,/repoState = repoHydrateStateFromCatalog\(data\.repo\)/,
   'Cada actualización completa en tiempo real debe reconciliar los productos con el padrón');
 assert.match(cloud,/items:\(items \|\| \[\]\)\.map\(row=>repoItem\(row,catalogByCode\)\)/,
   'La API debe devolver las reposiciones ya enriquecidas por SKU');
-assert.match(html,/cloud-api\.js\?v=repo-catalog-sync-v1/);
-assert.match(html,/reposition-app\.js\?v=repo-catalog-sync-v1/);
+assert.match(html,/cloud-api\.js\?v=repo-finish-delete-v1/);
+assert.match(html,/reposition-app\.js\?v=repo-finish-delete-v1/);
+assert.match(app,/No existen más productos para recoger/);
+assert.match(app,/Ver y modificar toda la lista/);
+assert.match(app,/Extra pedido por \$\{esc\(repoState\.destination/,
+  'El producto debe aclarar qué local lo pidió como extra');
+assert.match(cloud,/path==='\/api\/reposicion\/delete'/);
+assert.match(cloud,/can_delete:row\.estado==='preparando'&&canEdit/);
+assert.match(lifecycleMigration,/create or replace function public\.op_eliminar_reposicion/);
+assert.match(lifecycleMigration,/estado=case when t\.solicitada>0 and t\.preparada>=t\.solicitada then 'listo'/);
+assert.match(lifecycleMigration,/p\.estado in \('aceptado','listo'\)/,
+  'El despacho debe incluir los pedidos que ya pasaron automáticamente a Listo');
 
 // Simulación determinista del resultado esperado con muchos dispositivos.
 class Coordinator {

@@ -33,7 +33,13 @@ const context = {
   },
   document: {
     getElementById(id) { return elements[id] || null; },
-    createElement() { return {type: '', className: '', innerHTML: '', onclick: null}; }
+    createElement() {
+      return {
+        type: '', className: '', innerHTML: '', onclick: null, children: [], attributes: {},
+        appendChild(value) { this.children.push(value); },
+        setAttribute(name,value) { this.attributes[name] = value; }
+      };
+    }
   },
   esc(value) {
     return String(value == null ? '' : value)
@@ -58,17 +64,28 @@ assert.match(elements['session-location-filter'].innerHTML, /Maldonado/);
 elements['session-search'].value = 'pde maria';
 context.renderAvailableSessions();
 assert.equal(elements['sesiones-items'].children.length, 1, 'Debe combinar local y participante en una misma búsqueda');
-assert.match(elements['sesiones-items'].children[0].innerHTML, /Inventario PDE agosto/);
+assert.match(elements['sesiones-items'].children[0].children[0].innerHTML, /Inventario PDE agosto/);
 assert.equal(elements['session-results-count'].textContent, '1 de 2 sesiones');
 
 elements['session-search'].value = 'maldonado juan';
 context.renderAvailableSessions();
 assert.equal(elements['sesiones-items'].children.length, 1);
-assert.match(elements['sesiones-items'].children[0].innerHTML, /Conteo mensual MDO/);
+assert.match(elements['sesiones-items'].children[0].children[0].innerHTML, /Conteo mensual MDO/);
 
 elements['session-search'].value = 'no existe';
 context.renderAvailableSessions();
 assert.equal(elements['sesiones-items'].children.length, 0);
 assert.match(elements['sesiones-items'].innerHTML, /No hay resultados/);
+
+context.currentModule = 'reposicion';
+context.availableSessions = [{
+  id:'r1',nombre:'PDE a MDO',origin:'Punta del Este',destination:'Maldonado',estado:'preparando',
+  can_delete:true,summary:{productos:4,unidades_preparadas:1,unidades_pedidas:4},participantes:[]
+}];
+elements['session-search'].value = '';
+context.renderAvailableSessions();
+assert.equal(elements['sesiones-items'].children[0].children.length,2,
+  'Una reposición eliminable debe mostrar su acción separada sin interferir con Entrar');
+assert.match(elements['sesiones-items'].children[0].children[1].attributes['aria-label'],/Eliminar reposición/);
 
 console.log('session-browser: OK');

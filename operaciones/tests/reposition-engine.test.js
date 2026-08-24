@@ -45,6 +45,9 @@ function testStatusesAndExports() {
   assert.strictEqual(notFound.motivo_codigo,'stock_insuficiente');
   assert.strictEqual(notFound.motivo_label,'Stock insuficiente');
   assert.strictEqual(notFound.comentario,'Se revisó depósito');
+  assert.deepStrictEqual(engine.pickupState(repo),{total:4,remaining:1,assigned:0,completed:false});
+  repo.items[1].preparado = 5;
+  assert.deepStrictEqual(engine.pickupState(repo),{total:4,remaining:0,assigned:0,completed:true});
 }
 
 function testRealWorkbookWhenAvailable() {
