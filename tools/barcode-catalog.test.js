@@ -53,6 +53,9 @@ assert.strictEqual(officialWithBarcode.length, 5547, 'Debe conservar todos los c
 
 const exactScan = official.filter(product => barcode.matchesBarcode(product.barras, '7908253608628'));
 assert.deepStrictEqual(exactScan.map(product => product.codigo), ['010031110010408']);
+const wipes = official.find(product => product.codigo === '60106501');
+assert.strictEqual(wipes?.barras, '6953182766674',
+  'La reposición debe reconocer la barra vigente de las toallitas MPETS por su SKU');
 const colorScan = official.filter(product => barcode.matchesBarcode(product.barras, '5415341000551'));
 assert.deepStrictEqual(colorScan.map(product => product.codigo).sort(), ['10502199BL','10502199CE','10502199VE']);
 assert.strictEqual(official.some(product => barcode.matchesBarcode(product.barras, '9999999999999')), false);
@@ -64,7 +67,7 @@ const operationsApp = fs.readFileSync(path.join(root, 'operaciones', 'app.js'), 
 const cloudApi = fs.readFileSync(path.join(root, 'operaciones', 'cloud-api.js'), 'utf8');
 assert.match(portalHtml, /accept="\.xls,\.xlsx"/);
 assert.match(operationsHtml, /\/barcode-utils\.js/);
-assert.match(operationsHtml, /cloud-api\.js\?v=barcode-catalog-v2/);
+assert.match(operationsHtml, /cloud-api\.js\?v=repo-catalog-sync-v1/);
 assert.match(portalApp, /raw:false/);
 assert.match(operationsApp, /raw: false/);
 assert.match(cloudApi, /catalogWithSafeFallback/);

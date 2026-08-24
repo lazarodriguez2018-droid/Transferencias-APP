@@ -31,6 +31,16 @@ assert.match(html,/>← Anterior<\/button>/);
 assert.match(html,/>Saltar →<\/button>/);
 assert.doesNotMatch(app,/>Tomar este producto<\/button>|>Ver mi producto asignado →<\/button>/,
   'La coordinación debe ser invisible y conservar los botones originales');
+assert.match(app,/function repoHydrateItemFromCatalog\(item\)/,
+  'Las reposiciones existentes deben completar sus barras desde el padrón vigente');
+assert.match(app,/barras:barcode/,
+  'La barra del padrón vigente debe reemplazar la copia vacía o desactualizada de la reposición');
+assert.match(app,/repoState = repoHydrateStateFromCatalog\(data\.repo\)/,
+  'Cada actualización completa en tiempo real debe reconciliar los productos con el padrón');
+assert.match(cloud,/items:\(items \|\| \[\]\)\.map\(row=>repoItem\(row,catalogByCode\)\)/,
+  'La API debe devolver las reposiciones ya enriquecidas por SKU');
+assert.match(html,/cloud-api\.js\?v=repo-catalog-sync-v1/);
+assert.match(html,/reposition-app\.js\?v=repo-catalog-sync-v1/);
 
 // Simulación determinista del resultado esperado con muchos dispositivos.
 class Coordinator {
