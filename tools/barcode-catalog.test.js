@@ -64,6 +64,7 @@ const operationsApp = fs.readFileSync(path.join(root, 'operaciones', 'app.js'), 
 const cloudApi = fs.readFileSync(path.join(root, 'operaciones', 'cloud-api.js'), 'utf8');
 assert.match(portalHtml, /accept="\.xls,\.xlsx"/);
 assert.match(operationsHtml, /\/barcode-utils\.js/);
+assert.match(operationsHtml, /cloud-api\.js\?v=barcode-catalog-v2/);
 assert.match(portalApp, /raw:false/);
 assert.match(operationsApp, /raw: false/);
 assert.match(cloudApi, /catalogWithSafeFallback/);
