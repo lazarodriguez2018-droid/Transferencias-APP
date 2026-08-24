@@ -35,6 +35,18 @@ let sessionDirectoryTimer = null;
 let catalogRefreshTimer = null;
 let suppressOperationsOverlayHistory = false;
 
+function finishOperationsBoot() {
+  const boot = document.getElementById('operations-boot');
+  if (!boot) return;
+  boot.classList.add('hidden');
+  setTimeout(() => { boot.style.display = 'none'; }, 180);
+}
+
+function showOperationsBootError(message) {
+  const text = document.getElementById('operations-boot-text');
+  if (text) text.textContent = message;
+}
+
 // Red
 let serverUrl = '';
 let serverSSE = null;
@@ -71,11 +83,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
   currentModule = requestedModule;
-  mostrarPantallaSesion(false);
   if (window.SucanCloud) {
     try {
       await window.SucanCloud.ready;
       usuarioNombre = window.SucanCloud.displayName;
+      const userInput = document.getElementById('input-usuario');
+      if (userInput) userInput.value = usuarioNombre;
       almacen = window.SucanCloud.profile?.almacen || '';
       serverUrl = location.origin;
       serverOnline = true;
@@ -95,6 +108,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       window.SucanCloud.watchSessionDirectory(scheduleSessionDirectoryRefresh);
     } catch (error) {
       console.error(error);
+      showOperationsBootError('No pudimos sincronizar tu cuenta. Volvé al inicio e intentá nuevamente.');
       return;
     }
   } else {
@@ -117,8 +131,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     : (window.matchMedia?.('(pointer: coarse)').matches ? 'nombre' : 'barras');
   setST(initialSearchType);
 
-  selectModule(requestedModule);
-  if (requestedSession) await unirseASesion(requestedSession,'',{history:'replace',tab:requestedTab || undefined});
+  selectModule(requestedModule,{showSessions:!requestedSession});
+  if (requestedSession) {
+    await unirseASesion(requestedSession,'',{history:'replace',tab:requestedTab || undefined});
+    if (!sessionId) mostrarPantallaSesion(true);
+  }
+  finishOperationsBoot();
 });
 
 function populateLocationControls() {
@@ -167,11 +185,13 @@ function scheduleCatalogRefresh() {
   }, 350);
 }
 
-function selectModule(moduleName) {
+function selectModule(moduleName, options = {}) {
   currentModule = moduleName === 'reposicion' ? 'reposicion' : 'inventario';
   localStorage.setItem('sc_module', currentModule);
-  mostrarPantallaSesion(true);
-  updateOperationsHistory('replace','sessions');
+  if (options.showSessions !== false) {
+    mostrarPantallaSesion(true);
+    updateOperationsHistory('replace','sessions');
+  }
 }
 
 function operationsUrl(stage, tabName, sid) {
@@ -195,6 +215,21 @@ function updateOperationsHistory(mode, stage, tabName, sid = sessionId) {
   else if (JSON.stringify(history.state) !== JSON.stringify(state)) history.pushState(state,'',url);
 }
 
+function activeOperationsTab() {
+  if (currentModule === 'reposicion') {
+    return document.querySelector('#repo-tabs .tab.active')?.id?.replace('repo-tab-','') || '';
+  }
+  return document.querySelector('#main-tabs .tab.active')?.id?.replace('tab-','') || '';
+}
+
+function operationsRouteIsCurrent(state) {
+  if (state.stage === 'sessions') {
+    return !sessionId && document.getElementById('session-screen')?.style.display !== 'none';
+  }
+  if (state.stage !== 'workspace' || !state.sessionId || sessionId !== state.sessionId) return false;
+  return !state.tab || activeOperationsTab() === state.tab;
+}
+
 function leaveOperationsWorkspace({notify = true} = {}) {
   if (scanActive) stopScanner();
   if (typeof stopRepoUrgentWatcher === 'function') stopRepoUrgentWatcher();
@@ -215,6 +250,7 @@ function leaveOperationsWorkspace({notify = true} = {}) {
 async function handleOperationsPopState(event) {
   const state = event.state;
   if (!state || state.sucaneitorModule !== currentModule) return;
+  const routeAlreadyCurrent = operationsRouteIsCurrent(state);
   const overlays = ['modal-overlay','app-dialog-overlay','repo-camera-modal'];
   const visibleOverlay = overlays.map(id => document.getElementById(id)).find(element => element?.classList.contains('show'));
   if (visibleOverlay && state.operationsOverlay !== visibleOverlay.id) {
@@ -232,6 +268,7 @@ async function handleOperationsPopState(event) {
       requestAnimationFrame(() => { suppressOperationsOverlayHistory = false; });
     }
   }
+  if (routeAlreadyCurrent) return;
   if (state.stage === 'sessions') {
     leaveOperationsWorkspace();
     mostrarPantallaSesion(true);
@@ -2708,11 +2745,15 @@ async function scanFrame() {
 // ===== TABS =====
 function showTab(name, options = {}) {
   if (name !== 'scanner' && scanActive) stopScanner();
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   const page = document.getElementById(`page-${name}`);
   const tab = document.getElementById(`tab-${name}`);
   if (!page || !tab) return;
+  if (options.force !== true && page.classList.contains('active') && tab.classList.contains('active')) {
+    if (sessionId && currentModule === 'inventario') updateOperationsHistory(options.history || 'push','workspace',name);
+    return;
+  }
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   page.classList.add('active');
   tab.classList.add('active');
   window.scrollTo({ top: 0, behavior: 'auto' });

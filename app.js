@@ -24,6 +24,9 @@ currentChatOrderId: null,
 currentSugId: null,
 despachoTab: 'pendientes',
 activeView: 'hub',
+navigationReady: false,
+navigationRequestId: 0,
+spinnerSequence: 0,
 realtimeChannels: [],
 idle: {
 intervalId: null,
@@ -70,7 +73,11 @@ document.body.appendChild(s);
 s.style.display='flex';
 }
 function hideSpinner(){ const s=el('global-spinner'); if(s) s.style.display='none'; }
-async function withSpinner(fn){ showSpinner(); try{ await fn(); }finally{ hideSpinner(); } }
+async function withSpinner(fn){
+const sequence=++appState.spinnerSequence;
+showSpinner();
+try{ await fn(); }finally{ if(sequence===appState.spinnerSequence) hideSpinner(); }
+}
 
 function safeSet(id, val){ const e=el(id); if(e) e.textContent=val; }
 function escHtml(v){
@@ -269,6 +276,15 @@ await afterLogin(data.user);
 }
 
 let regData={};
+let registrationResendTimer=null;
+
+function registrationRedirectUrl(){
+return window.location.origin+window.location.pathname;
+}
+
+function normalizeRegistrationCode(value){
+return String(value||'').replace(/\D/g,'').slice(0,6);
+}
 
 async function doRegisterStep1(){
 const nombre   = el('reg-nombre').value.trim();
@@ -296,7 +312,7 @@ const {data,error}=await db.auth.signUp({
   email,
   password:pass,
   options:{
-    emailRedirectTo:window.location.origin+window.location.pathname,
+    emailRedirectTo:registrationRedirectUrl(),
     data:{
       sucaneitor_nombre:nombre,
       sucaneitor_apellido:apellido,
@@ -312,14 +328,21 @@ if(data?.session?.user){
   return;
 }
 el('reg-email-display').textContent=email;
+el('reg-code').value='';
 el('reg-step1').style.display='none';
 el('reg-step2').style.display='block';
-showSuc('reg-success','¡Enlace enviado a '+email+'! Revisá también correo no deseado.');
+showSuc('reg-success','Correo enviado. Elegí confirmar con el código o con el enlace.');
+startRegistrationResendCooldown();
+setTimeout(()=>el('reg-code')?.focus(),80);
 }
 
 function backToStep1(){
+clearInterval(registrationResendTimer);
+registrationResendTimer=null;
 el('reg-step1').style.display='block';
 el('reg-step2').style.display='none';
+clearMessage('reg-error');
+clearMessage('reg-success');
 }
 
 async function doRegisterStep2(){
@@ -327,12 +350,70 @@ showSpinner();
 try{
 const {data:{session},error}=await db.auth.getSession();
 if(error||!session){
-  showErr('reg-error','Todavía no detectamos la confirmación. Abrí el enlace del correo y luego volvé a esta pantalla.');
+  showErr('reg-error','Todavía no detectamos el enlace. Abrilo desde el correo y esperá a volver a Sucaneitor.');
   return;
 }
 await afterLogin(session.user);
 } finally {
 hideSpinner();
+}
+}
+
+async function verifyRegistrationCode(){
+clearAuthMessages();
+const email=regData.email||el('reg-email-display')?.textContent?.trim();
+const token=normalizeRegistrationCode(el('reg-code')?.value);
+if(!email) return showErr('reg-error','Volvé al paso anterior e ingresá nuevamente tu correo.');
+if(token.length!==6) return showErr('reg-error','Ingresá el código completo de 6 números que recibiste por correo.');
+showSpinner();
+try{
+  const {data,error}=await db.auth.verifyOtp({email,token,type:'email'});
+  if(error) return showErr('reg-error','El código es incorrecto o venció. Revisalo o solicitá uno nuevo.');
+  const user=data?.user||data?.session?.user;
+  if(!user) return showErr('reg-error','No pudimos completar la confirmación. Solicitá un código nuevo.');
+  await afterLogin(user);
+} finally {
+  hideSpinner();
+}
+}
+
+function startRegistrationResendCooldown(seconds=45){
+const button=el('btn-reg-resend');
+if(!button) return;
+clearInterval(registrationResendTimer);
+let remaining=seconds;
+button.disabled=true;
+button.textContent=`Reenviar en ${remaining}s`;
+registrationResendTimer=setInterval(()=>{
+  remaining-=1;
+  if(remaining<=0){
+    clearInterval(registrationResendTimer);
+    registrationResendTimer=null;
+    button.disabled=false;
+    button.textContent='Reenviar correo';
+    return;
+  }
+  button.textContent=`Reenviar en ${remaining}s`;
+},1000);
+}
+
+async function resendRegistrationEmail(){
+const email=regData.email||el('reg-email-display')?.textContent?.trim();
+if(!email) return showErr('reg-error','Volvé al paso anterior e ingresá nuevamente tu correo.');
+const button=el('btn-reg-resend');
+if(button?.disabled) return;
+showSpinner();
+try{
+  const {error}=await db.auth.resend({
+    type:'signup',
+    email,
+    options:{emailRedirectTo:registrationRedirectUrl()}
+  });
+  if(error) return showErr('reg-error','No pudimos reenviar el correo todavía. Esperá unos segundos e intentá nuevamente.');
+  showSuc('reg-success','Enviamos un correo nuevo con enlace y código.');
+  startRegistrationResendCooldown();
+} finally {
+  hideSpinner();
 }
 }
 
@@ -352,6 +433,8 @@ teardownRealtime();
 clearLastActivityMs(appState.currentUser?.id);
 appState.currentUser=null; appState.currentPerfil=null;
 appState.activeView='hub';
+appState.navigationReady=false;
+appState.navigationRequestId+=1;
 history.replaceState(null,'','/');
 sessionStorage.removeItem('empresa_validada');
 sessionStorage.removeItem('empresa_nombre');
@@ -442,7 +525,7 @@ const validViews=['hub','dashboard','misPedidos','paraEnviar','historial','misCo
 const initialView=validViews.includes(requestedView)
   ? requestedView
   : requestedModule==='pedidos' ? 'misPedidos' : 'hub';
-navigateTo(initialView,{history:'replace'});
+await navigateTo(initialView,{history:'replace'});
 setupRealtime();
 } finally {
 hideSpinner();
@@ -647,7 +730,15 @@ if(historyMode!=='none'){
   if(historyMode==='replace') history.replaceState(state,'',url);
   else if(appState.activeView!==view||history.state?.sucaneitorView!==view) history.pushState(state,'',url);
 }
+const currentView=appState.activeView;
+const viewElement=el('view-'+view);
+if(options.force!==true&&appState.navigationReady&&currentView===view&&viewElement?.style.display!=='none'){
+  closeSidebar();
+  return Promise.resolve();
+}
+const requestId=++appState.navigationRequestId;
 appState.activeView=view;
+appState.navigationReady=true;
 const appPage=el('app-page');
 if(appPage) appPage.classList.toggle('hub-mode',view==='hub');
 document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
@@ -666,19 +757,28 @@ updateBadges();
 const _rm={dashboard:renderDashboard,misPedidos:renderMisPedidos,paraEnviar:renderParaEnviar,
 historial:renderHistorial,misConsultas:renderMisConsultas,chats:renderChats,agenda:renderAgendaClientes,
 perfil:renderPerfil,usuarios:renderUsuarios,sugerencias:renderSugerencias,config:renderConfig};
-if(_rm[view]) withSpinner(()=>_rm[view]());
 closeSidebar();
+if(!_rm[view]) return Promise.resolve();
+return withSpinner(async()=>{
+  await _rm[view]();
+  if(requestId!==appState.navigationRequestId) return;
+}).catch(error=>{
+  if(requestId===appState.navigationRequestId) notify('No se pudo cargar la sección. Reintentá en unos segundos.','error');
+  console.error(error);
+});
 }
 
 function restoreNavigationState(event){
 if(!appState.currentPerfil) return;
 closeSidebar();
-document.querySelectorAll('.modal-overlay.show').forEach(modal=>modal.classList.remove('show'));
+const modalId=event?.state?.sucaneitorModal;
+document.querySelectorAll('.modal-overlay.show').forEach(modal=>{
+  if(modal.id!==modalId) modal.classList.remove('show');
+});
 document.body.style.overflow='';
 const params=new URLSearchParams(location.search);
 const view=event?.state?.sucaneitorView||params.get('view')||'hub';
-navigateTo(view,{history:'none'});
-const modalId=event?.state?.sucaneitorModal;
+if(view!==appState.activeView||!appState.navigationReady) navigateTo(view,{history:'none'});
 if(modalId&&el(modalId)) requestAnimationFrame(()=>openModal(modalId,{history:false}));
 }
 
@@ -3272,6 +3372,14 @@ el('btn-do-login')?.addEventListener('click', doLogin);
 el('btn-reg-step1')?.addEventListener('click', doRegisterStep1);
 el('reg-tipo-cuenta')?.addEventListener('change', onTipoCuentaChange);
 el('btn-reg-step2')?.addEventListener('click', doRegisterStep2);
+el('btn-reg-verify-code')?.addEventListener('click', verifyRegistrationCode);
+el('btn-reg-resend')?.addEventListener('click', resendRegistrationEmail);
+el('reg-code')?.addEventListener('input', event=>{
+  event.target.value=normalizeRegistrationCode(event.target.value);
+});
+el('reg-code')?.addEventListener('keydown', event=>{
+  if(event.key==='Enter') verifyRegistrationCode();
+});
 el('btn-reg-back')?.addEventListener('click', backToStep1);
 el('btn-register-success-close')?.addEventListener('click', closeRegisterSuccess);
 el('btn-logout-pending')?.addEventListener('click', doLogout);
