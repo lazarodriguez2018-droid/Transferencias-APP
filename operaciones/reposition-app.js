@@ -911,20 +911,6 @@ function renderRepoSummary() {
     const other = item.motivo_otro ? `: ${item.motivo_otro}` : '';
     return `<article class="repo-row not-found"><div><h3>${esc(item.nombre)}</h3><div class="repo-row-meta">SKU ${esc(item.codigo)} · Pedido ${item.pedido} · Juntado ${item.preparado}${reason ? ` · ${esc(reason + other)}` : ''}${item.comentario ? `<br>Comentario: ${esc(item.comentario)}` : ''}</div></div><strong style="color:var(--red)">Faltan ${item.faltante}</strong></article>`;
   }).join('') : '<div class="repo-empty">No hay faltantes.</div>';
-  const sent = repoState.estado === 'enviado';
-  const dispatchTitle = document.getElementById('repo-dispatch-title');
-  const dispatchCopy = document.getElementById('repo-dispatch-copy');
-  const dispatchButton = document.getElementById('repo-dispatch-button');
-  const remitoButton = document.getElementById('repo-remito-button');
-  if (dispatchTitle) dispatchTitle.textContent = sent ? 'Mercadería enviada' : 'Marcar todo como enviado';
-  if (dispatchCopy) dispatchCopy.textContent = sent
-    ? `Transporte: ${repoState.transporte || '—'} · Remito: ${repoState.remito || 'pendiente de cargar'}`
-    : 'Completa el transporte. El remito puede agregarse ahora o cuando se genere en el ERP.';
-  if (dispatchButton) dispatchButton.style.display = sent || !repoCanEdit() ? 'none' : '';
-  if (remitoButton) {
-    remitoButton.style.display = sent && repoState.can_update_remito !== false ? '' : 'none';
-    remitoButton.textContent = repoState.remito ? 'Editar número de remito' : 'Agregar número de remito';
-  }
 }
 
 function submitRepoBarcode() {
@@ -1236,50 +1222,3 @@ async function confirmRepoQuantityVerification() {
     if(repoVerificationItems().length)openRepoQuantityVerification();else{const next=repoVerificationContinuation;repoVerificationContinuation=null;closeModal();toast('Control final de cantidades completado','s');if(next)setTimeout(next,40);}
   }catch(error){toast(error.message||'No se pudo confirmar la cantidad','e');if(button){button.disabled=false;button.textContent='Confirmar y continuar';}}
 }
-
-async function openRepoDispatch() {
-  if (!window.SucanCloud || !repoState) return;
-  if (!requireRepoEditable()) return;
-  if (repoVerificationItems().length) { openRepoQuantityVerification(()=>openRepoDispatch()); return; }
-  const {data:transportes} = await window.SucanCloud.db.from('transportes').select('nombre').order('nombre');
-  document.getElementById('modal-title').textContent='Confirmar envío';
-  document.getElementById('modal-subtitle').textContent=`${repoState.origin} → ${repoState.destination}`;
-  document.getElementById('modal-body').innerHTML=`
-    <label class="il">Transporte</label><select class="input" id="repo-dispatch-transport"><option value="">Seleccionar…</option>${(transportes||[]).map(item=>`<option value="${esc(item.nombre)}">${esc(item.nombre)}</option>`).join('')}<option value="Otro">Otro</option></select>
-    <label class="il" style="margin-top:12px">Número de remito</label><input class="input" id="repo-dispatch-remito" autocomplete="off" placeholder="Se puede completar después">
-    <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px"><input type="checkbox" id="repo-dispatch-remito-later" checked> Agregaré el número después de generarlo en el ERP</label>
-    <label class="il" style="margin-top:12px">Observaciones</label><textarea class="input" id="repo-dispatch-notes" rows="3" placeholder="Opcional"></textarea>
-    <div class="app-dialog-product" style="margin-top:14px"><strong>${SucaneitorReposition.summary(repoState).preparados} unidades juntadas</strong><span>Los pedidos aceptados vinculados pasarán a Enviado / En tránsito.</span></div>`;
-  document.getElementById('modal-actions').innerHTML='<button class="btn btn-s" onclick="closeModal()">Cancelar</button><button class="btn btn-p" onclick="confirmRepoDispatch()">Confirmar envío</button>';
-  document.getElementById('modal-overlay').classList.add('show');
-  setTimeout(()=>{
-    const remito=document.getElementById('repo-dispatch-remito'),later=document.getElementById('repo-dispatch-remito-later');
-    remito?.addEventListener('input',()=>{ if(remito.value.trim()) later.checked=false; });
-  },50);
-}
-
-async function confirmRepoDispatch() {
-  const transporte=document.getElementById('repo-dispatch-transport')?.value.trim();
-  const remito=document.getElementById('repo-dispatch-remito')?.value.trim();
-  const later=!!document.getElementById('repo-dispatch-remito-later')?.checked;
-  const notes=document.getElementById('repo-dispatch-notes')?.value.trim();
-  if(!transporte){ toast('Seleccioná el transporte','e'); return; }
-  if(!remito&&!later){ toast('Ingresá el remito o indicá que lo agregarás después','e'); return; }
-  try {
-    await window.SucanCloud.finalizeDispatch({repoId:sessionId,transporte,remito,remitoPendiente:later,observaciones:notes});
-    closeModal();
-    const response=await fetch(`/api/reposicion/state?rid=${encodeURIComponent(sessionId)}`),data=await response.json();
-    if(data.ok) repoState=repoHydrateStateFromCatalog(data.repo);
-    stopRepoUrgentWatcher(); renderRepositionAll(); showRepoTab('resumen');
-    toast('Mercadería marcada como enviada','s');
-  } catch(error){ toast(error.message || 'No se pudo confirmar el envío','e'); }
-}
-
-async function editRepoRemito() {
-  if (repoState?.can_update_remito === false) { toast('Solo el local de origen o un administrador puede actualizar el remito.','w'); return; }
-  const value=await appPrompt({title:'Agregar número de remito',subtitle:`${repoState.origin} → ${repoState.destination}`,label:'Número generado en el ERP',value:repoState.remito||'',icon:'#',confirmText:'Guardar remito'});
-  if(value===null) return;
-  try { await window.SucanCloud.updateDispatchRemito(sessionId,value); repoState.remito=String(value).trim(); repoState.remito_pendiente=false; renderRepoSummary(); toast('Remito actualizado en la reposición y sus pedidos','s'); }
-  catch(error){ toast(error.message||'No se pudo actualizar','e'); }
-}
-

@@ -604,7 +604,6 @@ html[data-theme="dark"] body{background:radial-gradient(ellipse at 18% 8%,#1a104
     <section class="card"><div class="panel-head"><div><div class="card-title">Estado del trabajo</div><h2 id="repo-summary-status">—</h2></div><div class="panel-icon">✓</div></div><div id="repo-summary-detail" class="panel-copy"></div><div id="repo-participants" class="repo-participants"></div></section>
     <section class="card"><div class="panel-head"><div><div class="card-title">Archivos finales</div><h2>Descargas verificables</h2></div><div class="panel-icon">⇩</div></div><p class="panel-copy">Reposición automática, pedidos de clientes y extras se exportan sin duplicar unidades.</p><div class="repo-export-grid"><button class="btn btn-s" onclick="downloadRepoExport('main')">Remito reposición (.xls)</button><button class="btn btn-s" onclick="downloadRepoExport('orders')">Remito pedidos (.xls)</button><button class="btn btn-s" onclick="downloadRepoExport('extras')">Remito extras (.xls)</button><button class="btn btn-s" onclick="downloadRepoExport('missing')">Faltantes (.xlsx)</button><button class="btn btn-s" onclick="downloadRepoExport('summary')">Resumen (.xlsx)</button><button class="btn btn-p" style="grid-column:1/-1" onclick="downloadRepoExport('package')">Descargar paquete completo (.zip)</button></div></section>
   </div>
-  <section class="card" id="repo-dispatch-card"><div class="panel-head"><div><div class="card-title">Salida de mercadería</div><h2 id="repo-dispatch-title">Marcar todo como enviado</h2></div><div class="panel-icon">🚚</div></div><p class="panel-copy" id="repo-dispatch-copy">Completa el transporte. El remito puede agregarse ahora o cuando se genere en el ERP.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-p" id="repo-dispatch-button" onclick="openRepoDispatch()">Confirmar envío</button><button class="btn btn-s" id="repo-remito-button" style="display:none" onclick="editRepoRemito()">Agregar número de remito</button></div></section>
   <section class="card"><div class="panel-head compact"><div><div class="card-title">Detalle de faltantes</div><h2>Todo lo pedido que aún no se juntó</h2></div></div><div id="repo-missing-list" class="repo-list"></div></section>
 </div>
 
@@ -974,7 +973,7 @@ html[data-theme="dark"] body{background:radial-gradient(ellipse at 18% 8%,#1a104
 <script src="reposition-export.js?v=reposicion-dialogs-v3"></script>
 <script src="/barcode-utils.js?v=barcode-catalog-v1"></script>
 <script src="app.js?v=quantity-control-v1"></script>
-<script src="reposition-app.js?v=quantity-control-v1"></script>
+<script src="reposition-app.js?v=no-dispatch-v1"></script>
 <script src="reception-app.js?v=receipt-collab-v1"></script>
 <script src="session-invite.js?v=guest-access-v1"></script>
 </body>

@@ -42,7 +42,7 @@ assert.match(migration,/op_verificar_inventario_cantidad/);
 assert.match(cloud,/selectDirectoryDetail[\s\S]*Las sesiones igualmente permanecerán disponibles/,'Un resumen auxiliar no debe ocultar las reposiciones');
 assert.match(cloud,/summary_available:itemsResult\.available&&extrasResult\.available/);
 assert.match(repo,/const suggested = 1;/,'Encontrado debe comenzar en una unidad física');
-assert.match(repo,/openRepoQuantityVerification\(\(\)=>openRepoDispatch\(\)\)/,'El envío debe abrir el control dirigido');
+assert.doesNotMatch(repo,/openRepoDispatch|confirmRepoDispatch|finalizeDispatch/,'La reposición no debe incluir el cierre manual de envío eliminado');
 assert.match(repo,/\['main','orders','summary','package'\]/,'Los archivos de salida deben usar cantidades verificadas');
 assert.match(receipt,/openReceiptQuantityVerification\(\(\)=>closeReceptionFlow\(\)\)/,'El cierre de recepción debe verificar cargas en lote');
 assert.match(receipt,/type==='received'&&receiptVerificationItems/,'El remito recibido debe usar cantidades verificadas');

@@ -626,15 +626,6 @@
     if(error)throw error;
     return repoSnapshot(repoId);
   };
-  cloud.finalizeDispatch = async function ({repoId,transporte,remito,remitoPendiente,observaciones}) {
-    const {data,error}=await cloud.db.rpc('op_finalizar_despacho',{p_reposicion:repoId,p_transporte:transporte,p_remito:remito||null,p_remito_pendiente:!!remitoPendiente,p_observaciones:observaciones||null});
-    if(error)throw error; return data;
-  };
-  cloud.updateDispatchRemito = async function (repoId, remito) {
-    if(!clean(remito))throw new Error('Ingresá el número de remito');
-    const {error}=await cloud.db.rpc('op_actualizar_remito',{p_reposicion:repoId,p_remito:clean(remito)}); if(error)throw error;
-    return {id:repoId};
-  };
   cloud.finalizeReception = async function (receiptId, observations) {
     const {data,error}=await cloud.db.rpc('op_recepcion_cerrar',{p_recepcion:receiptId,p_observaciones:observations||null}); if(error)throw error; return data;
   };
