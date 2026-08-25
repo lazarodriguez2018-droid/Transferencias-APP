@@ -5,3 +5,69 @@
 @media(max-width:650px){.public-shell,.tracking-shell{padding:12px 11px calc(25px + env(safe-area-inset-bottom))}.public-brand{margin-top:4px}.public-hero,.public-form,.confirmation{padding:18px}.public-hero h1{font-size:27px}.field-grid,.order-options,.tracking-grid{grid-template-columns:1fr}.field.full{grid-column:auto}.route-grid{grid-template-columns:1fr}.route-arrow{transform:rotate(90deg)}.builder-head{display:block}.identity-chip{display:inline-block;margin-top:9px}.search-row{grid-template-columns:1fr}.search-results{top:137px}.selected-row{grid-template-columns:minmax(0,1fr) auto}.selected-row .remove{grid-column:2}.qty-control{grid-row:2;grid-column:1}.confirmation-grid{grid-template-columns:1fr}.qr-box{width:210px;margin:auto}.submit-row{flex-direction:column-reverse}.submit-row button{width:100%}.tracking-head{align-items:flex-start}.tracking-actions{flex-direction:column}.status-top{display:block}.status-badge{display:inline-block;margin-top:13px}.route-line{grid-template-columns:1fr!important}.route-line>b{transform:rotate(90deg)}.manage-card{align-items:flex-start;flex-direction:column}.manage-card a{width:100%;text-align:center}}
 @media(max-width:380px){.step{padding:8px 3px;font-size:8px}.share-actions,.modal-actions{grid-template-columns:1fr}.share-actions button:last-child{grid-column:auto}.selected-row{padding:9px}.qty-control button{width:31px;height:31px}}
 button:focus-visible,a.primary:focus-visible{outline:3px solid rgba(108,99,255,.38);outline-offset:2px}button:disabled{opacity:.55;cursor:not-allowed;transform:none;box-shadow:none}.primary,.secondary{display:inline-flex;align-items:center;justify-content:center;gap:7px;text-align:center;line-height:1.2}
+
+/* Densidad adaptable: compacta en PC y cómoda, sin exceso de tamaño, en móvil. */
+.public-shell{width:min(760px,100%);padding:16px 16px calc(28px + env(safe-area-inset-bottom))}
+.public-topbar{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:2px 0 14px}
+.public-topbar .public-brand{justify-content:flex-start;margin:0}
+.public-brand img{width:42px;height:42px}
+.public-brand strong{font-size:17px}
+.module-change-public{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:8px 13px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);color:var(--text);font-size:11px;font-weight:800;text-decoration:none;white-space:nowrap}
+.module-change-public:hover{border-color:var(--accent);background:var(--surface3)}
+.public-card{border-radius:16px}
+.public-hero{padding:20px;margin-bottom:11px}
+.public-hero h1{font-size:26px}
+.safe-note{margin-top:14px;padding:11px}
+.stepper{margin-bottom:11px}
+.step{padding:8px 7px;border-radius:10px}
+.public-form{padding:18px}
+.field-grid{gap:11px}
+.input{min-height:44px;border-radius:10px}
+textarea.input{min-height:84px}
+.primary,.secondary,.danger,.icon-button{min-height:44px;border-radius:10px}
+.search-card,.selected-card{padding:13px;border-radius:12px}
+.search-results{left:13px;right:13px;top:70px;max-height:280px}
+.selected-empty{padding:18px 10px}
+.order-options{gap:10px;margin-top:11px}
+.check-card{min-height:44px}
+.submit-row{margin-top:14px}
+.confirmation{padding:20px}
+.confirmation h1{font-size:25px}
+.success-icon{width:60px;height:60px;margin-bottom:13px;font-size:30px}
+.confirmation-grid{grid-template-columns:185px 1fr;gap:14px;margin:14px 0}
+.qr-box{min-height:185px}
+.tracking-shell{width:min(780px,100%);padding:16px 16px calc(28px + env(safe-area-inset-bottom))}
+.status-card{padding:19px;margin-bottom:11px}
+.status-card h1{font-size:25px}
+.tracking-grid{gap:11px}
+.tracking-card{padding:16px}
+
+@media(max-width:650px){
+  .public-shell,.tracking-shell{padding:10px 10px calc(20px + env(safe-area-inset-bottom))}
+  .public-topbar{margin:2px 2px 10px}
+  .public-brand img{width:36px;height:36px}
+  .public-brand strong{font-size:15px}
+  .public-brand span{font-size:9px}
+  .module-change-public{min-height:38px;padding:7px 10px;font-size:10px}
+  .public-hero,.public-form,.confirmation{padding:14px}
+  .public-hero h1{font-size:23px}
+  .public-hero p{font-size:12px}
+  .safe-note{margin-top:11px;padding:10px}
+  .step{padding:7px 3px;font-size:8px}
+  .input{min-height:46px;font-size:16px}
+  textarea.input{min-height:78px}
+  .search-card,.selected-card{padding:11px}
+  .search-results{left:11px;right:11px;top:126px}
+  .confirmation h1{font-size:23px}
+  .confirmation-grid{grid-template-columns:1fr}
+  .qr-box{width:180px;min-height:180px}
+  .status-card{padding:15px}
+  .status-card h1{font-size:23px}
+  .tracking-card{padding:14px}
+}
+
+@media(max-width:360px){
+  .public-brand span{display:none}
+  .module-change-public{padding-inline:8px}
+  .public-hero h1{font-size:21px}
+}

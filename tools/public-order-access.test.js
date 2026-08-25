@@ -40,6 +40,7 @@ assert.match(trackingBody,/'products',productos,'timeline',historial/,'El seguim
 assert.match(publicHtml,/id="identity-form"/,'El flujo debe empezar por la identificación');
 assert.match(publicHtml,/id="order-screen"/,'Debe existir el constructor de pedido');
 assert.match(publicHtml,/id="confirmation-screen"/,'Debe existir la confirmación con seguimiento');
+assert.match(publicHtml,/class="module-change-public" href="\/">Cambiar de módulo<\/a>/,'El pedido público debe volver al selector principal con un único acceso');
 assert.match(publicHtml,/qrcodejs@1\.0\.0/,'La confirmación debe generar un QR localmente');
 assert.match(publicJs,/location\.origin\}\/seguimiento-pedido#/,'El token de seguimiento debe viajar en el fragmento');
 assert.match(publicJs,/p_confirmar_duplicado:!!confirmDuplicate/,'La UI debe permitir confirmar un duplicado');
@@ -55,6 +56,9 @@ assert.match(css,/@media\(max-width:380px\)/,'Debe contemplar teléfonos angosto
 
 assert.match(index,/id="btn-public-order-links"/,'Pedidos debe ofrecer administración de enlaces a supervisores');
 assert.match(index,/id="modal-public-order-links"/,'Debe existir el panel de administración');
+assert.match(index,/class="form-input public-link-select" id="public-link-local"/,'El selector de local debe usar el diseño de la aplicación');
+assert.match(index,/class="nav-item module-switch"[^>]+>[^<]*<span class="icon">←<\/span> Cambiar de módulo<\/button>/,'Pedidos debe mostrar un único acceso para cambiar de módulo');
+assert.doesNotMatch(index,/class="nav-item nav-link" href="\/operaciones\?module=(inventario|reposicion)"/,'Pedidos no debe duplicar otros módulos dentro del menú lateral');
 assert.match(app,/isAdmin\?'inline-flex':'none'/,'El botón debe ocultarse para usuarios no supervisores');
 assert.match(app,/value="__public__"/,'Los filtros deben incluir el canal público');
 assert.match(app,/public-order-badge/,'Las tarjetas y detalles deben identificar pedidos públicos');
