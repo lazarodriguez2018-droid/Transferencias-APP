@@ -526,7 +526,7 @@ async function repoFound(encodedCode) {
   const item = repoState.items.find(row => String(row.codigo) === code);
   if (!item) return;
   if (!await repoEnsureClaim(item)) return;
-  const suggested = 1;
+  const suggested = Math.max(0, Number(item.pedido || 0) - Number(item.preparado || 0));
   repoOpenQuantityModal(encodedCode, suggested, 'add');
 }
 
@@ -540,7 +540,7 @@ function repoOpenQuantityModal(encodedCode, suggested, mode) {
   document.getElementById('modal-subtitle').textContent = item.nombre;
   document.getElementById('modal-body').innerHTML = `
     <div class="assignment-confirm"><dl><dt>SKU</dt><dd>${esc(item.codigo)}</dd><dt>Solicitado</dt><dd>${item.pedido}</dd><dt>Juntado actualmente</dt><dd>${item.preparado}</dd></dl></div>
-    ${mode === 'add' ? '<p class="app-dialog-message" style="margin:12px 0 0">La cantidad comienza en 1 para registrar solamente lo que tenés físicamente delante. Podés modificarla si ya contaste más unidades.</p>' : ''}
+    ${mode === 'add' ? `<p class="app-dialog-message" style="margin:12px 0 0">La cantidad comienza en <strong>${Math.max(0, Number(item.pedido || 0) - Number(item.preparado || 0))}</strong>, que es lo que falta juntar. Modificala solamente si la cantidad física disponible es diferente.</p>` : ''}
     <label class="il" style="margin-top:14px">${mode === 'add' ? 'Unidades físicas que tenés ahora' : 'Cantidad total juntada'}</label>
     <div class="qty-stepper"><button class="qty-step" onclick="stepRepoModalQty(-1)">−</button><input id="repo-modal-qty" class="input" type="number" min="0" inputmode="numeric" value="${Math.max(0,Number(suggested)||0)}" style="text-align:center;font-size:20px"><button class="qty-step" onclick="stepRepoModalQty(1)">+</button></div>`;
   document.getElementById('modal-actions').innerHTML = '<button class="btn btn-s" onclick="closeModal()">Cancelar</button><button class="btn btn-p" onclick="confirmRepoModalQty()">Confirmar</button>';
