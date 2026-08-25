@@ -180,7 +180,9 @@
   }
 
   function repoItem(row, catalogByCode) {
-    const product = catalogByCode?.get(clean(row.codigo));
+    const product = typeof catalogByCode?.get === 'function'
+      ? catalogByCode.get(clean(row.codigo))
+      : null;
     return {
       codigo:row.codigo,nombre:row.nombre,descripcion_archivo:row.descripcion_archivo || '',
       barras:clean(product?.barras) || row.barras || '',marca:clean(product?.marca) || row.marca || '',
@@ -348,7 +350,7 @@
     const items=itemsResult.rows,extras=extrasResult.rows,parts=partsResult.rows;
     const itemsByRepo=groupRows(items,'reposicion_id'), extrasByRepo=groupRows(extras,'reposicion_id'), partsByRepo=groupRows(parts,'reposicion_id');
     return repos.map(row=>{
-      const snapshot={items:(itemsByRepo.get(row.id)||[]).map(repoItem),extras:(extrasByRepo.get(row.id)||[]).map(extra=>({cantidad:extra.cantidad}))};
+      const snapshot={items:(itemsByRepo.get(row.id)||[]).map(item=>repoItem(item)),extras:(extrasByRepo.get(row.id)||[]).map(extra=>({cantidad:extra.cantidad}))};
       const canEdit = canEditReposition(row);
       return {id:row.id,nombre:row.nombre,origin:row.origen_local,destination:row.destino_local,estado:row.estado,remito:row.remito,remito_pendiente:row.remito_pendiente,created_at:row.created_at,updated_at:row.updated_at,can_edit:canEdit,can_delete:row.estado==='preparando'&&canEdit,participantes:(partsByRepo.get(row.id)||[]).map(part=>({nombre:part.nombre,joined:asDate(part.joined_at)})),summary_available:itemsResult.available&&extrasResult.available,participants_available:partsResult.available,summary:repoSummary(snapshot)};
     });

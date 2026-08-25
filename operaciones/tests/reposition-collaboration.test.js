@@ -40,7 +40,11 @@ assert.match(app,/repoState = repoHydrateStateFromCatalog\(data\.repo\)/,
   'Cada actualización completa en tiempo real debe reconciliar los productos con el padrón');
 assert.match(cloud,/items:\(items \|\| \[\]\)\.map\(row=>repoItem\(row,catalogByCode\)\)/,
   'La API debe devolver las reposiciones ya enriquecidas por SKU');
-assert.match(html,/cloud-api\.js\?v=receipt-collab-v1/);
+assert.match(cloud,/itemsByRepo\.get\(row\.id\)\|\|\[\]\)\.map\(item=>repoItem\(item\)\)/,
+  'El listado no debe pasar el índice de Array.map como si fuera el padrón');
+assert.match(cloud,/typeof catalogByCode\?\.get === 'function'/,
+  'El enriquecimiento debe tolerar llamadas sin un índice de padrón');
+assert.match(html,/cloud-api\.js\?v=repo-list-fix-v1/);
 assert.match(html,/reposition-app\.js\?v=quantity-control-v1/);
 assert.match(app,/No existen más productos para recoger/);
 assert.match(app,/Ver y modificar toda la lista/);
