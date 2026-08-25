@@ -4186,3 +4186,33 @@ function toggleDifDetalle(id){
   const d=document.getElementById(id);
   if(d) d.style.display=d.style.display==='none'?'block':'none';
 }
+
+// ─── THEME SWITCHER ──────────────────────────────────────────────────────
+function setTheme(theme) {
+  localStorage.setItem('sucaneitor_theme', theme);
+  applyTheme();
+}
+
+function applyTheme() {
+  const saved = localStorage.getItem('sucaneitor_theme') || 'system';
+  const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  
+  if (saved === 'dark' || (saved === 'system' && darkQuery.matches)) {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  } else {
+    document.documentElement.setAttribute('data-theme', 'light');
+  }
+  
+  // Update active state of buttons
+  document.querySelectorAll('.theme-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-theme-val') === saved);
+  });
+}
+
+// Escuchar cambios en la preferencia del sistema operativo
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (localStorage.getItem('sucaneitor_theme') === 'system') applyTheme();
+});
+
+// Inicializar al final de la carga de scripts
+document.addEventListener('DOMContentLoaded', applyTheme);

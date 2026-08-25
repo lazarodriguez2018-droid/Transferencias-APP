@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -93,6 +93,19 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
 .conv-row-menu button { width:100%; border:0; background:transparent; color:var(--danger); text-align:left; padding:8px 10px; border-radius:8px; cursor:pointer; }
 .conv-row-menu button:hover { background:rgba(239,68,68,.12); }
 </style>
+<script>
+  (function(){
+    try {
+      var saved = localStorage.getItem('sucaneitor_theme') || 'system';
+      var darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      if (saved === 'dark' || (saved === 'system' && darkQuery.matches)) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      } else if (saved === 'light' || (saved === 'system' && !darkQuery.matches)) {
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    } catch(e) {}
+  })();
+</script>
 </head>
 <body>
 
@@ -331,6 +344,11 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
           <div class="role" id="sidebar-role">–</div>
         </div>
       </div>
+            <div class="theme-switcher">
+        <button type="button" class="theme-btn" data-theme-val="light" onclick="setTheme('light')" title="Claro">☀️</button>
+        <button type="button" class="theme-btn" data-theme-val="system" onclick="setTheme('system')" title="Sistema">⚙️</button>
+        <button type="button" class="theme-btn" data-theme-val="dark" onclick="setTheme('dark')" title="Oscuro">🌙</button>
+      </div>
       <button class="logout-btn" onclick="doLogout()">Cerrar sesión</button>
     </div>
   </div>
@@ -352,6 +370,11 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         <div class="user-fab-popover-name" id="fab-popover-name">–</div>
         <div class="user-fab-popover-role" id="fab-popover-role">–</div>
       </div>
+    </div>
+        <div class="theme-switcher">
+      <button type="button" class="theme-btn" data-theme-val="light" onclick="setTheme('light')" title="Claro">☀️</button>
+      <button type="button" class="theme-btn" data-theme-val="system" onclick="setTheme('system')" title="Sistema">⚙️</button>
+      <button type="button" class="theme-btn" data-theme-val="dark" onclick="setTheme('dark')" title="Oscuro">🌙</button>
     </div>
     <button class="user-fab-logout" onclick="doLogout()">
       <span>🚪</span> Cerrar sesión
