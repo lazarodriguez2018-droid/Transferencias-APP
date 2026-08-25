@@ -659,5 +659,8 @@ button { cursor:pointer; border:none; outline:none; }
 /* En hub-mode el sidebar esta oculto -> mostrar el FAB */
 #app-page.hub-mode #user-fab { display: flex !important; }
 
-
-
+/* Enlaces públicos de pedidos */
+.public-link-panel{margin-top:14px}.public-link-card{padding:16px;border:1px solid var(--border);border-radius:14px;background:var(--surface2)}
+.public-link-status{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:13px}.public-link-status strong,.public-link-status span{display:block}.public-link-status strong{font-size:13px}.public-link-status span{margin-top:3px;color:var(--text2);font-size:10px}.public-link-pill{padding:5px 9px;border-radius:99px;background:rgba(67,233,123,.1);color:var(--accent3);font-size:10px;font-weight:700}.public-link-pill.paused{background:rgba(247,151,30,.1);color:#f7971e}
+.public-link-share{display:grid;grid-template-columns:150px minmax(0,1fr);gap:14px;align-items:center}.public-link-qr{display:grid;place-items:center;min-height:150px;padding:9px;border-radius:12px;background:#fff}.public-link-qr img,.public-link-qr canvas{max-width:100%;height:auto}.public-link-url{padding:10px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text2);font:500 10px 'DM Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.public-link-actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}.public-link-warning{padding:12px;border:1px solid rgba(247,151,30,.3);border-radius:11px;background:rgba(247,151,30,.08);color:var(--text2);font-size:11px;line-height:1.45}.public-order-badge{display:inline-flex;margin-left:6px;padding:2px 7px;border-radius:99px;background:rgba(56,189,248,.1);color:#38bdf8;font-size:9px;font-weight:800;vertical-align:middle}
+@media(max-width:600px){.public-link-share{grid-template-columns:1fr}.public-link-qr{width:150px;margin:auto}.public-link-actions .btn{flex:1}.public-link-status{align-items:flex-start}}
