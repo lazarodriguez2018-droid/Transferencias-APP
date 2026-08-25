@@ -23,7 +23,7 @@ assert.match(portalHtml, /href="\/operaciones\?module=recepcion"/);
 assert.match(operationsHtml, /href="\/"[^>]*>← Volver al inicio<\/a>/);
 assert.doesNotMatch(operationsHtml, /id="module-screen"|¿Qué vas a hacer\?|Usar sin servidor|URL del servidor|Modo Red Local/,
   'Operaciones no debe conservar el selector blanco ni opciones del servidor local');
-assert.match(operationsHtml, /app\.js\?v=stock-report-v2/,
+assert.match(operationsHtml, /app\.js\?v=search-fast-v3/,
   'El navegador debe solicitar la versión nueva y no reutilizar archivos antiguos');
 assert.match(portalHtml, /<h1>Escoja un modulo para realizar su tarea:<\/h1>/,
   'El selector debe mostrar la instrucción solicitada');
@@ -31,7 +31,7 @@ assert.doesNotMatch(portalHtml, /SUCANEITOR OPERACIONES|Administrar padrón de m
   'El selector no debe conservar el texto ni el botón eliminados');
 assert.match(portalCss, /\.operations-grid\{display:grid;grid-template-columns:1fr/,
   'Los módulos deben presentarse como una lista vertical');
-assert.match(operationsHtml, /\.app-dialog-layer\{z-index:10050!important/,
+assert.match(operationsHtml, /\.mo\.app-dialog-layer\{z-index:10050!important/,
   'Las confirmaciones deben aparecer por encima del panel de invitaciones');
 assert.doesNotMatch(operationsJs, /module-screen|sc_server_url|input-server-url/,
   'La navegación y las sesiones deben funcionar únicamente sobre la web alojada');

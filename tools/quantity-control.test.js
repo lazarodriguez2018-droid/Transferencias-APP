@@ -53,13 +53,16 @@ assert.match(repo,/que es lo que falta juntar/,'El modal debe explicar el valor 
 assert.doesNotMatch(repo,/openRepoDispatch|confirmRepoDispatch|finalizeDispatch/,'La reposición no debe incluir el cierre manual de envío eliminado');
 assert.match(repo,/\['main','orders','summary','package'\]/,'Los archivos de salida deben usar cantidades verificadas');
 assert.match(receipt,/openReceiptQuantityVerification\(\(\)=>closeReceptionFlow\(\)\)/,'El cierre de recepción debe verificar cargas en lote');
-assert.match(receipt,/type==='received'&&receiptVerificationItems/,'El remito recibido debe usar cantidades verificadas');
+const receptionReportBody=receipt.match(/async function downloadReceptionReport\(\) \{([\s\S]*?)\n\}/)?.[1]||'';
+const receptionTransferBody=receipt.match(/async function downloadReceiptTransfer\(type\) \{([\s\S]*?)\n\}/)?.[1]||'';
+assert.doesNotMatch(receptionReportBody,/openReceiptQuantityVerification/,'El informe de recepción debe descargarse sin abrir el control final');
+assert.doesNotMatch(receptionTransferBody,/openReceiptQuantityVerification/,'Los remitos de recepción deben descargarse sin abrir el control final');
 const generateReportBody=inventory.match(/async function generateReport\(\) \{([\s\S]*?)\n\}/)?.[1]||'';
 assert.doesNotMatch(generateReportBody,/openInventoryQuantityVerification/,'El reporte de stock debe generarse sin abrir el control final de cantidades');
 assert.match(inventory,/Confirmar \$\{quantity\}/,'El modal de inventario debe mostrar la cantidad exacta');
 assert.match(guest,/pending=Math\.max\(0,num\(item\?\.requested\)-current\)/,'El invitado debe calcular la cantidad pendiente');
 assert.match(guest,/saveRepoQuantity\(code,current\+value\)/,'El invitado debe sumar lo pendiente sin reemplazar el total acumulado');
-assert.match(operationsHtml,/reposition-app\.js\?v=pending-found-v2/,'La sesión normal debe invalidar el JavaScript anterior');
-assert.match(guestHtml,/invitado\.js\?v=guest-repo-v3/,'La sesión QR debe invalidar el JavaScript anterior');
+assert.match(operationsHtml,/reposition-app\.js\?v=search-fast-v3/,'La sesión normal debe invalidar el JavaScript anterior');
+assert.match(guestHtml,/invitado\.js\?v=guest-search-v4/,'La sesión QR debe invalidar el JavaScript anterior');
 
 console.log('quantity-control: OK');

@@ -544,7 +544,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
 html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
 </style>
 <style>
-.mo{z-index:1700!important}
+.mo{z-index:1700!important}.mo.app-dialog-layer{z-index:10050!important}
 .repo-route{display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border-radius:999px;background:color-mix(in srgb,var(--accent2) 10%,var(--surface));color:var(--accent2);font:700 12px 'DM Mono',monospace}.repo-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:14px}.repo-kpi{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:12px;box-shadow:var(--shadow)}.repo-kpi span{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);font-weight:700}.repo-kpi strong{display:block;margin-top:6px;font:700 22px 'DM Mono',monospace;color:var(--accent2)}
 .repo-workspace{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(270px,.75fr);gap:15px}.repo-current{border:2px solid color-mix(in srgb,var(--accent) 55%,var(--border));padding:22px}.repo-product-name{font-size:25px;line-height:1.22;letter-spacing:-.04em;margin:12px 0}.repo-source-name{font-size:11px;color:var(--muted);line-height:1.4}.repo-quantities{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:18px 0}.repo-quantity{text-align:center;border-radius:12px;background:var(--surface2);padding:12px 6px}.repo-quantity span{font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase}.repo-quantity strong{display:block;font:700 27px 'DM Mono';margin-top:5px}.repo-quantity.pending strong{color:var(--yellow)}.repo-fast{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}.repo-fast .btn{min-height:54px;font-size:16px}.repo-tools{display:grid;gap:10px}.repo-tool{padding:15px}.repo-tool .card-title{margin-bottom:8px}.repo-inline{display:flex;gap:7px}.repo-inline .input{min-width:0}.repo-inline .btn{flex:0 0 auto}.repo-status-banner{padding:10px 12px;border-radius:10px;font-size:12px;font-weight:700;margin-bottom:12px}.repo-status-banner.ok{background:color-mix(in srgb,var(--green) 12%,var(--surface));color:var(--green)}.repo-status-banner.warn{background:color-mix(in srgb,var(--yellow) 12%,var(--surface));color:var(--yellow)}.repo-status-banner.bad{background:color-mix(in srgb,var(--red) 12%,var(--surface));color:var(--red)}
 .repo-list-toolbar{display:flex;gap:8px;margin-bottom:12px}.repo-list-toolbar .input{flex:1}.repo-filter{max-width:190px}.repo-list{display:grid;gap:8px}.repo-row{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:13px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}.repo-row.complete{border-left:4px solid var(--green)}.repo-row.partial{border-left:4px solid var(--yellow)}.repo-row.over{border-left:4px solid var(--accent2)}.repo-row.not-found{border-left:4px solid var(--red)}.repo-row h3{font-size:13px;line-height:1.35}.repo-row-meta{font-size:10px;color:var(--muted);margin-top:5px}.repo-row-actions{display:flex;align-items:center;gap:5px}.repo-row-actions .btn{min-width:42px;padding:8px}.repo-qty-input{width:72px;text-align:center;font:700 15px 'DM Mono'}
@@ -1162,14 +1162,14 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script src="cloud-config.js"></script>
 <script src="cloud-api.js?v=repo-list-fix-v1"></script>
-<script src="search-engine.js?v=inventory-v5"></script>
+<script src="search-engine.js?v=search-fast-v6"></script>
 <script src="reposition-engine.js?v=repo-finish-delete-v1"></script>
 <script src="reception-engine.js?v=receipt-collab-v1"></script>
 <script src="reposition-export.js?v=reposicion-dialogs-v3"></script>
 <script src="/barcode-utils.js?v=barcode-catalog-v1"></script>
-<script src="app.js?v=stock-report-v2"></script>
-<script src="reposition-app.js?v=pending-found-v2"></script>
-<script src="reception-app.js?v=receipt-collab-v1"></script>
+<script src="app.js?v=search-fast-v3"></script>
+<script src="reposition-app.js?v=search-fast-v3"></script>
+<script src="reception-app.js?v=search-reports-v2"></script>
 <script src="session-invite.js?v=guest-access-v1"></script>
 </body>
 </html>

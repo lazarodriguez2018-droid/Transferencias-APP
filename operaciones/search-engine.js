@@ -456,6 +456,25 @@
     return best;
   }
 
+  // La coincidencia completa admite tolerancia de escritura y sinónimos, pero
+  // calcular distancia contra todos los productos en cada tecla bloquea la UI.
+  // Primero se recorren las coincidencias directas (exactas, prefijos,
+  // contenidos y equivalencias); solo se evalúan las coincidencias difusas si
+  // no apareció ninguna coincidencia directa.
+  function termHasDirectCandidate(entry, termSpec) {
+    return termSpec.variants.some(variant => {
+      const value = variant.value;
+      if (value.length >= 2 && entry.searchableNorm.includes(value)) return true;
+      return variant.compact.length >= 4 && entry.searchableCompact.includes(variant.compact);
+    });
+  }
+
+  function entryHasDirectCandidate(entry, preparedQuery) {
+    return preparedQuery.variants.some(variant =>
+      variant.termSpecs.every(termSpec => termHasDirectCandidate(entry, termSpec))
+    );
+  }
+
   function scoreText(entry, query) {
     return scorePreparedQuery(entry, prepareQuery(query));
   }
@@ -595,8 +614,13 @@
     const maxResults = Math.max(1, Number(limit) || 40);
     const ranked = [];
     const preparedQuery = prepareQuery(query);
+    const deferred = [];
 
     for (const entry of Array.isArray(index) ? index : []) {
+      if (!entryHasDirectCandidate(entry, preparedQuery)) {
+        deferred.push(entry);
+        continue;
+      }
       const text = scorePreparedQuery(entry, preparedQuery);
       if (!text) continue;
       const contextual = scoreContext(entry, context);
@@ -610,6 +634,25 @@
         reasons: contextual.reasons,
         matches: text.matches
       });
+    }
+
+    // Mantiene la tolerancia a errores de escritura cuando no existe ninguna
+    // coincidencia directa. Si ya hay resultados útiles, evita comparar todo
+    // el padrón solo para completar posiciones secundarias de la lista.
+    if (!ranked.length) {
+      for (const entry of deferred) {
+        const text = scorePreparedQuery(entry, preparedQuery);
+        if (!text) continue;
+        const contextual = scoreContext(entry, context);
+        ranked.push({
+          product: entry.product,
+          textScore: text.score,
+          contextScore: contextual.score,
+          score: text.score * 4 + contextual.score * 8,
+          reasons: contextual.reasons,
+          matches: text.matches
+        });
+      }
     }
 
     ranked.sort((a, b) =>

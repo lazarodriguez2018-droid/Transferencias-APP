@@ -10,6 +10,7 @@ const repoUrgentSnoozed = new Map();
 let repoCatalogIndex = null;
 let repoCatalogIndexSource = null;
 let repoVerificationContinuation = null;
+const repoProductSearchTimers = new Map();
 
 const REPO_NOT_FOUND_REASONS = [
   {code:'stock_insuficiente', label:'Stock insuficiente'},
@@ -797,7 +798,12 @@ function searchRepoProducts(query, mode) {
   const target = mode === 'extra' ? 'repo-extra-results' : 'repo-search-results';
   const container = document.getElementById(target);
   if (!container) return;
+  clearTimeout(repoProductSearchTimers.get(target));
   if (value.length < 2) { container.style.display = 'none'; container.innerHTML = ''; return; }
+  repoProductSearchTimers.set(target, setTimeout(() => runRepoProductSearch(value, mode, target, container), 90));
+}
+
+function runRepoProductSearch(value, mode, target, container) {
   const source = padron;
   const requestedCodes = new Set((repoState.items || []).map(item => String(item.codigo)));
   let results;

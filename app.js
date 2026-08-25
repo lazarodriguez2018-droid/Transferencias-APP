@@ -922,6 +922,13 @@ return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'
 function tokenizeSearch(v){
 return normalizeText(v).split(' ').filter(Boolean);
 }
+const productSearchTextCache=new WeakMap();
+function productSearchText(product){
+if(!product||typeof product!=='object') return '';
+let value=productSearchTextCache.get(product);
+if(value===undefined){value=normalizeText([product.nombre,product.codigo,product.marca,product.barras].filter(Boolean).join(' '));productSearchTextCache.set(product,value);}
+return value;
+}
 function orderMatchesTokens(order, tokens){
 if(!tokens.length) return true;
 const products=(order.pedido_productos||[]).map(p=>[p.nombre,p.codigo,p.marca].filter(Boolean).join(' ')).join(' ');
@@ -930,7 +937,7 @@ return tokens.every(t=>haystack.includes(t));
 }
 function productMatchesTokens(product, tokens){
 if(!tokens.length) return true;
-const haystack=normalizeText([product.nombre,product.codigo,product.marca].filter(Boolean).join(' '));
+const haystack=productSearchText(product);
 return tokens.every(t=>haystack.includes(t));
 }
 
@@ -2382,7 +2389,7 @@ function searchProducts(){
 const q=el('product-search-input').value.trim().toLowerCase();
 const res=el('product-search-results');
 if(q.length<2){res.classList.remove('show');return;}
-// Debounce 300ms para no spamear queries
+// Espera breve para agrupar teclas sin que el buscador se sienta trabado.
 clearTimeout(_searchTimeout);
 _searchTimeout=setTimeout(async()=>{
 await loadProductsCache();
@@ -2401,7 +2408,7 @@ res.classList.add('show'); return;
 window._sr=results;
 res.innerHTML=results.map((p,i)=>'<div class="product-result" onclick="selProd('+i+')"><div class="p-name">'+escHtml(p.nombre)+'</div><div class="p-code">'+escHtml(p.codigo)+(p.marca?' · '+escHtml(p.marca):'')+'</div></div>').join('');
 res.classList.add('show');
-},300);
+},120);
 }
 
 function selProd(idx){
