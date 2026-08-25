@@ -91,6 +91,9 @@ let scanTriggerTimer = null;
 let searchTimer = null;
 let searchIndex = [];
 let indexedPadron = null;
+let searchContextCache = null;
+let searchContextSignature = '';
+let barcodeAssignmentSearchTimer = null;
 let currentSearchResults = [];
 const IS_IOS_DEVICE = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
@@ -1078,6 +1081,11 @@ function quickAddSearchResult(index) {
 function invalidateSearchIndex() {
   searchIndex = [];
   indexedPadron = null;
+  searchContextCache = null;
+  searchContextSignature = '';
+  const warmSearchIndex = () => { if (padron.length && indexedPadron !== padron) ensureSearchIndex(); };
+  if (window.requestIdleCallback) window.requestIdleCallback(warmSearchIndex, { timeout: 1200 });
+  else setTimeout(warmSearchIndex, 60);
 }
 
 function ensureSearchIndex() {
@@ -1091,12 +1099,24 @@ function ensureSearchIndex() {
 
 function buildSearchContext() {
   if (!window.SucaneitorSearch) return null;
-  return SucaneitorSearch.createContext(ensureSearchIndex(), {
+  const counts = countItems || {};
+  const balance = balanceData || [];
+  const signature = [
+    sessionNombre,
+    Object.keys(counts).length,
+    actionLog?.length || 0,
+    actionLog?.[actionLog.length - 1]?.ts || actionLog?.[actionLog.length - 1]?.timestamp || '',
+    balance.length
+  ].join('|');
+  if (searchContextCache && searchContextSignature === signature) return searchContextCache;
+  searchContextSignature = signature;
+  searchContextCache = SucaneitorSearch.createContext(ensureSearchIndex(), {
     sessionName: sessionNombre,
     countItems,
     actionLog,
-    balanceData: balanceData || []
+    balanceData: balance
   });
+  return searchContextCache;
 }
 
 function renderSearchContext(context) {
@@ -2481,7 +2501,13 @@ function cancelBarcodeAssignment() {
 function searchBarcodeAssignmentProducts(query) {
   const container = document.getElementById('assignment-search-results');
   const value = String(query || '').trim();
+  clearTimeout(barcodeAssignmentSearchTimer);
   if (value.length < 2) { container.style.display = 'none'; container.innerHTML = ''; return; }
+  barcodeAssignmentSearchTimer = setTimeout(() => runBarcodeAssignmentProductSearch(value, container), 90);
+}
+
+function runBarcodeAssignmentProductSearch(value, container) {
+  if (String(document.getElementById('assignment-search')?.value || '').trim() !== value) return;
   const index = ensureSearchIndex();
   const results = window.SucaneitorSearch
     ? SucaneitorSearch.rankProducts(index, value, buildSearchContext(), 16)

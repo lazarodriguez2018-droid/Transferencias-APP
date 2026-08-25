@@ -16,6 +16,11 @@ let receiptLastScanTime = 0;
 let receiptScanNoticeOpen = false;
 let receiptListLimit = 250;
 let receiptVerificationContinuation = null;
+let receiptSearchSourceCache = [];
+let receiptSearchIndexCache = [];
+let receiptSearchPadronSource = null;
+let receiptSearchItemsSource = null;
+const receiptProductSearchTimers = new Map();
 
 function receiptApi(path, options) { return fetch(`${serverUrl}${path}`, options); }
 function receiptEncode(value) { return encodeURIComponent(String(value || '')); }
@@ -220,18 +225,29 @@ function renderReceiptList() {
 }
 
 function receiptSearchSource() {
+  const items=receiptState?.items||[];
+  if(receiptSearchPadronSource===padron&&receiptSearchItemsSource===items&&receiptSearchSourceCache.length)return receiptSearchSourceCache;
   const byCode=new Map(padron.map(product=>[String(product.codigo),product]));
-  receiptState.items.forEach(item=>{if(!byCode.has(String(item.codigo)))byCode.set(String(item.codigo),item);}); return [...byCode.values()];
+  let hasProductsOutsideCatalog=false;
+  items.forEach(item=>{if(!byCode.has(String(item.codigo))){byCode.set(String(item.codigo),item);hasProductsOutsideCatalog=true;}});
+  receiptSearchPadronSource=padron;receiptSearchItemsSource=items;receiptSearchSourceCache=[...byCode.values()];
+  receiptSearchIndexCache=window.SucaneitorSearch?(hasProductsOutsideCatalog?SucaneitorSearch.createSearchIndex(receiptSearchSourceCache):ensureSearchIndex()):[];
+  return receiptSearchSourceCache;
 }
 
 function searchReceiptProducts(query,mode) {
   const value=String(query||'').trim(),target=mode==='extra'?'receipt-extra-results':'receipt-search-results',container=document.getElementById(target);if(!container)return;
+  clearTimeout(receiptProductSearchTimers.get(target));
   if(value.length<2){container.style.display='none';container.innerHTML='';return;}
-  const source=receiptSearchSource(),index=SucaneitorSearch.createSearchIndex(source),expectedCodes=new Set(receiptState.items.map(item=>String(item.codigo)));
+  receiptProductSearchTimers.set(target,setTimeout(()=>runReceiptProductSearch(value,mode,target,container),90));
+}
+
+function runReceiptProductSearch(value,mode,target,container) {
+  const source=receiptSearchSource(),index=receiptSearchIndexCache,itemByCode=new Map(receiptState.items.map(item=>[String(item.codigo),item])),expectedCodes=new Set(itemByCode.keys());
   let results=SucaneitorSearch.rankProducts(index,value,null,30).map(row=>row.product);const compact=SucaneitorSearch.normalizeText(value);
   source.filter(product=>String(product.codigo).toLowerCase().includes(value.toLowerCase())||String(product.barras||'').includes(compact)).forEach(product=>{if(!results.some(row=>String(row.codigo)===String(product.codigo)))results.unshift(product);});
-  if(mode!=='extra')results.sort((a,b)=>{const ae=expectedCodes.has(String(a.codigo)),be=expectedCodes.has(String(b.codigo));if(ae!==be)return Number(be)-Number(ae);const ai=receiptState.items.find(item=>String(item.codigo)===String(a.codigo)),bi=receiptState.items.find(item=>String(item.codigo)===String(b.codigo));return Number(Number(ai?.recibido)>=Number(ai?.esperado))-Number(Number(bi?.recibido)>=Number(bi?.esperado));});
-  receiptSearchResults[target]=results.slice(0,25);container.style.display='block';const header=`<div class="receipt-results-head"><span>${results.length?`${Math.min(25,results.length)} resultados`:'Sin coincidencias'}</span><button type="button" onclick="closeReceiptSearchResults('${target}')" aria-label="Cerrar resultados">× Cerrar lista</button></div>`;container.innerHTML=header+(results.length?results.slice(0,25).map((product,indexRow)=>{const item=receiptState.items.find(row=>String(row.codigo)===String(product.codigo)),received=Number(item?.recibido)||0,expected=Number(item?.esperado)||0,busy=receiptItemClaimedByOther(item),label=!item?'FUERA DEL REMITO':busy?`CONTROLANDO: ${item.asignado_nombre||'otra persona'}`:item.controlado_at?`CONTROLADO ${received}/${expected}`:`PENDIENTE · RESTA ${Math.max(0,expected-received)}`;return `<button type="button" class="repo-result" onclick="selectReceiptSearchResult('${target}',${indexRow},'${mode}')"><strong>${esc(product.nombre)}</strong><span>SKU ${esc(product.codigo)} · ${esc(label)}${product.barras?` · Barras ${esc(product.barras)}`:''}</span></button>`;}).join(''):'<div class="repo-empty">Probá con otro nombre o con el SKU.</div>');
+  if(mode!=='extra')results.sort((a,b)=>{const ae=expectedCodes.has(String(a.codigo)),be=expectedCodes.has(String(b.codigo));if(ae!==be)return Number(be)-Number(ae);const ai=itemByCode.get(String(a.codigo)),bi=itemByCode.get(String(b.codigo));return Number(Number(ai?.recibido)>=Number(ai?.esperado))-Number(Number(bi?.recibido)>=Number(bi?.esperado));});
+  receiptSearchResults[target]=results.slice(0,25);container.style.display='block';const header=`<div class="receipt-results-head"><span>${results.length?`${Math.min(25,results.length)} resultados`:'Sin coincidencias'}</span><button type="button" onclick="closeReceiptSearchResults('${target}')" aria-label="Cerrar resultados">× Cerrar lista</button></div>`;container.innerHTML=header+(results.length?results.slice(0,25).map((product,indexRow)=>{const item=itemByCode.get(String(product.codigo)),received=Number(item?.recibido)||0,expected=Number(item?.esperado)||0,busy=receiptItemClaimedByOther(item),label=!item?'FUERA DEL REMITO':busy?`CONTROLANDO: ${item.asignado_nombre||'otra persona'}`:item.controlado_at?`CONTROLADO ${received}/${expected}`:`PENDIENTE · RESTA ${Math.max(0,expected-received)}`;return `<button type="button" class="repo-result" onclick="selectReceiptSearchResult('${target}',${indexRow},'${mode}')"><strong>${esc(product.nombre)}</strong><span>SKU ${esc(product.codigo)} · ${esc(label)}${product.barras?` · Barras ${esc(product.barras)}`:''}</span></button>`;}).join(''):'<div class="repo-empty">Probá con otro nombre o con el SKU.</div>');
 }
 
 async function selectReceiptSearchResult(target,index,mode) {
@@ -322,7 +338,7 @@ function renderReceiptConfig() {const node=document.getElementById('receipt-conf
 async function downloadReceptionOriginal(){try{const response=await fetch(`/api/recepcion/original?rid=${encodeURIComponent(sessionId)}`),data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'No disponible');location.href=data.url;}catch(error){toast(error.message||'No se pudo descargar','e');}}
 
 async function downloadReceptionReport() {
-  if(!receiptState)return;if(receiptVerificationItems().length){openReceiptQuantityVerification(()=>downloadReceptionReport());return;}try{const XLSX=await waitForXlsx(),book=XLSX.utils.book_new(),summary=SucaneitorReception.summary(receiptState),add=(name,rows)=>XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet(rows),name);
+  if(!receiptState)return;try{const XLSX=await waitForXlsx(),book=XLSX.utils.book_new(),summary=SucaneitorReception.summary(receiptState),add=(name,rows)=>XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet(rows),name);
     add('Resumen',[['CONTROL DE REMITO'],['Remito',receiptState.document_number],['Fecha',receiptState.date],['Origen',receiptState.origin],['Destino',receiptState.destination],['Estado',receiptState.estado],[],['Productos',summary.productos],['Unidades esperadas',summary.unidades_esperadas],['Unidades recibidas',summary.unidades_recibidas],['Unidades faltantes',summary.unidades_faltantes],['Unidades sobrantes',summary.unidades_sobrantes],['Unidades extra',summary.extras_unidades],['Observaciones',receiptState.observaciones_cierre||'']]);
     add('Control',[['SKU','Producto','Esperado','Recibido','Diferencia','Estado','Observación','Actualizado por'],...receiptState.items.map(item=>[item.codigo,item.nombre,item.esperado,item.recibido,item.recibido-item.esperado,receiptStatusLabel(receiptStatus(item)),item.observacion||'',item.updated_by||''])]);
     add('Diferencias',[['SKU','Producto','Esperado','Recibido','Diferencia','Estado','Observación'],...SucaneitorReception.differenceRows(receiptState).map(item=>[item.codigo,item.nombre,item.esperado,item.recibido,item.diferencia,receiptStatusLabel(item.estado),item.observacion])]);
@@ -338,7 +354,7 @@ function receiptTransferRows(type) {
 }
 
 async function downloadReceiptTransfer(type) {
-  if(!receiptState)return;if(type==='received'&&receiptVerificationItems().length){openReceiptQuantityVerification(()=>downloadReceiptTransfer(type));return;}const rows=receiptTransferRows(type);
+  if(!receiptState)return;const rows=receiptTransferRows(type);
   if(!rows.length){toast(type==='extras'?'No hay productos extra para exportar':'Todavía no hay mercadería recibida para exportar','w');return;}
   try{
     toast('Generando remito para el sistema…','i');
