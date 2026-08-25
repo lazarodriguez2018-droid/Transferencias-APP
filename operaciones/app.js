@@ -1918,7 +1918,6 @@ function refreshReport() {
 
 // ===== GENERAR EXCEL =====
 async function generateReport() {
-  if (inventoryVerificationItems().length) { openInventoryQuantityVerification(()=>generateReport()); return; }
   if (!balanceData) { toast('❌ Cargá el balance primero', 'e'); return; }
   if (!window.XLSX) { toast('El generador de Excel todavía se está cargando', 'e'); return; }
   toast('📊 Generando Excel...', 'i');
