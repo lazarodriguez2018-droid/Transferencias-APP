@@ -1111,10 +1111,6 @@ async function repoLogExport(file) {
 
 async function downloadRepoExport(type) {
   if (!repoState) return;
-  if (['main','orders','summary','package'].includes(type) && repoVerificationItems().length) {
-    openRepoQuantityVerification(()=>downloadRepoExport(type));
-    return;
-  }
   const stats = SucaneitorReposition.summary(repoState);
   if (stats.faltantes > 0) {
     const confirmed = await appConfirm({
