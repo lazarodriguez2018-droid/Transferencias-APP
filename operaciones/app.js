@@ -1,4 +1,4 @@
-// ===== ESTADO =====
+﻿// ===== ESTADO =====
 let padron = [];
 let sessionId = '';
 let sessionNombre = '';
@@ -3483,3 +3483,40 @@ function iaClearHistory() {
   iaHistory = [];
   renderIaHistory();
 }
+
+// ─── THEME SWITCHER ──────────────────────────────────────────────────────
+function toggleThemeWidget() {
+  const widget = document.getElementById('theme-widget');
+  const arrow = document.getElementById('theme-widget-arrow');
+  if (widget) {
+    widget.classList.toggle('collapsed');
+    if (arrow) {
+      arrow.textContent = widget.classList.contains('collapsed') ? '◀' : '▶';
+    }
+  }
+}
+
+function setTheme(theme) {
+  localStorage.setItem('sucaneitor_theme', theme);
+  applyTheme();
+}
+
+function applyTheme() {
+  const saved = localStorage.getItem('sucaneitor_theme') || 'system';
+  const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  
+  if (saved === 'dark' || (saved === 'system' && darkQuery.matches)) {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  } else {
+    document.documentElement.setAttribute('data-theme', 'light');
+  }
+  
+  document.querySelectorAll('.theme-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-theme-val') === saved);
+  });
+}
+
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (localStorage.getItem('sucaneitor_theme') === 'system') applyTheme();
+});
+document.addEventListener('DOMContentLoaded', applyTheme);
