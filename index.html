@@ -335,6 +335,31 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
     </div>
   </div>
 
+  <!-- USER FAB: botón flotante de perfil (visible en mobile) -->
+  <div id="user-fab" aria-label="Mi perfil" role="button" tabindex="0" onclick="toggleUserFab()">
+    <div class="user-fab-avatar" id="fab-avatar">?</div>
+    <div class="user-fab-info">
+      <div class="user-fab-name" id="fab-name">–</div>
+      <div class="user-fab-role" id="fab-role">–</div>
+    </div>
+    <span class="user-fab-chevron">▲</span>
+  </div>
+  <!-- Popover del FAB -->
+  <div id="user-fab-popover" class="user-fab-popover" style="display:none">
+    <div class="user-fab-popover-info">
+      <div class="user-fab-popover-avatar" id="fab-popover-avatar"></div>
+      <div>
+        <div class="user-fab-popover-name" id="fab-popover-name">–</div>
+        <div class="user-fab-popover-role" id="fab-popover-role">–</div>
+      </div>
+    </div>
+    <button class="user-fab-logout" onclick="doLogout()">
+      <span>🚪</span> Cerrar sesión
+    </button>
+  </div>
+  <!-- Overlay para cerrar el popover al tocar fuera -->
+  <div id="user-fab-overlay" style="display:none;position:fixed;inset:0;z-index:188" onclick="closeUserFab()"></div>
+
   <!-- CONTENT -->
   <div class="main-content">
 

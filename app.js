@@ -1,4 +1,4 @@
-// ═══════════════════════════════════════════
+﻿// ═══════════════════════════════════════════
 //  SUPABASE CONFIG
 // ═══════════════════════════════════════════
 const SUPABASE_URL = 'https://akqqpodyijzjdoibkint.supabase.co';
@@ -447,6 +447,57 @@ showPage('auth-page');
 checkEmpresaClave();
 }
 
+
+// ─── USER FAB: botón flotante de perfil ───────────────────────────────────
+function syncUserFab(perfil){
+  if(!perfil) return;
+  const nombre = perfil.nombre_display||(perfil.nombre+' '+perfil.apellido);
+  const rol    = roleLabel(perfil.role);
+  // Pill (FAB principal)
+  safeSet('fab-name', nombre);
+  safeSet('fab-role', rol);
+  // Popover
+  safeSet('fab-popover-name', nombre);
+  safeSet('fab-popover-role', rol);
+  // Avatares: foto o iniciales
+  const iniciales = (perfil.nombre[0]||'')+(perfil.apellido[0]||'');
+  ['fab-avatar','fab-popover-avatar'].forEach(id=>{
+    const av = el(id);
+    if(!av) return;
+    if(perfil.foto_url){
+      av.style.backgroundImage='url('+perfil.foto_url+')';
+      av.style.backgroundSize='cover';
+      av.style.backgroundPosition='center';
+      av.textContent='';
+    } else {
+      av.style.backgroundImage='';
+      av.textContent=iniciales;
+    }
+  });
+}
+function toggleUserFab(){
+  const fab     = el('user-fab');
+  const popover = el('user-fab-popover');
+  const overlay = el('user-fab-overlay');
+  if(!fab||!popover) return;
+  const isOpen = fab.classList.contains('open');
+  if(isOpen){ closeUserFab(); }
+  else {
+    fab.classList.add('open');
+    popover.style.display='block';
+    overlay.style.display='block';
+  }
+}
+function closeUserFab(){
+  const fab     = el('user-fab');
+  const popover = el('user-fab-popover');
+  const overlay = el('user-fab-overlay');
+  if(fab)     fab.classList.remove('open');
+  if(popover) popover.style.display='none';
+  if(overlay) overlay.style.display='none';
+}
+// Cerrar FAB con tecla Escape
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeUserFab(); });
 async function afterLogin(user){
 appState.currentUser=user;
 try{
@@ -510,6 +561,8 @@ avatarEl.style.backgroundImage='';
 avatarEl.textContent = appState.currentPerfil.nombre[0]+appState.currentPerfil.apellido[0];
 }
 safeSet('sidebar-local-badge', appState.currentPerfil.local_nombre+' ('+appState.currentPerfil.almacen+')');
+// Sincronizar el FAB flotante de perfil (visible en hub-mode y mobile)
+syncUserFab(appState.currentPerfil);
 if(isAdmin) el('admin-nav').style.display='block';
 const hubAdminPadron=el('hub-admin-padron');
 if(hubAdminPadron) hubAdminPadron.style.display=isAdmin?'flex':'none';

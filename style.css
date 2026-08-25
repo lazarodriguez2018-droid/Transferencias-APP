@@ -544,6 +544,42 @@ button { cursor:pointer; border:none; outline:none; }
   .modal-footer .btn { width:100%; }
   .notification { left:12px; right:12px; top:calc(12px + env(safe-area-inset-top)); min-width:0; }
   .admin-table { min-width:680px; }
+.operations-card h2{font-size:20px;margin:2px 0 10px}.operations-card p{color:var(--text2);font-size:14px;line-height:1.55;min-height:88px}.operations-card strong{font-size:13px;color:var(--accent)}
+@media(max-width:980px){.operations-grid{grid-template-columns:1fr}.operations-card{min-height:0}.operations-card p{min-height:0;margin-bottom:16px}}
+@media(max-width:600px){.operations-hero h1{font-size:26px}.operations-card{padding:18px;min-height:170px}.operations-icon{width:46px;height:46px;flex-basis:46px}}
+
+/* Experiencia uniforme y segura en celular, tablet y escritorio */
+:focus-visible { outline:3px solid rgba(108,99,255,.5); outline-offset:2px; }
+.main-content { max-width:1600px; }
+.card,.operations-card,.order-card,.stat-card,.modal,.auth-card { box-shadow:0 12px 36px rgba(0,0,0,.16); }
+.filter-select { min-height:44px; }
+.card-body { min-width:0; }
+.table-scroll { width:100%; overflow-x:auto; overscroll-behavior-inline:contain; }
+
+@media (pointer:coarse) {
+  .nav-item,.btn,.filter-select,.form-input,.modal-close,.product-result,.order-card { min-height:46px; }
+  .product-result { padding:13px 14px; }
+}
+
+@media (max-width:768px) {
+  body { padding-bottom:env(safe-area-inset-bottom); }
+  .mobile-header {
+    min-height:calc(58px + env(safe-area-inset-top));
+    padding:calc(10px + env(safe-area-inset-top)) 14px 10px;
+    background:rgba(26,26,34,.96);
+    backdrop-filter:blur(18px);
+  }
+  .main-content { padding:14px 12px calc(28px + env(safe-area-inset-bottom)); padding-top:calc(72px + env(safe-area-inset-top)); }
+  #app-page.hub-mode .main-content { padding:calc(20px + env(safe-area-inset-top)) 14px calc(28px + env(safe-area-inset-bottom)); }
+  .sidebar { width:min(88vw,340px); padding-top:env(safe-area-inset-top); }
+  .page-header { gap:12px; flex-direction:column; }
+  .page-header .btn { width:100%; }
+  .modal-overlay { padding:0; align-items:flex-end; }
+  .modal { max-width:none; max-height:92dvh; border-radius:20px 20px 0 0; padding-bottom:env(safe-area-inset-bottom); }
+  .modal-footer { position:sticky; bottom:0; flex-direction:column-reverse; background:var(--surface); padding-bottom:calc(14px + env(safe-area-inset-bottom)); }
+  .modal-footer .btn { width:100%; }
+  .notification { left:12px; right:12px; top:calc(12px + env(safe-area-inset-top)); min-width:0; }
+  .admin-table { min-width:680px; }
   .card:has(.admin-table) .card-body { overflow-x:auto; }
   .operations-grid { gap:12px; }
   .operations-card { min-height:0; }
@@ -555,3 +591,116 @@ button { cursor:pointer; border:none; outline:none; }
   .operations-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .operations-card.orders { grid-column:auto; }
 }
+
+/* ═══════════════════════════════════════════
+   USER FAB — botón flotante de perfil
+   Visible en mobile; en desktop el sidebar ya
+   muestra el bloque de perfil/logout.
+═══════════════════════════════════════════ */
+#user-fab {
+  display: none; /* oculto por defecto; se muestra solo en mobile */
+  position: fixed;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  left: 14px;
+  z-index: 190;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 50px;
+  padding: 8px 14px 8px 8px;
+  cursor: pointer;
+  box-shadow: 0 6px 24px rgba(0,0,0,.35);
+  transition: background .18s, box-shadow .18s, transform .18s;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  max-width: calc(100vw - 28px);
+}
+#user-fab:hover, #user-fab:focus-visible {
+  background: var(--surface2);
+  box-shadow: 0 8px 28px rgba(0,0,0,.45);
+  outline: none;
+}
+#user-fab:active { transform: scale(.97); }
+
+.user-fab-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; color: #fff;
+  flex-shrink: 0;
+  background-size: cover; background-position: center;
+}
+.user-fab-info { min-width: 0; flex: 1; }
+.user-fab-name {
+  font-size: 13px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 140px;
+}
+.user-fab-role {
+  font-size: 11px; color: var(--text2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.user-fab-chevron {
+  font-size: 10px; color: var(--text3);
+  transition: transform .2s;
+  flex-shrink: 0;
+}
+#user-fab.open .user-fab-chevron { transform: rotate(180deg); }
+
+/* Popover que aparece encima del FAB */
+.user-fab-popover {
+  position: fixed;
+  bottom: calc(82px + env(safe-area-inset-bottom));
+  left: 14px;
+  z-index: 189;
+  width: 220px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: 0 12px 36px rgba(0,0,0,.4);
+  animation: fabPopIn .18s ease;
+}
+@keyframes fabPopIn {
+  from { opacity:0; transform:translateY(10px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+.user-fab-popover-info {
+  display: flex; align-items: center; gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+.user-fab-popover-avatar {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 700; color: #fff;
+  flex-shrink: 0;
+  background-size: cover; background-position: center;
+}
+.user-fab-popover-name { font-size: 14px; font-weight: 600; }
+.user-fab-popover-role { font-size: 11px; color: var(--text2); margin-top: 2px; }
+.user-fab-logout {
+  width: 100%; padding: 10px 12px;
+  background: transparent; border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text3);
+  font-size: 13px; font-weight: 500;
+  display: flex; align-items: center; gap: 8px;
+  cursor: pointer; transition: background .18s, color .18s, border-color .18s;
+}
+.user-fab-logout:hover { background: var(--accent2); color: #fff; border-color: var(--accent2); }
+
+/* Mostrar el FAB en mobile (sidebar colapsado) */
+@media (max-width: 768px) {
+  #user-fab { display: flex; }
+  /* Más espacio al fondo del contenido para que el FAB no tape nada */
+  .main-content {
+    padding-bottom: calc(90px + env(safe-area-inset-bottom));
+  }
+}
+
+/* En hub-mode el sidebar está oculto → mostrar el FAB también en desktop */
+#app-page.hub-mode #user-fab { display: flex !important; }
+
