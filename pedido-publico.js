@@ -36,7 +36,7 @@ async function loadOrigins(){
   if(!state.origins.length)throw new Error('No hay locales de origen disponibles');
 }
 function lastOrder(){try{return JSON.parse(localStorage.getItem('sucan_public_last_order')||'null');}catch(_){return null;}}
-function saveLastOrder(order){try{localStorage.setItem('sucan_public_last_order',JSON.stringify({...order,entryToken:state.token}));}catch(_){}
+function saveLastOrder(order){try{localStorage.setItem('sucan_public_last_order',JSON.stringify({...order,entryToken:state.token}));if(order.order_id&&order.tracking_token)localStorage.setItem('sucan_order_tracking_'+order.order_id,JSON.stringify({token:order.tracking_token,updatedAt:order.created_at}));}catch(_){}
 }
 function clearLastOrder(){try{localStorage.removeItem('sucan_public_last_order');}catch(_){}
 }

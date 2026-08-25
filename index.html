@@ -18,7 +18,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="style.css?v=reception-v1">
+<link rel="stylesheet" href="style.css?v=tracking-all-orders-v2">
 <style>
 .conv-list { display:flex; flex-direction:column; }
 .conv-item { position:relative; display:flex; align-items:center; gap:10px; padding:12px 14px; cursor:pointer; border-bottom:1px solid var(--border); transition:background .15s; }
@@ -357,7 +357,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
           <div class="role" id="sidebar-role">–</div>
         </div>
       </div>
-            
+
       <button class="logout-btn" onclick="doLogout()">Cerrar sesión</button>
     </div>
   </div>
@@ -380,7 +380,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         <div class="user-fab-popover-role" id="fab-popover-role">–</div>
       </div>
     </div>
-        
+
     <button class="user-fab-logout" onclick="doLogout()">
       <span>🚪</span> Cerrar sesión
     </button>
@@ -873,7 +873,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   <div class="modal">
     <div class="modal-header">
       <h2>➕ Nuevo Pedido</h2>
-      <div class="modal-close" onclick="closeModal('modal-nuevo-pedido')">✕</div>
+      <button type="button" class="modal-close" onclick="closeModal('modal-nuevo-pedido')" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-body">
       <div class="info-banner" style="margin-bottom:16px">
@@ -978,7 +978,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   <div class="modal" style="max-width:540px">
     <div class="modal-header">
       <h2>📂 Importar desde XLS</h2>
-      <div class="modal-close" onclick="closeModal('modal-xls-preview')">✕</div>
+      <button type="button" class="modal-close" onclick="closeModal('modal-xls-preview')" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-body">
       <div id="xls-preview-summary" style="margin-bottom:14px;font-size:13px;color:var(--text2)"></div>
@@ -997,7 +997,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   <div class="modal" style="max-width:560px">
     <div class="modal-header">
       <h2>📦 Ver pedido completo</h2>
-      <div class="modal-close" onclick="closeModal('modal-pedido-completo')">✕</div>
+      <button type="button" class="modal-close" onclick="closeModal('modal-pedido-completo')" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-body">
       <div id="pedido-completo-list" style="max-height:500px;overflow-y:auto;display:flex;flex-direction:column;gap:6px"></div>
@@ -1013,7 +1013,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   <div class="modal" style="max-width:400px">
     <div class="modal-header">
       <h2 id="modal-participantes-title">👥 Participantes</h2>
-      <div class="modal-close" onclick="closeModal('modal-participantes')">✕</div>
+      <button type="button" class="modal-close" onclick="closeModal('modal-participantes')" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-body" id="modal-participantes-body" style="max-height:60vh;overflow-y:auto"></div>
     <div class="modal-footer">
@@ -1027,7 +1027,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   <div class="modal" style="max-width:480px">
     <div class="modal-header">
       <h2 id="modal-cliente-title">➕ Nuevo cliente</h2>
-      <div class="modal-close" onclick="closeModal('modal-cliente-agenda')">✕</div>
+      <button type="button" class="modal-close" onclick="closeModal('modal-cliente-agenda')" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-body">
       <input type="hidden" id="cliente-agenda-id">
@@ -1056,7 +1056,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   <div class="modal">
     <div class="modal-header">
       <h2 id="modal-detalle-title">Pedido</h2>
-      <div class="modal-close" onclick="closeModal('modal-detalle')">✕</div>
+      <button type="button" class="modal-close" onclick="closeModal('modal-detalle')" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-body" id="modal-detalle-body"></div>
   </div>
@@ -1067,7 +1067,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   <div class="modal" style="max-width:560px">
     <div class="modal-header">
       <h2>🔗 Enlaces públicos de pedidos</h2>
-      <div class="modal-close" onclick="closeModal('modal-public-order-links')">✕</div>
+      <button type="button" class="modal-close" onclick="closeModal('modal-public-order-links')" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-body">
       <div class="info-banner" style="margin-bottom:14px">Cada enlace crea pedidos para un único local. Solo los supervisores pueden generarlo, pausarlo o reemplazarlo.</div>
@@ -1083,7 +1083,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   <div class="modal" style="max-width:480px">
     <div class="modal-header">
       <h2 id="modal-accion-title">Confirmar</h2>
-      <div class="modal-close" onclick="closeModal('modal-accion')">✕</div>
+      <button type="button" class="modal-close" onclick="closeModal('modal-accion')" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-body" id="modal-accion-body"></div>
     <div class="modal-footer" id="modal-accion-footer"></div>
@@ -1095,7 +1095,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   <div class="modal" style="max-width:520px">
     <div class="modal-header">
       <h2 id="chat-title">💬 Chat del pedido</h2>
-      <div class="modal-close" onclick="closeModal('modal-chat')">✕</div>
+      <button type="button" class="modal-close" onclick="closeModal('modal-chat')" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-body">
       <div class="chat-messages" id="chat-messages"></div>
@@ -1113,7 +1113,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   <div class="modal" style="max-width:480px">
     <div class="modal-header">
       <h2>💡 Enviar sugerencia o consulta</h2>
-      <div class="modal-close" onclick="closeModal('modal-sugerencia')">✕</div>
+      <button type="button" class="modal-close" onclick="closeModal('modal-sugerencia')" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-body">
       <p style="font-size:13px;color:var(--text2);margin-bottom:14px">Tu mensaje le llegará al administrador. Pueden responderte desde la sección de Sugerencias.</p>
@@ -1138,7 +1138,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   <div class="modal" style="max-width:520px">
     <div class="modal-header">
       <h2>💬 Responder sugerencia</h2>
-      <div class="modal-close" onclick="closeModal('modal-resp-sug')">✕</div>
+      <button type="button" class="modal-close" onclick="closeModal('modal-resp-sug')" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-body" id="modal-resp-sug-body"></div>
     <div class="modal-footer">
@@ -1156,7 +1156,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   <div class="modal" style="max-width:440px">
     <div class="modal-header">
       <h2>✏️ Editar local</h2>
-      <div class="modal-close" onclick="closeModal('modal-editar-local')">✕</div>
+      <button type="button" class="modal-close" onclick="closeModal('modal-editar-local')" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-body">
       <input type="hidden" id="edit-local-id">
@@ -1196,7 +1196,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   <div class="modal" style="max-width:480px">
     <div class="modal-header">
       <h2>💬 Nueva conversación</h2>
-      <div class="modal-close" onclick="closeModal('modal-nueva-conv')">✕</div>
+      <button type="button" class="modal-close" onclick="closeModal('modal-nueva-conv')" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-body" id="nueva-conv-body"></div>
     <div class="modal-footer">
@@ -1208,6 +1208,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
 
 <script src="barcode-utils.js?v=barcode-catalog-v1"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-<script src="app.js?v=public-orders-v1"></script>
+<script src="app.js?v=tracking-all-orders-v2"></script>
 </body>
 </html>
+

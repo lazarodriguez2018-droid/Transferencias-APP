@@ -66,7 +66,10 @@ button { cursor:pointer; border:none; outline:none; }
 .form-input option { background:var(--surface2); }
 .form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .btn { width:100%; padding:12px; border-radius:var(--radius-sm); font-size:15px; font-weight:600;
-  transition:all .2s; letter-spacing:0.2px; min-height:44px; }
+  transition:background .2s,border-color .2s,color .2s,box-shadow .2s,transform .2s; letter-spacing:0.2px; min-height:44px;
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;text-align:center;line-height:1.2; }
+.btn:focus-visible,.theme-btn:focus-visible,.modal-close:focus-visible { outline:3px solid color-mix(in srgb,var(--accent) 34%,transparent); outline-offset:2px; }
+.btn:disabled,.btn[aria-disabled="true"] { opacity:.5;cursor:not-allowed;transform:none!important;box-shadow:none!important; }
 .btn-primary { background:var(--accent); color:#fff; }
 .btn-primary:hover { background:#7c74ff; transform:translateY(-1px); box-shadow:0 4px 20px rgba(108,99,255,0.3); }
 .btn-danger { background:var(--accent2); color:#fff; }
@@ -78,6 +81,10 @@ button { cursor:pointer; border:none; outline:none; }
 .btn-ghost { background:var(--surface2); color:var(--text); border:1px solid var(--border); }
 .btn-ghost:hover { background:var(--surface3); }
 .btn-sm { width:auto; padding:8px 16px; font-size:13px; }
+.btn-whatsapp { background:#1f9d55;color:#fff;border:1px solid #1f9d55; }
+.btn-whatsapp:hover { background:#188348;border-color:#188348; }
+.btn-export { background:color-mix(in srgb,var(--accent3) 12%,var(--surface2));color:var(--accent3);border:1px solid color-mix(in srgb,var(--accent3) 36%,var(--border)); }
+.btn-export:hover { background:color-mix(in srgb,var(--accent3) 20%,var(--surface2)); }
 .auth-error { background:#ff6b6b22; border:1px solid #ff6b6b44; border-radius:var(--radius-sm);
   padding:10px 14px; font-size:13px; color:#ff6b6b; margin-bottom:14px; display:none; }
 .auth-error.show { display:block; }
@@ -1209,6 +1216,7 @@ button { cursor:pointer; border:none; outline:none; }
 .theme-btn:hover {
   color: var(--text);
 }
+.theme-btn span{font-size:13px}
 .theme-btn.active {
   background: var(--surface);
   color: var(--text);
@@ -1217,3 +1225,4 @@ button { cursor:pointer; border:none; outline:none; }
 :root[data-theme="light"] .theme-btn.active {
   box-shadow: 0 2px 6px rgba(0,0,0,0.06);
 }
+

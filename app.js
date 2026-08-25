@@ -21,6 +21,7 @@ productsCache: [],
 agendaCache: [],
 clienteDesdePedido: false,
 currentChatOrderId: null,
+currentDetailOrderId: null,
 currentSugId: null,
 despachoTab: 'pendientes',
 activeView: 'hub',
@@ -29,6 +30,7 @@ navigationRequestId: 0,
 spinnerSequence: 0,
 realtimeChannels: [],
 publicOrderLink: {localId:null,status:null,token:null},
+orderTrackingSecrets: {},
 idle: {
 intervalId: null,
 warned: false,
@@ -1603,6 +1605,19 @@ actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick
 }
 }
 
+appState.currentDetailOrderId=o.id;
+const communicationButtons=
+'<button class="btn btn-ghost btn-sm" onclick="openChat(\''+o.id+'\')">💬 Abrir chat</button>'+
+(o.telefono?'<button class="btn btn-whatsapp btn-sm" onclick="abrirWhatsApp(\''+escJsStr(o.telefono)+'\',\''+escJsStr(o.cliente||'')+'\')">💬 Escribir por WhatsApp</button>':'')+
+(o.cliente_aviso_pendiente&&canDestino?'<button class="btn btn-primary btn-sm" onclick="marcarClienteAvisado(\''+o.id+'\')">✅ Marcar cliente avisado</button>':'');
+const documentButtons=
+'<button class="btn btn-ghost btn-sm" onclick="generarEtiqueta(\''+o.id+'\')">🖨️ Imprimir etiqueta</button>'+
+(['completo','incompleto'].includes(o.estado)?'<button class="btn btn-export btn-sm" onclick="exportarXLSPedido(\''+o.id+'\')">📊 Exportar comparativo</button>':'');
+const adminButtons=isSupervisorRole(appState.currentPerfil.role)?
+'<div class="order-tool-group order-tool-admin"><div class="order-tool-title">Administración</div><div class="order-tool-actions">'+
+'<button class="btn btn-warning btn-sm" onclick="retrocederEstado(\''+o.id+'\')">↩️ Retroceder estado</button>'+
+'<button class="btn btn-danger btn-sm" onclick="eliminarPedido(\''+o.id+'\')">🗑️ Eliminar pedido</button></div></div>':'';
+
 el('modal-detalle-body').innerHTML=
 '<div class="detail-section"><h4>Estado</h4><span class="badge '+cls+'" style="font-size:13px;padding:5px 12px">'+icon+' '+label+'</span>'+(o.canal_creacion==='publico'?' <span class="public-order-badge">🔗 PEDIDO PÚBLICO</span>':'')+(o.urgente?' <span class="priority-badge">🔴 URGENTE</span>':'')+' </div>'+
 '<div class="detail-section"><h4>Ruta</h4><div class="route-box"><div class="route-local"><div class="rl-label">SALE DE</div><div class="rl-name">'+escHtml(o.origen_local)+'</div><div class="rl-code">'+escHtml(o.origen_almacen)+'</div></div><div class="arrow">→</div><div class="route-local"><div class="rl-label">LLEGA A</div><div class="rl-name">'+escHtml(o.destino_local)+'</div><div class="rl-code">'+escHtml(o.destino_almacen)+'</div></div></div></div>'+
@@ -1618,21 +1633,14 @@ el('modal-detalle-body').innerHTML=
     '</div><button class="btn btn-ghost btn-sm" onclick="verPedidoCompleto(\''+o.id+'\')" style="width:100%;margin-top:8px;font-size:12px">📦 Ver pedido completo ('+(o.pedido_productos||[]).length+' ítems)</button>'
   : '<div class="product-items">'+prods+'</div>'
 )+'</div>'+
-'<div class="detail-section"><h4>Seguimiento <button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="verProcesoCompleto(\''+o.id+'\')">🔎➕ Ver completo</button></h4><div class="timeline">'+timeline+'</div></div>'+
+'<div class="detail-section"><div class="detail-heading-row"><div><h4>Historial de estados</h4><p>Cambios registrados durante el recorrido del pedido.</p></div><button class="btn btn-ghost btn-sm" onclick="verProcesoCompleto(\''+o.id+'\')">Ver historial completo</button></div><div class="timeline">'+timeline+'</div></div>'+
+'<div class="detail-section tracking-share-section"><div class="detail-heading-row"><div><h4>Enlace de seguimiento</h4><p>Compartilo para consultar el estado sin iniciar sesión. No permite modificar el pedido.</p></div><span class="tracking-share-status" id="order-tracking-status">PREPARANDO</span></div><div id="order-tracking-panel"><div class="tracking-share-loading"><span class="spinner spinner-inline"></span> Preparando enlace seguro…</div></div></div>'+
 actions+
-'<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">'+
-'<button class="btn btn-ghost btn-sm" onclick="openChat(\''+o.id+'\')">💬 Chat del pedido</button>'+
-(o.telefono?'<button class="btn btn-success btn-sm" onclick="abrirWhatsApp(\''+escJsStr(o.telefono)+'\',\''+escJsStr(o.cliente||'')+'\')" style="background:#25d366;border-color:#25d366;color:#fff">💬 WhatsApp cliente</button>':'')+
-(o.cliente_aviso_pendiente&&canDestino?'<button class="btn btn-primary btn-sm" onclick="marcarClienteAvisado(\''+o.id+'\')">✅ Marcar cliente avisado</button>':'')+
-'<button class="btn btn-ghost btn-sm" onclick="generarEtiqueta(\''+o.id+'\')">🖨️ Etiqueta de envío</button>'+
-(o.canal_creacion==='publico'?'<button class="btn btn-ghost btn-sm" onclick="regenerarSeguimientoPublico(\''+o.id+'\')">🔗 Regenerar seguimiento</button>':'')+
-(['completo','incompleto'].includes(o.estado)?'<button class="btn btn-ghost btn-sm" onclick="exportarXLSPedido(\''+o.id+'\')" style="color:#22c55e;border-color:rgba(34,197,94,0.35)">📊 Exportar XLS comparativo</button>':'')+
-(isSupervisorRole(appState.currentPerfil.role)?
-'<button class="btn btn-warning btn-sm" onclick="retrocederEstado(\''+o.id+'\')">↩️ Retroceder estado</button>'+
-'<button class="btn btn-danger btn-sm" onclick="eliminarPedido(\''+o.id+'\')">🗑️ Eliminar pedido</button>':'')+
-'</div>';
+'<div class="order-tools"><div class="order-tool-group"><div class="order-tool-title">Comunicación</div><div class="order-tool-actions">'+communicationButtons+'</div></div>'+
+'<div class="order-tool-group"><div class="order-tool-title">Documentos</div><div class="order-tool-actions">'+documentButtons+'</div></div>'+adminButtons+'</div>';
 hideSpinner();
 openModal('modal-detalle');
+loadOrderTrackingPanel(o.id);
 }
 
 
@@ -2648,9 +2656,13 @@ const {data:users}=await db.from('perfiles').select('id,local_nombre,role').eq('
 // Notificar solo al origen. La escala se decide al aceptar el pedido.
 const dest=users?.filter(u=>u.id!==appState.currentPerfil.id&&u.local_nombre===oNom)||[];
 if(dest.length) await db.from('notificaciones').insert(dest.map(u=>({usuario_id:u.id,titulo:'📦 Nuevo pedido de '+dNom,cuerpo:'#'+pedido.id.slice(-8,-2).toUpperCase()+(pedido.cliente?' · '+pedido.cliente:''),pedido_id:pedido.id})));
+let trackingReady=true;
+try{await issueOrderTrackingToken(pedido.id);}catch(_){trackingReady=false;}
 await closeModal('modal-nuevo-pedido');
-notify('¡Pedido creado exitosamente!','success');
-await updateBadges(); navigateTo('misPedidos');
+notify(trackingReady?'Pedido creado. El enlace de seguimiento está listo.':'Pedido creado. El seguimiento se preparará al abrirlo.',trackingReady?'success':'info');
+await updateBadges();
+await navigateTo('misPedidos');
+await openDetalle(pedido.id);
 }
 
 // ═══════════════════════════════════════════
@@ -2668,6 +2680,27 @@ function publicOrderLinkUrl(token){return token?location.origin+'/pedido-publico
 async function copyAppText(value){
 try{await navigator.clipboard.writeText(value);notify('Enlace copiado','success');}
 catch(_){const area=document.createElement('textarea');area.value=value;document.body.appendChild(area);area.select();document.execCommand('copy');area.remove();notify('Enlace copiado','success');}
+}
+function orderTrackingStorageKey(orderId){return 'sucan_order_tracking_'+String(orderId||'');}
+function loadOrderTrackingSecret(orderId){
+if(appState.orderTrackingSecrets[orderId])return appState.orderTrackingSecrets[orderId];
+try{const saved=JSON.parse(localStorage.getItem(orderTrackingStorageKey(orderId))||'null');if(saved)appState.orderTrackingSecrets[orderId]=saved;return saved;}catch(_){return null;}
+}
+function saveOrderTrackingSecret(orderId,token,updatedAt){
+const saved={token,updatedAt};appState.orderTrackingSecrets[orderId]=saved;
+try{localStorage.setItem(orderTrackingStorageKey(orderId),JSON.stringify(saved));}catch(_){}
+}
+function clearOrderTrackingSecret(orderId){delete appState.orderTrackingSecrets[orderId];try{localStorage.removeItem(orderTrackingStorageKey(orderId));}catch(_){} }
+function orderTrackingUrl(token){return token?location.origin+'/seguimiento-pedido#'+encodeURIComponent(token):'';}
+function trackingRevisionMatches(saved,updatedAt){
+if(!saved?.token||!saved?.updatedAt||!updatedAt)return false;
+return new Date(saved.updatedAt).getTime()===new Date(updatedAt).getTime();
+}
+async function issueOrderTrackingToken(orderId){
+const {data,error}=await db.rpc('pedido_publico_regenerar_seguimiento',{p_pedido:orderId});
+if(error)throw error;
+saveOrderTrackingSecret(orderId,data.tracking_token,data.updated_at);
+return data;
 }
 async function openPublicOrderLinks(){
 if(!requireAdminAction('administrar enlaces públicos')) return;
@@ -2730,17 +2763,57 @@ const url=publicOrderLinkUrl(appState.publicOrderLink.token);if(!url)return;
 if(navigator.share){try{await navigator.share({title:'Crear pedido · Sucaneitor',text:'Ingresá tus datos y creá el pedido para este local:',url});return;}catch(error){if(error?.name==='AbortError')return;}}
 await copyAppText(url);
 }
-function regenerarSeguimientoPublico(orderId){
-showConfirm('Se invalidará el enlace de seguimiento anterior. Regeneralo únicamente si el cliente lo perdió o el enlace fue compartido por error.',async()=>{
-showSpinner();
+async function loadOrderTrackingPanel(orderId){
+const panel=el('order-tracking-panel'),statusEl=el('order-tracking-status');
+if(!panel||!statusEl||appState.currentDetailOrderId!==orderId)return;
 try{
-const {data,error}=await db.rpc('pedido_publico_regenerar_seguimiento',{p_pedido:orderId});if(error)throw error;
-const url=location.origin+'/seguimiento-pedido#'+encodeURIComponent(data.tracking_token);
-showConfirm('<div id="admin-tracking-qr" style="display:grid;place-items:center;width:170px;min-height:170px;margin:0 auto 12px;padding:9px;border-radius:12px;background:#fff"></div><div class="public-link-url">'+escHtml(url)+'</div>',()=>copyAppText(url),{title:'Nuevo seguimiento · #'+escHtml(data.order_code),btnLabel:'Copiar enlace',btnClass:'btn-primary'});
-setTimeout(()=>{const qr=el('admin-tracking-qr');if(qr&&window.QRCode)new QRCode(qr,{text:url,width:150,height:150,colorDark:'#111119',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});},80);
-}catch(error){notify('No se pudo regenerar el seguimiento: '+error.message,'error');}finally{hideSpinner();}
-},{title:'Regenerar seguimiento',btnLabel:'Regenerar',btnClass:'btn-warning'});
+const {data,error}=await db.rpc('pedido_publico_estado_seguimiento',{p_pedido:orderId});
+if(error)throw error;
+if(!data.has_tracking){
+const issued=await issueOrderTrackingToken(orderId);
+renderOrderTrackingPanel(orderId,{has_tracking:true,updated_at:issued.updated_at});
+return;
 }
+renderOrderTrackingPanel(orderId,data);
+}catch(error){
+statusEl.textContent='NO DISPONIBLE';statusEl.className='tracking-share-status unavailable';
+panel.innerHTML='<div class="tracking-share-warning">No se pudo preparar el seguimiento. <button class="btn btn-ghost btn-sm" onclick="loadOrderTrackingPanel(\''+orderId+'\')">Reintentar</button></div>';
+}
+}
+function renderOrderTrackingPanel(orderId,status){
+const panel=el('order-tracking-panel'),statusEl=el('order-tracking-status');if(!panel||!statusEl||appState.currentDetailOrderId!==orderId)return;
+const saved=loadOrderTrackingSecret(orderId),usable=trackingRevisionMatches(saved,status.updated_at);
+statusEl.textContent=status.has_tracking?'ACTIVO':'SIN ENLACE';statusEl.className='tracking-share-status'+(status.has_tracking?' active':'');
+if(!status.has_tracking){
+panel.innerHTML='<div class="tracking-share-warning">Todavía no existe un enlace para este pedido. <button class="btn btn-primary btn-sm" onclick="createMissingOrderTracking(\''+orderId+'\')">Generar enlace</button></div>';
+return;
+}
+if(!usable){
+clearOrderTrackingSecret(orderId);
+panel.innerHTML='<div class="tracking-share-warning"><div><strong>El pedido tiene seguimiento, pero el enlace fue generado en otro dispositivo.</strong><span>Por seguridad no se puede recuperar el token original. Podés reemplazarlo por uno nuevo.</span></div><button class="btn btn-warning btn-sm" onclick="confirmRegenerateOrderTracking(\''+orderId+'\')">Generar enlace nuevo</button></div>';
+return;
+}
+const url=orderTrackingUrl(saved.token);
+panel.innerHTML='<div class="tracking-share-card"><div class="tracking-share-qr" id="order-tracking-qr"></div><div class="tracking-share-copy"><label>ENLACE PÚBLICO DE SOLO LECTURA</label><div class="public-link-url">'+escHtml(url)+'</div><div class="tracking-share-actions"><button class="btn btn-primary btn-sm" onclick="copyOrderTracking(\''+orderId+'\')">Copiar enlace</button><button class="btn btn-ghost btn-sm" onclick="shareOrderTracking(\''+orderId+'\')">Compartir</button><button class="btn btn-ghost btn-sm" onclick="openOrderTracking(\''+orderId+'\')">Abrir</button><button class="btn btn-warning btn-sm" onclick="confirmRegenerateOrderTracking(\''+orderId+'\')">Reemplazar</button></div></div></div>';
+const qr=el('order-tracking-qr');if(qr&&window.QRCode)new QRCode(qr,{text:url,width:132,height:132,colorDark:'#111119',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});
+}
+async function createMissingOrderTracking(orderId){
+showSpinner();try{const data=await issueOrderTrackingToken(orderId);renderOrderTrackingPanel(orderId,{has_tracking:true,updated_at:data.updated_at});notify('Enlace de seguimiento generado','success');}catch(error){notify('No se pudo generar el seguimiento: '+error.message,'error');}finally{hideSpinner();}
+}
+function confirmRegenerateOrderTracking(orderId){
+showConfirm('El enlace anterior dejará de funcionar. Compartí el nuevo enlace con la persona que necesita seguir el pedido.',()=>regenerateOrderTracking(orderId),{title:'Reemplazar enlace de seguimiento',btnLabel:'Generar enlace nuevo',btnClass:'btn-warning'});
+}
+async function regenerateOrderTracking(orderId){
+showSpinner();try{const data=await issueOrderTrackingToken(orderId);renderOrderTrackingPanel(orderId,{has_tracking:true,updated_at:data.updated_at});notify('Enlace reemplazado correctamente','success');}catch(error){notify('No se pudo reemplazar el seguimiento: '+error.message,'error');}finally{hideSpinner();}
+}
+function copyOrderTracking(orderId){const saved=loadOrderTrackingSecret(orderId),url=orderTrackingUrl(saved?.token);if(url)copyAppText(url);}
+async function shareOrderTracking(orderId){
+const saved=loadOrderTrackingSecret(orderId),url=orderTrackingUrl(saved?.token);if(!url)return;
+if(navigator.share){try{await navigator.share({title:'Seguimiento de pedido · Sucaneitor',text:'Consultá el estado del pedido:',url});return;}catch(error){if(error?.name==='AbortError')return;}}
+await copyAppText(url);
+}
+function openOrderTracking(orderId){const saved=loadOrderTrackingSecret(orderId),url=orderTrackingUrl(saved?.token);if(url)window.open(url,'_blank','noopener');}
+function regenerarSeguimientoPublico(orderId){confirmRegenerateOrderTracking(orderId);}
 function publicManagementTokenFromHash(){
 const match=String(location.hash||'').match(/^#manage=(.+)$/);if(!match)return '';
 try{return decodeURIComponent(match[1]);}catch(_){return '';}
@@ -4325,7 +4398,9 @@ function applyTheme() {
   
   // Update active state of buttons
   document.querySelectorAll('.theme-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.getAttribute('data-theme-val') === saved);
+    const active=btn.getAttribute('data-theme-val') === saved;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-pressed',String(active));
   });
 }
 
