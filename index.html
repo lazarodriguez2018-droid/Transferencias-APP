@@ -120,7 +120,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
       <div class="auth-error" id="empresa-error"></div>
       <div class="form-group">
         <label class="form-label">Clave de empresa</label>
-        <input class="form-input" type="password" id="empresa-clave" placeholder="••••••••••">
+        <input class="form-input" type="password" id="empresa-clave" name="empresa-access-key" autocomplete="new-password" placeholder="••••••••••" aria-label="Clave de acceso de empresa">
       </div>
       <button class="btn btn-primary" id="btn-verificar-empresa">Acceder →</button>
     </div>
@@ -133,24 +133,24 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
       <div class="auth-tab" id="auth-tab-register">Registrarse</div>
     </div>
     <!-- LOGIN -->
-    <div id="login-form">
+    <form id="login-form" autocomplete="on" novalidate onsubmit="return false">
       <div class="auth-error" id="login-error"></div>
       <div class="form-group"><label class="form-label">Email</label>
-        <input class="form-input" type="email" id="login-email" placeholder="tu@email.com"></div>
+        <input class="form-input" type="email" id="login-email" name="username" autocomplete="username" placeholder="tu@email.com"></div>
       <div class="form-group"><label class="form-label">Contraseña</label>
-        <input class="form-input" type="password" id="login-password" placeholder="••••••••"></div>
+        <input class="form-input" type="password" id="login-password" name="password" autocomplete="current-password" placeholder="••••••••"></div>
       <button class="btn btn-primary" id="btn-do-login">Ingresar</button>
-    </div>
+    </form>
     <!-- REGISTER -->
-    <div id="register-form" style="display:none">
+    <form id="register-form" autocomplete="on" novalidate onsubmit="return false" style="display:none">
       <div class="auth-error" id="reg-error"></div>
       <div class="auth-success" id="reg-success"></div>
       <div id="reg-step1">
         <div class="form-row">
           <div class="form-group"><label class="form-label">Nombre</label>
-            <input class="form-input" type="text" id="reg-nombre" placeholder="Juan"></div>
+            <input class="form-input" type="text" id="reg-nombre" name="given-name" autocomplete="given-name" placeholder="Juan"></div>
           <div class="form-group"><label class="form-label">Apellido</label>
-            <input class="form-input" type="text" id="reg-apellido" placeholder="García"></div>
+            <input class="form-input" type="text" id="reg-apellido" name="family-name" autocomplete="family-name" placeholder="García"></div>
         </div>
         <div class="form-group"><label class="form-label">Tipo de cuenta</label>
           <select class="form-input" id="reg-tipo-cuenta">
@@ -160,11 +160,11 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         <div class="form-group"><label class="form-label">Local donde trabajás</label>
           <select class="form-input" id="reg-local"><option value="">Seleccionar local...</option></select></div>
         <div class="form-group"><label class="form-label">Email</label>
-          <input class="form-input" type="email" id="reg-email" placeholder="tu@email.com"></div>
+          <input class="form-input" type="email" id="reg-email" name="email" autocomplete="email" placeholder="tu@email.com"></div>
         <div class="form-group"><label class="form-label">Contraseña</label>
-          <input class="form-input" type="password" id="reg-pass" placeholder="Mínimo 6 caracteres"></div>
+          <input class="form-input" type="password" id="reg-pass" name="new-password" autocomplete="new-password" placeholder="Mínimo 6 caracteres"></div>
         <div class="form-group"><label class="form-label">Repetir contraseña</label>
-          <input class="form-input" type="password" id="reg-pass2" placeholder="Repetir contraseña"></div>
+          <input class="form-input" type="password" id="reg-pass2" name="new-password-confirm" autocomplete="new-password" placeholder="Repetir contraseña"></div>
         <button class="btn btn-primary" id="btn-reg-step1">Continuar →</button>
       </div>
       <div id="reg-step2" style="display:none">
@@ -208,8 +208,9 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         </div>
       </div>
     </div>
+    </form>
   </div>
-  </div><!-- /auth-forms -->
+    </div><!-- /auth-forms -->
   <!-- Success overlay -->
   <div id="register-success-overlay" class="success-overlay">
     <div class="success-card">
