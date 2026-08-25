@@ -568,8 +568,6 @@ safeSet('sidebar-local-badge', appState.currentPerfil.local_nombre+' ('+appState
 syncUserFab(appState.currentPerfil);
 if(isAdmin) el('admin-nav').style.display='block';
 if(el('btn-public-order-links')) el('btn-public-order-links').style.display=isAdmin?'inline-flex':'none';
-const hubAdminPadron=el('hub-admin-padron');
-if(hubAdminPadron) hubAdminPadron.style.display=isAdmin?'flex':'none';
 // Load caches
 const [{data:locs},{data:trans}]=await Promise.all([
 db.from('locales').select('*').order('nombre'),

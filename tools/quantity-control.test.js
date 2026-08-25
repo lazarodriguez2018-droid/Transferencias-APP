@@ -54,7 +54,8 @@ assert.doesNotMatch(repo,/openRepoDispatch|confirmRepoDispatch|finalizeDispatch/
 assert.match(repo,/\['main','orders','summary','package'\]/,'Los archivos de salida deben usar cantidades verificadas');
 assert.match(receipt,/openReceiptQuantityVerification\(\(\)=>closeReceptionFlow\(\)\)/,'El cierre de recepción debe verificar cargas en lote');
 assert.match(receipt,/type==='received'&&receiptVerificationItems/,'El remito recibido debe usar cantidades verificadas');
-assert.match(inventory,/openInventoryQuantityVerification\(\(\)=>generateReport\(\)\)/,'El informe de inventario debe revisar cargas en lote');
+const generateReportBody=inventory.match(/async function generateReport\(\) \{([\s\S]*?)\n\}/)?.[1]||'';
+assert.doesNotMatch(generateReportBody,/openInventoryQuantityVerification/,'El reporte de stock debe generarse sin abrir el control final de cantidades');
 assert.match(inventory,/Confirmar \$\{quantity\}/,'El modal de inventario debe mostrar la cantidad exacta');
 assert.match(guest,/pending=Math\.max\(0,num\(item\?\.requested\)-current\)/,'El invitado debe calcular la cantidad pendiente');
 assert.match(guest,/saveRepoQuantity\(code,current\+value\)/,'El invitado debe sumar lo pendiente sin reemplazar el total acumulado');

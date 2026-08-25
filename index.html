@@ -394,18 +394,13 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
     <!-- SELECTOR DE MODULOS -->
     <div id="view-hub" style="display:none">
       <div class="operations-hero">
-        <span class="operations-eyebrow">SUCANEITOR OPERACIONES</span>
-        <h1>¿Qué vas a hacer?</h1>
-        <p>Los cuatro módulos comparten usuarios, locales y el mismo padrón de mercaderías.</p>
+        <h1>Escoja un modulo para realizar su tarea:</h1>
       </div>
       <div class="operations-grid">
         <a class="operations-card inventory" href="/operaciones?module=inventario"><span class="operations-icon">✓</span><div><h2>Inventario</h2><p>Conteo colaborativo, escáner y análisis de diferencias.</p><strong>Entrar a Inventario →</strong></div></a>
         <a class="operations-card replenishment" href="/operaciones?module=reposicion"><span class="operations-icon">⇄</span><div><h2>Reposición</h2><p>Juntar mercadería, cubrir pedidos aceptados y generar remitos.</p><strong>Entrar a Reposición →</strong></div></a>
         <a class="operations-card reception" href="/operaciones?module=recepcion"><span class="operations-icon">⌕</span><div><h2>Control de remitos</h2><p>Controlar por nombre, SKU o escáner lo que llega a cada local.</p><strong>Entrar a Recepción →</strong></div></a>
         <button class="operations-card orders" type="button" onclick="navigateTo('misPedidos')"><span class="operations-icon">📦</span><div><h2>Pedidos entre locales</h2><p>Solicitudes por clientes, aceptación y seguimiento del envío.</p><strong>Entrar a Pedidos →</strong></div></button>
-      </div>
-      <div id="hub-admin-padron" style="display:none;justify-content:center;margin-top:16px">
-        <button class="btn btn-ghost btn-sm" type="button" onclick="navigateTo('config').then(()=>document.getElementById('config-padron-card').scrollIntoView({behavior:'smooth',block:'start'}))">🏷️ Administrar padrón de mercaderías</button>
       </div>
     </div>
 
