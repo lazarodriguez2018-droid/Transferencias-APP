@@ -166,7 +166,7 @@ function renderReceiptCurrent() {
 
 function closeReceiptSearchResults(target='receipt-search-results') { const container=document.getElementById(target);if(container)container.style.display='none'; }
 async function receiptOpenItem(encodedCode) { const code=receiptDecode(encodedCode),item=receiptState?.items.find(row=>String(row.codigo)===String(code));if(!item)return;const claimed=await receiptEnsureClaim(item);if(!claimed)return;receiptCurrentCode=code;closeReceiptSearchResults();renderReceiptCurrent();showReceiptTab('control',{focus:false}); }
-function receiptOpenNextPending() { receiptCurrentCode=''; renderReceiptCurrent(); showReceiptTab('control'); }
+async function receiptOpenNextPending() { const claimed=await receiptClaimProduct('',{silent:true});if(!claimed){receiptCurrentCode='';renderReceiptCurrent();toast('No quedan productos libres; los pendientes pueden estar siendo controlados por otras personas.','i');}showReceiptTab('control',{focus:false}); }
 
 async function receiptConfirmExpected(encodedCode,source='control') {
   const code=receiptDecode(encodedCode),item=receiptState?.items.find(row=>String(row.codigo)===code);if(!item)return;
