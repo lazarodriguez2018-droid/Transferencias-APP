@@ -23,7 +23,7 @@ assert.match(portalHtml, /href="\/operaciones\?module=recepcion"/);
 assert.match(operationsHtml, /href="\/"[^>]*>← Volver al inicio<\/a>/);
 assert.doesNotMatch(operationsHtml, /id="module-screen"|¿Qué vas a hacer\?|Usar sin servidor|URL del servidor|Modo Red Local/,
   'Operaciones no debe conservar el selector blanco ni opciones del servidor local');
-assert.match(operationsHtml, /app\.js\?v=search-fast-v3/,
+assert.match(operationsHtml, /app\.js\?v=report-download-v4/,
   'El navegador debe solicitar la versión nueva y no reutilizar archivos antiguos');
 assert.match(portalHtml, /<h1>Escoja un modulo para realizar su tarea:<\/h1>/,
   'El selector debe mostrar la instrucción solicitada');

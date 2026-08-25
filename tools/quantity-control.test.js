@@ -51,18 +51,23 @@ assert.match(cloud,/summary_available:itemsResult\.available&&extrasResult\.avai
 assert.match(repo,/const suggested = Math\.max\(0, Number\(item\.pedido \|\| 0\) - Number\(item\.preparado \|\| 0\)\)/,'Encontrado debe comenzar con la cantidad pendiente');
 assert.match(repo,/que es lo que falta juntar/,'El modal debe explicar el valor propuesto');
 assert.doesNotMatch(repo,/openRepoDispatch|confirmRepoDispatch|finalizeDispatch/,'La reposición no debe incluir el cierre manual de envío eliminado');
-assert.match(repo,/\['main','orders','summary','package'\]/,'Los archivos de salida deben usar cantidades verificadas');
+const repoExportBody=repo.match(/async function downloadRepoExport\(type\) \{([\s\S]*?)\n\}/)?.[1]||'';
+assert.doesNotMatch(repoExportBody,/openRepoQuantityVerification/,'Ningún archivo de reposición debe abrir el control final');
 assert.match(receipt,/openReceiptQuantityVerification\(\(\)=>closeReceptionFlow\(\)\)/,'El cierre de recepción debe verificar cargas en lote');
 const receptionReportBody=receipt.match(/async function downloadReceptionReport\(\) \{([\s\S]*?)\n\}/)?.[1]||'';
 const receptionTransferBody=receipt.match(/async function downloadReceiptTransfer\(type\) \{([\s\S]*?)\n\}/)?.[1]||'';
 assert.doesNotMatch(receptionReportBody,/openReceiptQuantityVerification/,'El informe de recepción debe descargarse sin abrir el control final');
 assert.doesNotMatch(receptionTransferBody,/openReceiptQuantityVerification/,'Los remitos de recepción deben descargarse sin abrir el control final');
 const generateReportBody=inventory.match(/async function generateReport\(\) \{([\s\S]*?)\n\}/)?.[1]||'';
+const analysisReportBody=inventory.match(/function exportAnalysisReport\(\) \{([\s\S]*?)\n\}/)?.[1]||'';
+const countExportBody=inventory.match(/function exportConteo\(\) \{([\s\S]*?)\n\}/)?.[1]||'';
 assert.doesNotMatch(generateReportBody,/openInventoryQuantityVerification/,'El reporte de stock debe generarse sin abrir el control final de cantidades');
+assert.doesNotMatch(analysisReportBody,/openInventoryQuantityVerification/,'El análisis debe exportarse sin abrir el control final de cantidades');
+assert.doesNotMatch(countExportBody,/openInventoryQuantityVerification/,'El conteo debe exportarse sin abrir el control final de cantidades');
 assert.match(inventory,/Confirmar \$\{quantity\}/,'El modal de inventario debe mostrar la cantidad exacta');
 assert.match(guest,/pending=Math\.max\(0,num\(item\?\.requested\)-current\)/,'El invitado debe calcular la cantidad pendiente');
 assert.match(guest,/saveRepoQuantity\(code,current\+value\)/,'El invitado debe sumar lo pendiente sin reemplazar el total acumulado');
-assert.match(operationsHtml,/reposition-app\.js\?v=search-fast-v3/,'La sesión normal debe invalidar el JavaScript anterior');
+assert.match(operationsHtml,/reposition-app\.js\?v=report-download-v4/,'La sesión normal debe invalidar el JavaScript anterior');
 assert.match(guestHtml,/invitado\.js\?v=guest-search-v4/,'La sesión QR debe invalidar el JavaScript anterior');
 
 console.log('quantity-control: OK');

@@ -45,7 +45,7 @@ assert.match(cloud,/itemsByRepo\.get\(row\.id\)\|\|\[\]\)\.map\(item=>repoItem\(
 assert.match(cloud,/typeof catalogByCode\?\.get === 'function'/,
   'El enriquecimiento debe tolerar llamadas sin un índice de padrón');
 assert.match(html,/cloud-api\.js\?v=repo-list-fix-v1/);
-assert.match(html,/reposition-app\.js\?v=search-fast-v3/);
+assert.match(html,/reposition-app\.js\?v=report-download-v4/);
 assert.doesNotMatch(html,/repo-dispatch-card|Marcar todo como enviado|Confirmar envío/);
 assert.match(app,/No existen más productos para recoger/);
 assert.match(app,/Ver y modificar toda la lista/);

@@ -1989,7 +1989,6 @@ async function generateReport() {
 }
 
 function exportAnalysisReport() {
-  if (inventoryVerificationItems().length) { openInventoryQuantityVerification(()=>exportAnalysisReport()); return; }
   if (!balanceData) { toast('Cargá el balance desde Dashboard', 'e'); return; }
   if (!window.XLSX) { toast('El generador de Excel todavía se está cargando', 'e'); return; }
   refreshReport();
@@ -2019,7 +2018,6 @@ function exportAnalysisReport() {
 
 // ===== EXPORTAR CONTEO =====
 function exportConteo() {
-  if (inventoryVerificationItems().length) { openInventoryQuantityVerification(()=>exportConteo()); return; }
   if (!window.XLSX) { toast('El generador de Excel todavía se está cargando', 'e'); return; }
   const { utils, write } = XLSX;
   const wb = utils.book_new();
