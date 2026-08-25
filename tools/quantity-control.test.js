@@ -48,6 +48,6 @@ assert.match(receipt,/openReceiptQuantityVerification\(\(\)=>closeReceptionFlow\
 assert.match(receipt,/type==='received'&&receiptVerificationItems/,'El remito recibido debe usar cantidades verificadas');
 assert.match(inventory,/openInventoryQuantityVerification\(\(\)=>generateReport\(\)\)/,'El informe de inventario debe revisar cargas en lote');
 assert.match(inventory,/Confirmar \$\{quantity\}/,'El modal de inventario debe mostrar la cantidad exacta');
-assert.match(guest,/value:current\+1/,'El invitado debe sumar una unidad y no completar todo el producto por defecto');
+assert.match(guest,/requestRepoQuantity\(code,current\+1/,'El invitado debe sumar una unidad y no completar todo el producto por defecto');
 
 console.log('quantity-control: OK');

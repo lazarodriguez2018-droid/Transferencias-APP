@@ -9,7 +9,7 @@
   <meta name="robots" content="noindex,nofollow,noarchive">
   <link rel="icon" type="image/svg+xml" href="/logo.svg?v=2">
   <link rel="apple-touch-icon" href="sucan_logo.png">
-  <link rel="stylesheet" href="invitado.css?v=guest-access-v1">
+  <link rel="stylesheet" href="invitado.css?v=guest-repo-v2">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -45,13 +45,13 @@
   </main>
 
   <div class="guest-modal-layer" id="guest-modal-layer" hidden><section class="guest-modal" role="dialog" aria-modal="true"><div class="guest-modal-icon" id="guest-modal-icon">?</div><h2 id="guest-modal-title">Confirmar</h2><p id="guest-modal-message"></p><div id="guest-modal-body"></div><p class="guest-modal-error" id="guest-modal-error"></p><div class="guest-modal-actions"><button class="guest-secondary" id="guest-modal-cancel" type="button">Cancelar</button><button class="guest-primary" id="guest-modal-confirm" type="button">Confirmar</button></div></section></div>
-  <div class="guest-scanner" id="guest-scanner" hidden><header><div><strong>Escanear producto</strong><span>Apuntá al código de barras</span></div><button type="button" onclick="closeGuestScanner()">×</button></header><div id="guest-scanner-reader"></div><p id="guest-scanner-status">La cámara detectará el código automáticamente.</p></div>
+  <div class="guest-scanner" id="guest-scanner" hidden><header><div><strong id="guest-scanner-title">Escanear producto</strong><span id="guest-scanner-subtitle">Apuntá al código de barras</span></div><button type="button" onclick="closeGuestScanner()" aria-label="Cerrar escáner">×</button></header><div id="guest-scanner-reader"></div><p id="guest-scanner-status">La cámara detectará el código automáticamente.</p></div>
   <div class="guest-toast" id="guest-toast" role="status"></div>
 
   <script src="html5-qrcode.min.js"></script>
   <script src="cloud-config.js"></script>
   <script src="search-engine.js?v=inventory-v5"></script>
   <script src="/barcode-utils.js?v=barcode-catalog-v1"></script>
-  <script src="invitado.js?v=receipt-collab-v1"></script>
+  <script src="invitado.js?v=guest-repo-v2"></script>
 </body>
 </html>

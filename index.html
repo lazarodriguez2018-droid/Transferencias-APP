@@ -18,7 +18,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="style.css?v=tracking-all-orders-v2">
+<link rel="stylesheet" href="style.css?v=tracking-all-orders-v3">
 <style>
 .conv-list { display:flex; flex-direction:column; }
 .conv-item { position:relative; display:flex; align-items:center; gap:10px; padding:12px 14px; cursor:pointer; border-bottom:1px solid var(--border); transition:background .15s; }
@@ -115,9 +115,9 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
     </button>
     <div class="theme-widget-content">
       <div class="theme-switcher-inline">
-        <button type="button" class="theme-btn" data-theme-val="light" onclick="setTheme('light')" title="Claro">☀️</button>
-        <button type="button" class="theme-btn" data-theme-val="system" onclick="setTheme('system')" title="Sistema">⚙️</button>
-        <button type="button" class="theme-btn" data-theme-val="dark" onclick="setTheme('dark')" title="Oscuro">🌙</button>
+        <button type="button" class="theme-btn" data-theme-val="light" onclick="setTheme('light')" title="Claro" aria-label="Usar tema claro">☀️</button>
+        <button type="button" class="theme-btn" data-theme-val="system" onclick="setTheme('system')" title="Sistema" aria-label="Usar tema del sistema">⚙️</button>
+        <button type="button" class="theme-btn" data-theme-val="dark" onclick="setTheme('dark')" title="Oscuro" aria-label="Usar tema oscuro">🌙</button>
       </div>
     </div>
   </div>
