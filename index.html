@@ -18,7 +18,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="style.css?v=tracking-all-orders-v3">
+<link rel="stylesheet" href="style.css?v=public-responsive-v4">
 <style>
 .conv-list { display:flex; flex-direction:column; }
 .conv-item { position:relative; display:flex; align-items:center; gap:10px; padding:12px 14px; cursor:pointer; border-bottom:1px solid var(--border); transition:background .15s; }
@@ -291,11 +291,8 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
       <span class="notif-count-desktop" id="notif-count" style="display:none">0</span>
     </div>
     <nav class="sidebar-nav">
-      <div class="nav-section">
-        <div class="nav-label">Operaciones</div>
-        <div class="nav-item" id="nav-hub" data-nav="hub"><span class="icon">▦</span> Módulos</div>
-        <a class="nav-item nav-link" href="/operaciones?module=inventario"><span class="icon">✓</span> Inventario</a>
-        <a class="nav-item nav-link" href="/operaciones?module=reposicion"><span class="icon">⇄</span> Reposición</a>
+      <div class="nav-section module-nav-section">
+        <button class="nav-item module-switch" id="nav-hub" type="button" data-nav="hub"><span class="icon">←</span> Cambiar de módulo</button>
       </div>
       <div class="nav-section">
         <div class="nav-label">Pedidos</div>
@@ -1059,15 +1056,17 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
 
 <!-- ENLACES PÚBLICOS DE PEDIDOS -->
 <div class="modal-overlay" id="modal-public-order-links">
-  <div class="modal" style="max-width:560px">
-    <div class="modal-header">
-      <h2>🔗 Enlaces públicos de pedidos</h2>
+  <div class="modal public-links-modal">
+    <div class="modal-header public-links-head">
+      <div class="public-links-title"><span class="public-links-icon" aria-hidden="true">↗</span><div><h2>Enlaces públicos de pedidos</h2><p>Acceso seguro para crear pedidos sin iniciar sesión</p></div></div>
       <button type="button" class="modal-close" onclick="closeModal('modal-public-order-links')" aria-label="Cerrar">✕</button>
     </div>
-    <div class="modal-body">
-      <div class="info-banner" style="margin-bottom:14px">Cada enlace crea pedidos para un único local. Solo los supervisores pueden generarlo, pausarlo o reemplazarlo.</div>
-      <label class="form-label">Local de destino</label>
-      <select class="form-select" id="public-link-local"></select>
+    <div class="modal-body public-links-body">
+      <div class="info-banner public-links-note">Cada enlace corresponde a un único local. Solo supervisores pueden generarlo, pausarlo o reemplazarlo.</div>
+      <div class="public-link-field">
+        <label class="form-label" for="public-link-local">Local de destino</label>
+        <div class="select-shell"><select class="form-input public-link-select" id="public-link-local"></select></div>
+      </div>
       <div id="public-link-panel" class="public-link-panel"><div class="empty-state"><div class="icon">🔗</div><p>Seleccioná un local para consultar su enlace.</p></div></div>
     </div>
   </div>

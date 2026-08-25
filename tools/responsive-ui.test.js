@@ -14,9 +14,15 @@ for (const html of [portalHtml, operationsHtml]) {
 }
 assert.match(portalCss, /env\(safe-area-inset-top\)/);
 assert.match(portalCss, /env\(safe-area-inset-bottom\)/);
-assert.match(portalCss, /@media \(pointer:coarse\)/);
+assert.match(portalCss, /@media \(pointer:coarse\) and \(max-width:768px\)/);
 assert.match(portalCss, /min-height:46px/);
 assert.match(portalCss, /@media \(min-width:769px\) and \(max-width:1100px\)/);
+assert.match(portalCss, /\.public-links-modal\{max-width:560px\}/);
+assert.match(portalCss, /\.public-link-share\{display:grid;grid-template-columns:132px minmax\(0,1fr\)/);
+assert.match(portalCss, /@media\(max-width:420px\)/);
+assert.match(portalCss, /@media\(min-width:769px\)\{[\s\S]*\.sidebar\{width:218px\}/);
+assert.doesNotMatch(portalCss, /@media \(pointer:coarse\) \{[\s\S]{0,180}\.nav-item[^}]*min-height:46px/,
+  'Una PC táctil no debe recibir automáticamente la densidad grande de celular');
 assert.match(operationsHtml, /@media\(max-width:700px\)/);
 assert.match(operationsHtml, /@media\(max-width:900px\)/);
 assert.match(operationsHtml, /env\(safe-area-inset-bottom\)/);

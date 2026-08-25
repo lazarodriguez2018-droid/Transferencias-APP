@@ -8,7 +8,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co; base-uri 'self'; form-action 'self'">
   <title>Crear pedido · Sucaneitor</title>
   <link rel="icon" type="image/svg+xml" href="/logo.svg?v=2">
-  <link rel="stylesheet" href="/pedido-publico.css?v=2">
+  <link rel="stylesheet" href="/pedido-publico.css?v=3">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -16,7 +16,7 @@
   <main class="public-shell">
     <section class="error-screen" id="public-error" hidden><img src="/logo.svg?v=2" alt="Sucaneitor"><span class="error-mark">!</span><h1>Este enlace no está disponible</h1><p id="public-error-message">Solicitá un enlace nuevo al local.</p><button class="secondary" type="button" onclick="location.reload()">Volver a intentar</button></section>
     <section id="public-flow" hidden>
-      <header class="public-brand"><img src="/logo.svg?v=2" alt="Sucaneitor"><div><strong>Sucaneitor</strong><span>Pedidos entre locales</span></div></header>
+      <header class="public-topbar"><div class="public-brand"><img src="/logo.svg?v=2" alt="Sucaneitor"><div><strong>Sucaneitor</strong><span>Pedidos entre locales</span></div></div><a class="module-change-public" href="/">Cambiar de módulo</a></header>
       <div class="stepper"><div class="step active" id="step-identity">1 · Tus datos</div><div class="step" id="step-order">2 · Pedido</div><div class="step" id="step-track">3 · Seguimiento</div></div>
 
       <section id="identity-screen">
