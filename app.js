@@ -4298,6 +4298,16 @@ function toggleDifDetalle(id){
 }
 
 // ─── THEME SWITCHER ──────────────────────────────────────────────────────
+function toggleThemeWidget() {
+  const widget = document.getElementById('theme-widget');
+  const arrow = document.getElementById('theme-widget-arrow');
+  if (widget) {
+    widget.classList.toggle('collapsed');
+    if (arrow) {
+      arrow.textContent = widget.classList.contains('collapsed') ? '◀' : '▶';
+    }
+  }
+}
 function setTheme(theme) {
   localStorage.setItem('sucaneitor_theme', theme);
   applyTheme();
