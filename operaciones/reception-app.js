@@ -8,6 +8,7 @@ let receiptCurrentCode = '';
 let receiptSearchResults = {};
 let receiptRealtimeChannel = null;
 let receiptRefreshTimer = null;
+let receiptHeartbeatTimer = null;
 let receiptScanner = null;
 let receiptScannerMode = 'expected';
 let receiptLastScanCode = '';
@@ -21,6 +22,25 @@ function receiptEncode(value) { return encodeURIComponent(String(value || '')); 
 function receiptDecode(value) { return decodeURIComponent(String(value || '')); }
 function receiptCanEdit() { return !!receiptState && receiptState.can_edit !== false && receiptState.estado === 'en_control'; }
 function requireReceiptEditable() { if (receiptCanEdit()) return true; toast('Esta recepción está cerrada o pertenece a otro local.','w'); return false; }
+function receiptViewerClientId(){return String(receiptState?.viewer_client_id||window.SucanCloud?.clientId||'');}
+function receiptItemOwnedByMe(item){const client=receiptViewerClientId();return !!client&&String(item?.asignado_cliente||'')===client;}
+function receiptItemClaimedByOther(item){return !!item?.asignado_cliente&&!receiptItemOwnedByMe(item);}
+function receiptItemPendingControl(item){return !!item&&!item.controlado_at;}
+
+async function receiptClaimProduct(code,options={}){
+  if(!receiptCanEdit()||!sessionId)return null;
+  try{
+    const response=await receiptApi('/api/recepcion/claim',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reception_id:sessionId,codigo:code||null})}),data=await response.json().catch(()=>({}));
+    if(!response.ok||!data.ok)throw new Error(data.error||'No se pudo reservar el producto');
+    if(data.viewer_client_id)receiptState.viewer_client_id=data.viewer_client_id;
+    if(data.item){const index=receiptState.items.findIndex(row=>String(row.codigo)===String(data.item.codigo));if(index>=0)receiptState.items[index]=data.item;receiptCurrentCode=data.item.codigo;}
+    if(options.render!==false)renderReceiptAll();
+    return data.item||null;
+  }catch(error){if(!options.silent)toast(error.message||'Ese producto está siendo controlado por otra persona','w');return null;}
+}
+async function receiptEnsureClaim(item,options={}){if(!item||!receiptCanEdit())return false;if(receiptItemOwnedByMe(item))return true;const claimed=await receiptClaimProduct(item.codigo,options);return !!claimed&&receiptItemOwnedByMe(claimed);}
+async function receiptReleaseAssignment(code=null){if(!sessionId||!window.SucanCloud)return;try{await receiptApi('/api/recepcion/release',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reception_id:sessionId,codigo:code||null}),keepalive:true});}catch(_){}}
+async function receiptHeartbeat(){if(!sessionId||!receiptState||document.visibilityState==='hidden')return;try{const response=await receiptApi('/api/recepcion/heartbeat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reception_id:sessionId})});if(!response.ok)throw new Error('heartbeat');setSyncStatus('online');}catch(_){setSyncStatus('offline');}}
 
 function receiptLocation(value) {
   const raw=String(value||'').trim(),normalized=raw.toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\b(bloqueo|almacen|sucursal|local|entrada|salida)\b/g,' ').replace(/\s+/g,' ').trim();
@@ -63,7 +83,7 @@ async function joinReception(rid, nombre, url, usuario, initialReceipt, options=
     serverUrl=url; serverOnline=true; sessionId=rid; sessionNombre=nombre; usuarioNombre=usuario||'Usuario'; localStorage.setItem('sc_usuario',usuarioNombre);
     let loaded=initialReceipt;
     if(!loaded){const response=await fetchWithTimeout(`${url}/api/recepcion/state?rid=${encodeURIComponent(rid)}`,{},8000),data=await response.json().catch(()=>({}));if(!response.ok||!data.ok)throw new Error(data.error||'No se pudo abrir la recepción');loaded=data.receipt;}
-    receiptState=loaded; receiptCurrentCode=receiptState.items.find(item=>Number(item.recibido)<Number(item.esperado)&&!item.no_recibido)?.codigo||receiptState.items[0]?.codigo||'';
+    receiptState=loaded; receiptCurrentCode=receiptState.items.find(receiptItemOwnedByMe)?.codigo||'';
     await loadBarcodeAssignments(); enterReceptionApp(options); connectReceptionRealtime(); toast(`Remito ${receiptState.document_number} abierto`,'s');
   } catch(error){serverOnline=false;showSessionError(error.message||'No se pudo abrir la recepción');}
 }
@@ -79,6 +99,7 @@ function enterReceptionApp(options={}) {
 }
 
 function showReceiptTab(name,options={}) {
+  if(name!=='control'&&receiptCurrentCode&&receiptState?.items.find(receiptItemOwnedByMe)){receiptReleaseAssignment(receiptCurrentCode);receiptCurrentCode='';}
   if(name!=='control')document.getElementById('receipt-search-results')?.style.setProperty('display','none');
   document.querySelectorAll('.page').forEach(page=>page.classList.remove('active')); document.querySelectorAll('.tab').forEach(tab=>tab.classList.remove('active'));
   const page=document.getElementById(`receipt-page-${name}`),tab=document.getElementById(`receipt-tab-${name}`); if(!page||!tab)return; page.classList.add('active');tab.classList.add('active');window.scrollTo({top:0,behavior:'auto'});
@@ -88,6 +109,7 @@ function showReceiptTab(name,options={}) {
 
 function disconnectReceptionRealtime(clearState=true) {
   clearTimeout(receiptRefreshTimer); receiptRefreshTimer=null;
+  clearInterval(receiptHeartbeatTimer);receiptHeartbeatTimer=null;
   if(receiptRealtimeChannel&&window.SucanCloud?.db){try{window.SucanCloud.db.removeChannel(receiptRealtimeChannel);}catch(_){} receiptRealtimeChannel=null;}
   if(clearState){receiptState=null;receiptCurrentCode='';}
 }
@@ -95,12 +117,12 @@ function disconnectReceptionRealtime(clearState=true) {
 function connectReceptionRealtime() {
   disconnectReceptionRealtime(false);
   const rid=sessionId; if(!rid)return;
-  refreshReceptionState(false).then(()=>{receiptRealtimeChannel=window.SucanCloud?.watchReception?.(rid,()=>{clearTimeout(receiptRefreshTimer);receiptRefreshTimer=setTimeout(()=>refreshReceptionState(true),180);})||null;});
+  refreshReceptionState(false).then(()=>{receiptRealtimeChannel=window.SucanCloud?.watchReception?.(rid,()=>{clearTimeout(receiptRefreshTimer);receiptRefreshTimer=setTimeout(()=>refreshReceptionState(true),180);})||null;clearInterval(receiptHeartbeatTimer);receiptHeartbeatTimer=setInterval(receiptHeartbeat,45000);});
 }
 
 async function refreshReceptionState(render=true) {
   if(!sessionId||currentModule!=='recepcion')return;
-  try{const response=await fetch(`/api/recepcion/state?rid=${encodeURIComponent(sessionId)}`),data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'No se pudo actualizar');receiptState=data.receipt;if(render)renderReceiptAll();setSyncStatus('online');}
+  try{const current=receiptCurrentCode,response=await fetch(`/api/recepcion/state?rid=${encodeURIComponent(sessionId)}`),data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'No se pudo actualizar');receiptState=data.receipt;const own=receiptState.items.find(receiptItemOwnedByMe);receiptCurrentCode=own?.codigo||(current&&receiptState.items.some(item=>String(item.codigo)===String(current)&&!receiptItemClaimedByOther(item))?current:'');if(render)renderReceiptAll();setSyncStatus('online');}
   catch(error){setSyncStatus('offline');}
 }
 
@@ -126,19 +148,25 @@ function renderReceiptAll() {
 function renderReceiptCurrent() {
   const card=document.getElementById('receipt-current-card'); if(!card||!receiptState)return;
   const summary=SucaneitorReception.summary(receiptState);
-  if(summary.productos_pendientes===0){card.innerHTML=`<div class="receipt-finished"><h2>Control de productos completado</h2><p>Todos los productos del remito fueron revisados. Podés consultar cantidades y diferencias desde la lista completa.</p><button class="btn btn-p" onclick="showReceiptTab('lista')">Revisar lista completa</button></div>`;return;}
-  let item=receiptState.items.find(row=>String(row.codigo)===String(receiptCurrentCode)); if(!item)item=receiptState.items.find(row=>Number(row.recibido)<Number(row.esperado)&&!row.no_recibido)||receiptState.items[0];
-  if(!item){card.innerHTML='<div class="repo-empty">El remito no contiene productos.</div>';return;} receiptCurrentCode=item.codigo;
+  let item=receiptState.items.find(row=>String(row.codigo)===String(receiptCurrentCode));
+  if(item&&receiptItemClaimedByOther(item)){receiptCurrentCode='';item=null;}
+  if(!item){
+    const pending=receiptState.items.filter(receiptItemPendingControl),available=pending.filter(row=>!receiptItemClaimedByOther(row)),busy=pending.length-available.length;
+    if(!pending.length){card.innerHTML=`<div class="receipt-finished"><h2>Control de productos completado</h2><p>Todos los productos del remito fueron revisados. Podés consultar cantidades y diferencias desde la lista completa.</p><button class="btn btn-p" onclick="showReceiptTab('lista')">Revisar lista completa</button></div>`;return;}
+    card.innerHTML=`<div class="receipt-finished"><span class="eyebrow">CONTROL COLABORATIVO</span><h2>Buscá el producto que tenés delante</h2><p>Al abrirlo o escanearlo quedará reservado para vos en tiempo real.${busy?` ${busy} ${busy===1?'producto está siendo controlado':'productos están siendo controlados'} por otras personas.`:''}</p><button class="btn btn-p" onclick="document.getElementById('receipt-search-input')?.focus()">Buscar por nombre o código</button><button class="btn btn-s" style="margin-top:8px" onclick="openReceiptScanner('expected')">▣ Escanear producto</button></div>`;return;
+  }
+  receiptCurrentCode=item.codigo;
   const status=receiptStatus(item),missing=Math.max(0,Number(item.esperado)-Number(item.recibido)),extra=Math.max(0,Number(item.recibido)-Number(item.esperado));
   const isChecked=status==='exacto';
-  const actions=receiptCanEdit()?`<div class="receipt-check-actions"><button class="btn ${isChecked?'btn-g':'btn-p'}" ${isChecked?'disabled':''} onclick="receiptConfirmExpected('${receiptEncode(item.codigo)}','control')">${isChecked?'✓ Recepción confirmada':`✓ Confirmar ${receiptQuantityText(item.esperado)}`}</button><button class="btn btn-s" onclick="receiptEditQty('${receiptEncode(item.codigo)}')">Editar cantidad</button></div><div class="repo-inline" style="margin-top:9px"><button class="btn btn-s" onclick="receiptChangeQty('${receiptEncode(item.codigo)}',1,'nombre')">+1 unidad</button><button class="btn btn-s" onclick="openReceiptScanner('expected')">▣ Escanear</button></div>`:`<div class="repo-status-banner warn">Recepción en modo consulta.</div>`;
+  const actions=receiptCanEdit()?`<div class="receipt-check-actions"><button class="btn ${isChecked?'btn-g':'btn-p'}" onclick="receiptConfirmExpected('${receiptEncode(item.codigo)}','control')">${isChecked?'✓ Cantidad ya confirmada':`✓ Confirmar ${receiptQuantityText(item.esperado)}`}</button><button class="btn btn-s" onclick="receiptEditQty('${receiptEncode(item.codigo)}')">Editar cantidad</button></div><div class="repo-inline" style="margin-top:9px"><button class="btn btn-s" onclick="receiptChangeQty('${receiptEncode(item.codigo)}',1,'nombre')">+1 unidad</button><button class="btn btn-s" onclick="openReceiptScanner('expected')">▣ Escanear</button></div>`:`<div class="repo-status-banner warn">Recepción en modo consulta.</div>`;
   const verification=item.requiere_verificacion?'<div class="repo-status-banner warn" style="margin-top:10px"><strong>Control final pendiente</strong><br>Hay más de una unidad registrada y se revisará antes de cerrar el remito.</div>':'';
-  card.innerHTML=`<span class="receipt-flag ${receiptStatusClass(status)}">${receiptStatusLabel(status)}</span><div class="repo-source-name" style="margin-top:12px">PRODUCTO DEL REMITO</div><h2 class="repo-product-name">${esc(item.nombre)}</h2><div class="repo-source-name">SKU ${esc(item.codigo)}${item.barras?` · Barras ${esc(item.barras)}`:' · Sin código de barras'}${item.descripcion_archivo&&item.descripcion_archivo!==item.nombre?`<br>En archivo: ${esc(item.descripcion_archivo)}`:''}</div><div class="repo-quantities"><div class="repo-quantity"><span>Esperado</span><strong>${item.esperado}</strong></div><div class="repo-quantity"><span>Recibido</span><strong>${item.recibido}</strong></div><div class="repo-quantity pending"><span>${extra?'Sobra':'Falta'}</span><strong>${extra||missing}</strong></div></div>${verification}${actions}${item.updated_by?`<div class="tm mt2">Último cambio: ${esc(item.updated_by)}</div>`:''}`;
+  const assignment=receiptItemOwnedByMe(item)?`<div class="repo-status-banner ok" style="margin-top:10px"><strong>Reservado para vos</strong><br>Los demás colaboradores no pueden modificar este producto mientras lo controlás.</div>`:'';
+  card.innerHTML=`<span class="receipt-flag ${receiptStatusClass(status)}">${item.controlado_at?'Producto controlado':receiptStatusLabel(status)}</span><div class="repo-source-name" style="margin-top:12px">PRODUCTO DEL REMITO</div><h2 class="repo-product-name">${esc(item.nombre)}</h2><div class="repo-source-name">SKU ${esc(item.codigo)}${item.barras?` · Barras ${esc(item.barras)}`:' · Sin código de barras'}${item.descripcion_archivo&&item.descripcion_archivo!==item.nombre?`<br>En archivo: ${esc(item.descripcion_archivo)}`:''}</div><div class="repo-quantities"><div class="repo-quantity"><span>Esperado</span><strong>${item.esperado}</strong></div><div class="repo-quantity"><span>Recibido</span><strong>${item.recibido}</strong></div><div class="repo-quantity pending"><span>${extra?'Sobra':'Falta'}</span><strong>${extra||missing}</strong></div></div>${assignment}${verification}${actions}${item.updated_by?`<div class="tm mt2">Último cambio: ${esc(item.updated_by)}</div>`:''}`;
 }
 
 function closeReceiptSearchResults(target='receipt-search-results') { const container=document.getElementById(target);if(container)container.style.display='none'; }
-function receiptOpenItem(encodedCode) { receiptCurrentCode=receiptDecode(encodedCode); closeReceiptSearchResults(); renderReceiptCurrent(); showReceiptTab('control',{focus:false}); }
-function receiptOpenNextPending() { const next=receiptState?.items.find(item=>Number(item.recibido)<Number(item.esperado)&&!item.no_recibido); receiptCurrentCode=next?.codigo||''; renderReceiptCurrent(); showReceiptTab('control'); }
+async function receiptOpenItem(encodedCode) { const code=receiptDecode(encodedCode),item=receiptState?.items.find(row=>String(row.codigo)===String(code));if(!item)return;const claimed=await receiptEnsureClaim(item);if(!claimed)return;receiptCurrentCode=code;closeReceiptSearchResults();renderReceiptCurrent();showReceiptTab('control',{focus:false}); }
+function receiptOpenNextPending() { receiptCurrentCode=''; renderReceiptCurrent(); showReceiptTab('control'); }
 
 async function receiptConfirmExpected(encodedCode,source='control') {
   const code=receiptDecode(encodedCode),item=receiptState?.items.find(row=>String(row.codigo)===code);if(!item)return;
@@ -152,40 +180,43 @@ async function receiptConfirmExpected(encodedCode,source='control') {
   toast(`✓ Recepción confirmada · ${item.nombre} · ${receiptQuantityText(item.esperado)}`,'s');
   if(source==='control'){
     const input=document.getElementById('receipt-search-input');if(input)input.value='';closeReceiptSearchResults();
-    const next=receiptState.items.find(row=>Number(row.recibido)<Number(row.esperado)&&!row.no_recibido);receiptCurrentCode=next?.codigo||'';renderReceiptCurrent();
+    receiptCurrentCode='';renderReceiptCurrent();
     setTimeout(()=>input?.focus({preventScroll:true}),80);
   }
 }
 
 async function receiptChangeQty(encodedCode,delta,source='manual') {
   if(!requireReceiptEditable())return false; const code=receiptDecode(encodedCode),item=receiptState.items.find(row=>String(row.codigo)===code); if(!item)return false;
+  if(!await receiptEnsureClaim(item))return false;
   const next=Math.max(0,Number(item.recibido||0)+Number(delta||0));
-  if(next>Number(item.esperado)&&delta>0){const confirmed=await appConfirm({title:'Cantidad mayor al remito',subtitle:item.nombre,tone:'warning',icon:'+',confirmText:'Agregar igualmente',message:`El remito indica ${item.esperado} unidades y el resultado será ${next}. ¿Confirmás que llegaron unidades de más?`});if(!confirmed)return false;}
-  try{const response=await receiptApi('/api/recepcion/update_qty',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reception_id:sessionId,codigo:code,delta,source})}),data=await response.json().catch(()=>({}));if(!response.ok||!data.ok)throw new Error(data.error||'No se pudo guardar');const index=receiptState.items.findIndex(row=>String(row.codigo)===code);if(index>=0)receiptState.items[index]=data.item;receiptCurrentCode=code;renderReceiptAll();tactileFeedback(30);return true;}catch(error){toast(error.message||'No se pudo guardar','e');return false;}
+  if(next>Number(item.esperado)&&delta>0){const confirmed=await appConfirm({title:'Cantidad mayor al remito',subtitle:item.nombre,tone:'warning',icon:'+',confirmText:'Agregar igualmente',message:`El remito indica ${item.esperado} unidades y el resultado será ${next}. ¿Confirmás que llegaron unidades de más?`});if(!confirmed){await receiptReleaseAssignment(code);return false;}}
+  try{const response=await receiptApi('/api/recepcion/update_qty',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reception_id:sessionId,codigo:code,delta,source})}),data=await response.json().catch(()=>({}));if(!response.ok||!data.ok)throw new Error(data.error||'No se pudo guardar');const index=receiptState.items.findIndex(row=>String(row.codigo)===code);if(index>=0)receiptState.items[index]=data.item;receiptCurrentCode='';renderReceiptAll();tactileFeedback(30);return true;}catch(error){toast(error.message||'No se pudo guardar','e');return false;}
 }
 
 async function receiptSetAbsolute(encodedCode,value,source='lista') {
   if(!requireReceiptEditable())return false; const code=receiptDecode(encodedCode),qty=Number.parseInt(value,10); if(!Number.isInteger(qty)||qty<0){toast('Cantidad inválida','e');renderReceiptList();return false;}
-  const item=receiptState.items.find(row=>String(row.codigo)===code); if(qty>Number(item?.esperado||0)){const confirmed=await appConfirm({title:'Cantidad mayor al remito',subtitle:item?.nombre||code,tone:'warning',icon:'+',confirmText:'Guardar igualmente',message:`Esperado: ${item?.esperado||0} · recibido: ${qty}.`});if(!confirmed){renderReceiptList();return false;}}
-  try{const response=await receiptApi('/api/recepcion/update_qty',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reception_id:sessionId,codigo:code,absolute:qty,source})}),data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'No se pudo guardar');const index=receiptState.items.findIndex(row=>String(row.codigo)===code);if(index>=0)receiptState.items[index]=data.item;receiptCurrentCode=code;renderReceiptAll();return true;}catch(error){toast(error.message,'e');return false;}
+  const item=receiptState.items.find(row=>String(row.codigo)===code);if(!item||!await receiptEnsureClaim(item))return false;if(qty>Number(item?.esperado||0)){const confirmed=await appConfirm({title:'Cantidad mayor al remito',subtitle:item?.nombre||code,tone:'warning',icon:'+',confirmText:'Guardar igualmente',message:`Esperado: ${item?.esperado||0} · recibido: ${qty}.`});if(!confirmed){await receiptReleaseAssignment(code);renderReceiptList();return false;}}
+  try{const response=await receiptApi('/api/recepcion/update_qty',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reception_id:sessionId,codigo:code,absolute:qty,source})}),data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'No se pudo guardar');const index=receiptState.items.findIndex(row=>String(row.codigo)===code);if(index>=0)receiptState.items[index]=data.item;receiptCurrentCode='';renderReceiptAll();return true;}catch(error){toast(error.message,'e');return false;}
 }
 
 async function receiptEditQty(encodedCode) {
   const code=receiptDecode(encodedCode),item=receiptState.items.find(row=>String(row.codigo)===code); if(!item)return;
-  const value=await appPrompt({title:'Cantidad recibida',subtitle:item.nombre,message:`El remito indica ${item.esperado} unidades.`,label:'Cantidad física recibida',value:String(item.recibido),type:'number',inputMode:'numeric',min:0,icon:'#',confirmText:'Guardar'}); if(value===false)return; await receiptSetAbsolute(encodedCode,value,'edicion');
+  const wasOwned=receiptItemOwnedByMe(item);if(!await receiptEnsureClaim(item))return;
+  const value=await appPrompt({title:'Cantidad recibida',subtitle:item.nombre,message:`El remito indica ${item.esperado} unidades.`,label:'Cantidad física recibida',value:String(item.recibido),type:'number',inputMode:'numeric',min:0,icon:'#',confirmText:'Guardar'}); if(value===false){if(!wasOwned)await receiptReleaseAssignment(code);return;} await receiptSetAbsolute(encodedCode,value,'edicion');
 }
 
 async function receiptMarkNotReceived(encodedCode) {
   if(!requireReceiptEditable())return; const code=receiptDecode(encodedCode),item=receiptState.items.find(row=>String(row.codigo)===code);if(!item)return;
-  const observation=await appPrompt({title:'Marcar como no recibido',subtitle:item.nombre,message:'La observación es opcional. La cantidad recibida quedará en cero.',label:'Observación',placeholder:'Opcional',multiline:true,maxLength:300,tone:'warning',icon:'!',confirmText:'Marcar no recibido'});if(observation===false)return;
+  const wasOwned=receiptItemOwnedByMe(item);if(!await receiptEnsureClaim(item))return;
+  const observation=await appPrompt({title:'Marcar como no recibido',subtitle:item.nombre,message:'La observación es opcional. La cantidad recibida quedará en cero.',label:'Observación',placeholder:'Opcional',multiline:true,maxLength:300,tone:'warning',icon:'!',confirmText:'Marcar no recibido'});if(observation===false){if(!wasOwned)await receiptReleaseAssignment(code);return;}
   try{const response=await receiptApi('/api/recepcion/no_recibido',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reception_id:sessionId,codigo:code,value:true,observation})}),data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'No se pudo guardar');const index=receiptState.items.findIndex(row=>String(row.codigo)===code);if(index>=0)receiptState.items[index]=data.item;receiptCurrentCode='';renderReceiptAll();receiptOpenNextPending();}catch(error){toast(error.message,'e');}
 }
 
 function renderReceiptList() {
   const container=document.getElementById('receipt-items-list'); if(!container||!receiptState)return;
   const query=SucaneitorReception.normalize(document.getElementById('receipt-list-search')?.value),filter=document.getElementById('receipt-list-filter')?.value||'all';
-  let rows=receiptState.items.filter(item=>!query||SucaneitorReception.normalize(`${item.codigo} ${item.nombre} ${item.descripcion_archivo||''}`).includes(query)).filter(item=>{const status=receiptStatus(item);if(filter==='pending')return ['pendiente','parcial'].includes(status);if(filter==='exact')return status==='exacto';if(filter==='short')return Number(item.recibido)<Number(item.esperado);if(filter==='over')return status==='sobrante';if(filter==='not_received')return status==='no_recibido';return true;});
-  const visible=rows.slice(0,receiptListLimit); container.innerHTML=rows.length?visible.map(item=>{const status=receiptStatus(item),className=`receipt-row-${receiptStatusClass(status)}`,isChecked=status==='exacto',actions=receiptCanEdit()?`<div class="repo-row-actions">${isChecked?'<span class="receipt-checked-mark">✓ Confirmado</span>':status==='sobrante'?'<span class="receipt-over-mark">Revisar excedente</span>':`<button class="btn btn-p" onclick="receiptConfirmExpected('${receiptEncode(item.codigo)}','lista')">✓ Confirmar ${item.esperado}</button>`}<button class="btn btn-s" onclick="receiptEditQty('${receiptEncode(item.codigo)}')">Editar cantidad</button></div>`:`<strong>${item.recibido}/${item.esperado}</strong>`;return `<article class="repo-row ${className}"><div onclick="receiptOpenItem('${receiptEncode(item.codigo)}')" style="cursor:pointer"><h3>${isChecked?'✓ ':''}${esc(item.nombre)}</h3><div class="repo-row-meta">SKU ${esc(item.codigo)} · Remito ${item.esperado} · Recibido ${item.recibido} · ${receiptStatusLabel(status)}${item.observacion?` · ${esc(item.observacion)}`:''}${item.updated_by?` · ${esc(item.updated_by)}`:''}</div></div>${actions}</article>`;}).join('')+(rows.length>visible.length?`<button class="btn btn-s btn-full" onclick="receiptListLimit+=250;renderReceiptList()">Mostrar más · quedan ${rows.length-visible.length}</button>`:''):'<div class="repo-empty">No hay productos para este filtro.</div>';
+  let rows=receiptState.items.filter(item=>!query||SucaneitorReception.normalize(`${item.codigo} ${item.nombre} ${item.descripcion_archivo||''}`).includes(query)).filter(item=>{const status=receiptStatus(item);if(filter==='pending')return receiptItemPendingControl(item);if(filter==='exact')return status==='exacto';if(filter==='short')return Number(item.recibido)<Number(item.esperado);if(filter==='over')return status==='sobrante';if(filter==='not_received')return status==='no_recibido';return true;});
+  const visible=rows.slice(0,receiptListLimit); container.innerHTML=rows.length?visible.map(item=>{const status=receiptStatus(item),className=`receipt-row-${receiptStatusClass(status)}`,isChecked=!!item.controlado_at,busy=receiptItemClaimedByOther(item),actions=receiptCanEdit()?busy?`<div class="repo-row-actions"><span class="receipt-over-mark">Controlando: ${esc(item.asignado_nombre||'otra persona')}</span></div>`:`<div class="repo-row-actions">${isChecked?'<span class="receipt-checked-mark">✓ Controlado</span>':`<button class="btn btn-p" onclick="receiptConfirmExpected('${receiptEncode(item.codigo)}','lista')">✓ Confirmar ${item.esperado}</button>`}<button class="btn btn-s" onclick="receiptEditQty('${receiptEncode(item.codigo)}')">Editar cantidad</button></div>`:`<strong>${item.recibido}/${item.esperado}</strong>`;return `<article class="repo-row ${className}"><div onclick="receiptOpenItem('${receiptEncode(item.codigo)}')" style="cursor:pointer"><h3>${isChecked?'✓ ':''}${esc(item.nombre)}</h3><div class="repo-row-meta">SKU ${esc(item.codigo)} · Remito ${item.esperado} · Recibido ${item.recibido} · ${item.controlado_at?'Controlado':receiptStatusLabel(status)}${busy?` · Controlando: ${esc(item.asignado_nombre||'otra persona')}`:''}${item.observacion?` · ${esc(item.observacion)}`:''}${item.updated_by?` · ${esc(item.updated_by)}`:''}</div></div>${actions}</article>`;}).join('')+(rows.length>visible.length?`<button class="btn btn-s btn-full" onclick="receiptListLimit+=250;renderReceiptList()">Mostrar más · quedan ${rows.length-visible.length}</button>`:''):'<div class="repo-empty">No hay productos para este filtro.</div>';
 }
 
 function receiptSearchSource() {
@@ -200,12 +231,12 @@ function searchReceiptProducts(query,mode) {
   let results=SucaneitorSearch.rankProducts(index,value,null,30).map(row=>row.product);const compact=SucaneitorSearch.normalizeText(value);
   source.filter(product=>String(product.codigo).toLowerCase().includes(value.toLowerCase())||String(product.barras||'').includes(compact)).forEach(product=>{if(!results.some(row=>String(row.codigo)===String(product.codigo)))results.unshift(product);});
   if(mode!=='extra')results.sort((a,b)=>{const ae=expectedCodes.has(String(a.codigo)),be=expectedCodes.has(String(b.codigo));if(ae!==be)return Number(be)-Number(ae);const ai=receiptState.items.find(item=>String(item.codigo)===String(a.codigo)),bi=receiptState.items.find(item=>String(item.codigo)===String(b.codigo));return Number(Number(ai?.recibido)>=Number(ai?.esperado))-Number(Number(bi?.recibido)>=Number(bi?.esperado));});
-  receiptSearchResults[target]=results.slice(0,25);container.style.display='block';const header=`<div class="receipt-results-head"><span>${results.length?`${Math.min(25,results.length)} resultados`:'Sin coincidencias'}</span><button type="button" onclick="closeReceiptSearchResults('${target}')" aria-label="Cerrar resultados">× Cerrar lista</button></div>`;container.innerHTML=header+(results.length?results.slice(0,25).map((product,indexRow)=>{const item=receiptState.items.find(row=>String(row.codigo)===String(product.codigo)),received=Number(item?.recibido)||0,expected=Number(item?.esperado)||0,label=item?(received===expected?`CONFIRMADO ${received}/${expected}`:received>expected?`EXCEDENTE ${received}/${expected}`:`PENDIENTE · RESTA ${Math.max(0,expected-received)}`):'FUERA DEL REMITO';return `<button type="button" class="repo-result" onclick="selectReceiptSearchResult('${target}',${indexRow},'${mode}')"><strong>${esc(product.nombre)}</strong><span>SKU ${esc(product.codigo)} · ${label}${product.barras?` · Barras ${esc(product.barras)}`:''}</span></button>`;}).join(''):'<div class="repo-empty">Probá con otro nombre o con el SKU.</div>');
+  receiptSearchResults[target]=results.slice(0,25);container.style.display='block';const header=`<div class="receipt-results-head"><span>${results.length?`${Math.min(25,results.length)} resultados`:'Sin coincidencias'}</span><button type="button" onclick="closeReceiptSearchResults('${target}')" aria-label="Cerrar resultados">× Cerrar lista</button></div>`;container.innerHTML=header+(results.length?results.slice(0,25).map((product,indexRow)=>{const item=receiptState.items.find(row=>String(row.codigo)===String(product.codigo)),received=Number(item?.recibido)||0,expected=Number(item?.esperado)||0,busy=receiptItemClaimedByOther(item),label=!item?'FUERA DEL REMITO':busy?`CONTROLANDO: ${item.asignado_nombre||'otra persona'}`:item.controlado_at?`CONTROLADO ${received}/${expected}`:`PENDIENTE · RESTA ${Math.max(0,expected-received)}`;return `<button type="button" class="repo-result" onclick="selectReceiptSearchResult('${target}',${indexRow},'${mode}')"><strong>${esc(product.nombre)}</strong><span>SKU ${esc(product.codigo)} · ${esc(label)}${product.barras?` · Barras ${esc(product.barras)}`:''}</span></button>`;}).join(''):'<div class="repo-empty">Probá con otro nombre o con el SKU.</div>');
 }
 
 async function selectReceiptSearchResult(target,index,mode) {
   const product=(receiptSearchResults[target]||[])[index];if(!product)return;closeReceiptSearchResults(target);
-  const item=receiptState.items.find(row=>String(row.codigo)===String(product.codigo));if(item){receiptCurrentCode=item.codigo;renderReceiptCurrent();showReceiptTab('control',{focus:false});return;}
+  const item=receiptState.items.find(row=>String(row.codigo)===String(product.codigo));if(item){await receiptOpenItem(receiptEncode(item.codigo));return;}
   await receiptPromptExtra(product);
 }
 

@@ -180,7 +180,10 @@
       extras_unidades:extras.reduce((sum, item) => sum + Math.max(0, Number(item.cantidad) || 0), 0)
     };
     items.forEach(item => { const value=status(item); result[value === 'exacto' ? 'exactos' : value === 'sobrante' ? 'sobrantes' : value === 'no_recibido' ? 'no_recibidos' : value === 'parcial' ? 'parciales' : 'pendientes'] += 1; });
-    result.productos_pendientes = result.pendientes + result.parciales;
+    const usesDirectedControl = items.some(item => Object.prototype.hasOwnProperty.call(item,'controlado_at'));
+    result.productos_pendientes = usesDirectedControl
+      ? items.filter(item => !item.controlado_at).length
+      : result.pendientes + result.parciales;
     result.tiene_diferencias = result.unidades_faltantes > 0 || result.unidades_sobrantes > 0 || result.extras_unidades > 0;
     return result;
   }

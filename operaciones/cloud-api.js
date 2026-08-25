@@ -265,33 +265,35 @@
 
   function receiptItem(row, catalogByCode) {
     const product=catalogByCode?.get(clean(row.codigo));
-    return {codigo:row.codigo,nombre:clean(product?.nombre)||row.nombre,descripcion_archivo:row.descripcion_archivo||'',barras:clean(product?.barras)||row.barras||'',marca:clean(product?.marca)||row.marca||'',esperado:Number(row.esperado||0),recibido:Number(row.recibido||0),no_recibido:!!row.no_recibido,observacion:row.observacion||'',source_lines:row.source_lines||[],updated_by:row.updated_by_name||'',updated_at:row.updated_at,requiere_verificacion:!!row.requiere_verificacion,verificado_at:row.verificado_at||null,verificado_by:row.verificado_by_name||''};
+    return {codigo:row.codigo,nombre:clean(product?.nombre)||row.nombre,descripcion_archivo:row.descripcion_archivo||'',barras:clean(product?.barras)||row.barras||'',marca:clean(product?.marca)||row.marca||'',esperado:Number(row.esperado||0),recibido:Number(row.recibido||0),no_recibido:!!row.no_recibido,observacion:row.observacion||'',source_lines:row.source_lines||[],updated_by:row.updated_by_name||'',updated_at:row.updated_at,requiere_verificacion:!!row.requiere_verificacion,verificado_at:row.verificado_at||null,verificado_by:row.verificado_by_name||'',controlado_at:row.controlado_at||null,controlado_by:row.controlado_by_name||'',asignado_a:row.asignado_a||null,asignado_cliente:row.asignado_cliente||'',asignado_nombre:row.asignado_nombre||'',asignado_at:row.asignado_at||null};
   }
   function receiptSummary(receipt) {
     const items=receipt.items||[],extras=receipt.extras||[];
     const expected=items.reduce((sum,item)=>sum+Number(item.esperado||0),0),received=items.reduce((sum,item)=>sum+Number(item.recibido||0),0);
-    return {productos:items.length,unidades_esperadas:expected,unidades_recibidas:received,unidades_faltantes:items.reduce((sum,item)=>sum+Math.max(0,Number(item.esperado||0)-Number(item.recibido||0)),0),unidades_sobrantes:items.reduce((sum,item)=>sum+Math.max(0,Number(item.recibido||0)-Number(item.esperado||0)),0),pendientes:items.filter(item=>Number(item.recibido||0)<Number(item.esperado||0)&&!item.no_recibido).length,exactos:items.filter(item=>Number(item.recibido||0)===Number(item.esperado||0)).length,verificaciones_pendientes:items.filter(item=>item.requiere_verificacion).length,extras_productos:extras.filter(item=>Number(item.cantidad)>0).length,extras_unidades:extras.reduce((sum,item)=>sum+Number(item.cantidad||0),0)};
+    const directed=items.some(item=>Object.prototype.hasOwnProperty.call(item,'controlado_at'));
+    return {productos:items.length,unidades_esperadas:expected,unidades_recibidas:received,unidades_faltantes:items.reduce((sum,item)=>sum+Math.max(0,Number(item.esperado||0)-Number(item.recibido||0)),0),unidades_sobrantes:items.reduce((sum,item)=>sum+Math.max(0,Number(item.recibido||0)-Number(item.esperado||0)),0),pendientes:directed?items.filter(item=>!item.controlado_at).length:items.filter(item=>Number(item.recibido||0)<Number(item.esperado||0)&&!item.no_recibido).length,exactos:items.filter(item=>Number(item.recibido||0)===Number(item.esperado||0)).length,verificaciones_pendientes:items.filter(item=>item.requiere_verificacion).length,extras_productos:extras.filter(item=>Number(item.cantidad)>0).length,extras_unidades:extras.reduce((sum,item)=>sum+Number(item.cantidad||0),0)};
   }
   function canEditReception(receipt) {
     return receipt?.estado==='en_control'&&(cloud.isSupervisor()||clean(receipt.destino_local||receipt.destination)===clean(cloud.profile?.local_nombre));
   }
   async function receptionSnapshot(receiptId) {
-    const [{data:receipt,error:re},{data:items,error:ie},{data:extras,error:xe},{data:parts,error:pe},{data:events,error:ee},{data:links,error:le}]=await Promise.all([
+    const [{data:receipt,error:re},{data:items,error:ie},{data:extras,error:xe},{data:parts,error:pe},{data:devices,error:de},{data:events,error:ee},{data:links,error:le}]=await Promise.all([
       cloud.db.from('op_recepciones').select('*').eq('id',receiptId).single(),
       cloud.db.from('op_recepcion_items').select('*').eq('recepcion_id',receiptId).order('nombre'),
       cloud.db.from('op_recepcion_extras').select('*').eq('recepcion_id',receiptId).order('nombre'),
       cloud.db.from('op_recepcion_participantes').select('*').eq('recepcion_id',receiptId).order('joined_at'),
+      cloud.db.from('op_recepcion_dispositivos').select('cliente_id,usuario_id,invitado_id,nombre,last_seen').eq('recepcion_id',receiptId).gt('last_seen',new Date(Date.now()-3*60*1000).toISOString()).order('last_seen',{ascending:false}),
       cloud.db.from('op_recepcion_eventos').select('*').eq('recepcion_id',receiptId).order('created_at',{ascending:false}).limit(500),
       cloud.db.from('op_recepcion_pedidos').select('pedido_id,coincidencia').eq('recepcion_id',receiptId)
     ]);
-    if(re||ie||xe||pe||ee||le)throw re||ie||xe||pe||ee||le;
+    if(re||ie||xe||pe||de||ee||le)throw re||ie||xe||pe||de||ee||le;
     const codes=[...new Set([...(items||[]),...(extras||[])].map(row=>clean(row.codigo)).filter(Boolean))];
     const products=await selectInBatches('productos','codigo,nombre,barras,marca','codigo',codes);
     const catalogByCode=new Map(products.map(product=>[clean(product.codigo),product]));
     const orderIds=(links||[]).map(link=>link.pedido_id);
     const orders=orderIds.length?await selectInBatches('pedidos','id,cliente,telefono,estado,remito,cliente_aviso_pendiente,cliente_avisado_at,created_at,pedido_productos(codigo,nombre,cantidad,cantidad_aceptada,cantidad_preparada,cantidad_recibida)','id',orderIds,'created_at'):[];
     const linkByOrder=new Map((links||[]).map(link=>[link.pedido_id,link]));
-    const snapshot={id:receipt.id,nombre:receipt.nombre,document_number:receipt.numero_remito,date:receipt.fecha_remito,origin:receipt.origen_local,destination:receipt.destino_local,estado:receipt.estado,original_filename:receipt.original_filename,original_file:receipt.original_path,import_meta:receipt.import_meta||{},observaciones_cierre:receipt.observaciones_cierre||'',created_at:receipt.created_at,updated_at:receipt.updated_at,closed_at:receipt.closed_at,can_edit:canEditReception(receipt),can_delete:canEditReception(receipt),items:(items||[]).map(row=>receiptItem(row,catalogByCode)),extras:(extras||[]).map(row=>({codigo:row.codigo,nombre:clean(catalogByCode.get(clean(row.codigo))?.nombre)||row.nombre,barras:clean(catalogByCode.get(clean(row.codigo))?.barras)||row.barras||'',cantidad:Number(row.cantidad||0),observacion:row.observacion||'',updated_by:row.updated_by_name||'',updated_at:row.updated_at})),participantes:(parts||[]).map(row=>({nombre:row.nombre,joined:asDate(row.joined_at),last_seen:row.last_seen})),orders:orders.map(order=>({...order,coincidencia:linkByOrder.get(order.id)?.coincidencia||'ruta_sku'})),log:(events||[]).map(row=>({ts:row.created_at,usuario:row.usuario_nombre,accion:row.accion,codigo:row.codigo,detalle:row.detalle||{}}))};
+    const snapshot={id:receipt.id,nombre:receipt.nombre,document_number:receipt.numero_remito,date:receipt.fecha_remito,origin:receipt.origen_local,destination:receipt.destino_local,estado:receipt.estado,original_filename:receipt.original_filename,original_file:receipt.original_path,import_meta:receipt.import_meta||{},observaciones_cierre:receipt.observaciones_cierre||'',created_at:receipt.created_at,updated_at:receipt.updated_at,closed_at:receipt.closed_at,can_edit:canEditReception(receipt),can_delete:canEditReception(receipt),viewer_client_id:cloud.clientId,items:(items||[]).map(row=>receiptItem(row,catalogByCode)),extras:(extras||[]).map(row=>({codigo:row.codigo,nombre:clean(catalogByCode.get(clean(row.codigo))?.nombre)||row.nombre,barras:clean(catalogByCode.get(clean(row.codigo))?.barras)||row.barras||'',cantidad:Number(row.cantidad||0),observacion:row.observacion||'',updated_by:row.updated_by_name||'',updated_at:row.updated_at})),participantes:(devices||[]).map(row=>({nombre:row.nombre,cliente_id:row.cliente_id,usuario_id:row.usuario_id,invitado_id:row.invitado_id,last_seen:row.last_seen,joined:asDate(row.last_seen)})),orders:orders.map(order=>({...order,coincidencia:linkByOrder.get(order.id)?.coincidencia||'ruta_sku'})),log:(events||[]).map(row=>({ts:row.created_at,usuario:row.usuario_nombre,accion:row.accion,codigo:row.codigo,detalle:row.detalle||{}}))};
     snapshot.summary=receiptSummary(snapshot); return snapshot;
   }
   async function listReceptions() {
@@ -299,7 +301,7 @@
     const {data,error}=await cloud.db.from('op_recepciones').select('*').in('estado',['en_control','cerrado']).gte('created_at',since).order('updated_at',{ascending:false});
     if(error)throw error; const receipts=data||[],ids=receipts.map(row=>row.id); if(!ids.length)return [];
     const [itemsResult,extrasResult,partsResult,linksResult]=await Promise.all([
-      selectDirectoryDetail('op_recepcion_items','recepcion_id,esperado,recibido,no_recibido','recepcion_id',ids),
+      selectDirectoryDetail('op_recepcion_items','recepcion_id,esperado,recibido,no_recibido,controlado_at','recepcion_id',ids),
       selectDirectoryDetail('op_recepcion_extras','recepcion_id,cantidad','recepcion_id',ids),
       selectDirectoryDetail('op_recepcion_participantes','recepcion_id,nombre,joined_at','recepcion_id',ids,'joined_at'),
       selectDirectoryDetail('op_recepcion_pedidos','recepcion_id,pedido_id','recepcion_id',ids)
@@ -446,11 +448,23 @@
       }
       if(path==='/api/recepcion/state') {
         const rid=url.searchParams.get('rid');
-        const {error}=await cloud.db.from('op_recepcion_participantes').upsert({recepcion_id:rid,usuario_id:cloud.user.id,nombre:cloud.displayName,last_seen:new Date().toISOString()},{onConflict:'recepcion_id,usuario_id'}); if(error)throw error;
+        const {error}=await cloud.db.rpc('op_recepcion_tocar',{p_recepcion:rid,p_cliente:cloud.clientId,p_usuario_nombre:cloud.displayName}); if(error)throw error;
         return json({ok:true,receipt:await receptionSnapshot(rid)});
       }
+      if(path==='/api/recepcion/claim' && method==='POST') {
+        const {data:item,error}=await cloud.db.rpc('op_recepcion_reclamar',{p_recepcion:data.reception_id,p_codigo:data.codigo||null,p_cliente:cloud.clientId,p_usuario_nombre:cloud.displayName});if(error)throw error;
+        return json({ok:true,item:item?receiptItem(item):null,viewer_client_id:cloud.clientId});
+      }
+      if(path==='/api/recepcion/release' && method==='POST') {
+        const {data:released,error}=await cloud.db.rpc('op_recepcion_liberar',{p_recepcion:data.reception_id,p_cliente:cloud.clientId,p_codigo:data.codigo||null,p_usuario_nombre:cloud.displayName});if(error)throw error;
+        return json({ok:true,released:Number(released)||0});
+      }
+      if(path==='/api/recepcion/heartbeat' && method==='POST') {
+        const {error}=await cloud.db.rpc('op_recepcion_tocar',{p_recepcion:data.reception_id,p_cliente:cloud.clientId,p_usuario_nombre:cloud.displayName});if(error)throw error;
+        return json({ok:true,at:new Date().toISOString()});
+      }
       if(path==='/api/recepcion/update_qty' && method==='POST') {
-        const {data:item,error}=await cloud.db.rpc('op_recepcion_cantidad',{p_recepcion:data.reception_id,p_codigo:data.codigo,p_delta:data.absolute==null?Number(data.delta||0):null,p_absoluta:data.absolute==null?null:Number(data.absolute),p_origen:data.source||'manual',p_usuario_nombre:cloud.displayName}); if(error)throw error;
+        const {data:item,error}=await cloud.db.rpc('op_recepcion_cantidad_colaborativa',{p_recepcion:data.reception_id,p_codigo:data.codigo,p_delta:data.absolute==null?Number(data.delta||0):null,p_absoluta:data.absolute==null?null:Number(data.absolute),p_origen:data.source||'manual',p_usuario_nombre:cloud.displayName,p_cliente:cloud.clientId}); if(error)throw error;
         const receipt=await receptionSnapshot(data.reception_id); return json({ok:true,item:receiptItem(item),summary:receipt.summary});
       }
       if(path==='/api/recepcion/verify_qty' && method==='POST') {
@@ -458,7 +472,7 @@
         return json({ok:true,item:receiptItem(item)});
       }
       if(path==='/api/recepcion/no_recibido' && method==='POST') {
-        const {data:item,error}=await cloud.db.rpc('op_recepcion_no_recibido',{p_recepcion:data.reception_id,p_codigo:data.codigo,p_valor:!!data.value,p_observacion:clean(data.observation)||null,p_usuario_nombre:cloud.displayName}); if(error)throw error;
+        const {data:item,error}=await cloud.db.rpc('op_recepcion_no_recibido_colaborativo',{p_recepcion:data.reception_id,p_codigo:data.codigo,p_valor:!!data.value,p_observacion:clean(data.observation)||null,p_usuario_nombre:cloud.displayName,p_cliente:cloud.clientId}); if(error)throw error;
         const receipt=await receptionSnapshot(data.reception_id); return json({ok:true,item:receiptItem(item),summary:receipt.summary});
       }
       if(path==='/api/recepcion/extra' && method==='POST') {
@@ -574,6 +588,7 @@
       .on('postgres_changes',{event:'*',schema:'public',table:'op_recepcion_items',filter:`recepcion_id=eq.${receiptId}`},payload=>callback({kind:'item',event:payload.eventType,row:payload.new||null,old:payload.old||null}))
       .on('postgres_changes',{event:'*',schema:'public',table:'op_recepcion_extras',filter:`recepcion_id=eq.${receiptId}`},payload=>callback({kind:'extra',event:payload.eventType,row:payload.new||null,old:payload.old||null}))
       .on('postgres_changes',{event:'*',schema:'public',table:'op_recepcion_participantes',filter:`recepcion_id=eq.${receiptId}`},payload=>callback({kind:'participant',event:payload.eventType,row:payload.new||null,old:payload.old||null}))
+      .on('postgres_changes',{event:'*',schema:'public',table:'op_recepcion_dispositivos',filter:`recepcion_id=eq.${receiptId}`},payload=>callback({kind:'device',event:payload.eventType,row:payload.new||null,old:payload.old||null}))
       .on('postgres_changes',{event:'*',schema:'public',table:'op_recepciones',filter:`id=eq.${receiptId}`},payload=>callback({kind:'reception',event:payload.eventType,row:payload.new||null,old:payload.old||null}))
       .subscribe(status=>callback({kind:'status',status}));
     cloud.channels.push(channel); return channel;
