@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0f0f15">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co; base-uri 'self'; form-action 'self'">
+  <title>Crear pedido · Sucaneitor</title>
+  <link rel="icon" type="image/svg+xml" href="/logo.svg?v=2">
+  <link rel="stylesheet" href="/pedido-publico.css?v=1">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <div class="boot-screen" id="public-boot"><img src="/logo.svg?v=2" alt=""><span class="spinner"></span><p>Verificando el enlace de pedidos…</p></div>
+  <main class="public-shell">
+    <section class="error-screen" id="public-error" hidden><img src="/logo.svg?v=2" alt="Sucaneitor"><span class="error-mark">!</span><h1>Este enlace no está disponible</h1><p id="public-error-message">Solicitá un enlace nuevo al local.</p><button class="secondary" type="button" onclick="location.reload()">Volver a intentar</button></section>
+    <section id="public-flow" hidden>
+      <header class="public-brand"><img src="/logo.svg?v=2" alt="Sucaneitor"><div><strong>Sucaneitor</strong><span>Pedidos entre locales</span></div></header>
+      <div class="stepper"><div class="step active" id="step-identity">1 · Tus datos</div><div class="step" id="step-order">2 · Pedido</div><div class="step" id="step-track">3 · Seguimiento</div></div>
+
+      <section id="identity-screen">
+        <article class="public-card public-hero"><span class="eyebrow">PEDIDO PARA <b id="destination-label">TU LOCAL</b></span><h1>Creá tu pedido sin iniciar sesión</h1><p>Ingresá tus datos y elegí los productos que necesitás. El local recibirá la solicitud inmediatamente.</p><div class="safe-note"><b>✓</b><p><strong>Acceso limitado.</strong> Este enlace solamente permite crear pedidos para el local indicado. No da acceso a otros módulos ni a pedidos ajenos.</p></div></article>
+        <form class="public-card public-form" id="identity-form">
+          <div class="field-grid">
+            <label class="field"><span>Nombre</span><input class="input" id="public-name" autocomplete="given-name" maxlength="80" required placeholder="Ej: Martina"></label>
+            <label class="field"><span>Apellido</span><input class="input" id="public-surname" autocomplete="family-name" maxlength="80" required placeholder="Ej: Rodríguez"></label>
+            <label class="field full"><span>Teléfono (opcional)</span><input class="input" id="public-phone" type="tel" autocomplete="tel" maxlength="30" placeholder="Ej: 099 123 456"></label>
+          </div>
+          <p class="form-error" id="identity-error" role="alert"></p>
+          <button class="primary full-button" type="submit">Continuar y crear pedido</button>
+        </form>
+      </section>
+
+      <section id="order-screen" hidden>
+        <article class="public-card public-form">
+          <div class="builder-head"><div><span class="eyebrow">NUEVO PEDIDO</span><h2>Elegí qué necesitás</h2></div><span class="identity-chip" id="identity-chip"></span></div>
+          <div class="route-grid"><label class="field"><span>Sale de</span><select class="input" id="public-origin"></select></label><div class="route-arrow">→</div><label class="field"><span>Llega a</span><input class="input" id="public-destination" readonly></label></div>
+          <div class="search-card"><label class="field"><span>Buscar productos</span><div class="search-row"><input class="input" id="public-product-search" type="search" autocomplete="off" placeholder="Nombre, código o marca…"><button class="secondary" id="public-search-button" type="button">Buscar</button></div></label><div class="search-results" id="public-search-results" hidden></div></div>
+          <div class="selected-card"><div class="selected-head"><h3>Productos seleccionados</h3><span id="selected-count">0 ítems</span></div><div class="selected-list" id="selected-products"><div class="selected-empty">Buscá un producto y agregalo al pedido.</div></div></div>
+          <div class="order-options"><label class="check-card"><input id="public-urgent" type="checkbox">🔴 Pedido urgente</label><label class="field"><span>Notas (opcional)</span><textarea class="input" id="public-notes" maxlength="500" placeholder="Información útil para el local"></textarea></label></div>
+          <p class="form-error" id="order-error" role="alert"></p>
+          <div class="submit-row"><button class="secondary" id="back-identity" type="button">Volver</button><button class="primary" id="submit-public-order" type="button">Crear pedido</button></div>
+        </article>
+      </section>
+
+      <section id="confirmation-screen" hidden>
+        <article class="public-card confirmation"><div class="success-icon">✓</div><span class="eyebrow">PEDIDO RECIBIDO</span><h1>¡Tu pedido fue creado!</h1><p>Guardá este enlace para consultar el estado cuando quieras.</p><span class="order-code" id="confirmation-code"></span><div class="confirmation-grid"><div class="qr-box" id="tracking-qr"></div><div class="link-panel"><label>ENLACE DE SEGUIMIENTO</label><div class="link-value" id="tracking-link-value"></div><div class="share-actions"><button class="primary" id="copy-tracking" type="button">Copiar</button><button class="secondary" id="share-tracking" type="button">Compartir</button><button class="secondary" id="open-tracking" type="button">Abrir seguimiento</button></div><div class="summary-box"><div><span>Origen</span><strong id="confirmation-origin"></strong></div><div><span>Destino</span><strong id="confirmation-destination"></strong></div></div></div></div><button class="secondary" id="create-another" type="button">Crear otro pedido</button></article>
+      </section>
+    </section>
+  </main>
+
+  <div class="modal-layer" id="duplicate-modal" hidden><section class="public-modal" role="dialog" aria-modal="true"><h2>Posible pedido duplicado</h2><p>Ya existe un pedido de hoy para esta persona y recorrido con productos repetidos. Revisá antes de continuar.</p><div class="duplicate-products" id="duplicate-products"></div><div class="modal-actions"><button class="secondary" id="duplicate-cancel" type="button">Revisar pedido</button><button class="primary" id="duplicate-confirm" type="button">Continuar igualmente</button></div></section></div>
+  <div class="toast" id="public-toast" role="status"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="/operaciones/cloud-config.js"></script>
+  <script src="/pedido-publico.js?v=1"></script>
+</body>
+</html>

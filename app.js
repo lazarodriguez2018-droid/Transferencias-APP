@@ -28,6 +28,7 @@ navigationReady: false,
 navigationRequestId: 0,
 spinnerSequence: 0,
 realtimeChannels: [],
+publicOrderLink: {localId:null,status:null,token:null},
 idle: {
 intervalId: null,
 warned: false,
@@ -564,6 +565,7 @@ safeSet('sidebar-local-badge', appState.currentPerfil.local_nombre+' ('+appState
 // Sincronizar el FAB flotante de perfil (visible en hub-mode y mobile)
 syncUserFab(appState.currentPerfil);
 if(isAdmin) el('admin-nav').style.display='block';
+if(el('btn-public-order-links')) el('btn-public-order-links').style.display=isAdmin?'inline-flex':'none';
 const hubAdminPadron=el('hub-admin-padron');
 if(hubAdminPadron) hubAdminPadron.style.display=isAdmin?'flex':'none';
 // Load caches
@@ -576,11 +578,13 @@ appState.transportesCache = trans||[];
 const queryParams=new URLSearchParams(location.search);
 const requestedModule=queryParams.get('module');
 const requestedView=queryParams.get('view');
+const pendingManageToken=publicManagementTokenFromHash();
 const validViews=['hub','dashboard','misPedidos','paraEnviar','historial','misConsultas','chats','agenda','perfil','usuarios','sugerencias','config'];
-const initialView=validViews.includes(requestedView)
+const initialView=pendingManageToken ? 'misPedidos' : validViews.includes(requestedView)
   ? requestedView
   : requestedModule==='pedidos' ? 'misPedidos' : 'hub';
 await navigateTo(initialView,{history:'replace'});
+if(pendingManageToken) await resolvePublicManagementToken(pendingManageToken);
 setupRealtime();
 } finally {
 hideSpinner();
@@ -950,6 +954,7 @@ const fecha=fmtDate(o.created_at);
 const urgente=o.urgente?' <span class="priority-badge">🔴 URGENTE</span>':'';
 const viejo=o._viejo?' <span class="priority-badge" style="color:#f7971e">⏰ +24hs</span>':'';
 const aviso=o.cliente_aviso_pendiente?' <span class="priority-badge" style="color:#f59e0b">📞 AVISAR CLIENTE</span>':'';
+const publicTag=o.canal_creacion==='publico'?'<span class="public-order-badge">🔗 PEDIDO PÚBLICO</span>':'';
 const isMio=o.destino_local===appState.currentPerfil.local_nombre;
 const isAdmin=isSupervisorRole(appState.currentPerfil.role);
 const rol=isMio
@@ -958,7 +963,7 @@ const rol=isMio
 const escActiva=getEscalaActiva(o);
 return '<div class="order-card" onclick="openDetalle(\''+o.id+'\')">'+
 '<div class="order-top"><div>'+
-'<div class="order-id">'+rol+'  #'+o.id.slice(-8,-2).toUpperCase()+urgente+viejo+aviso+'</div>'+
+'<div class="order-id">'+rol+'  #'+o.id.slice(-8,-2).toUpperCase()+publicTag+urgente+viejo+aviso+'</div>'+
 '<div class="order-title">'+escHtml(o.cliente||'Sin cliente')+(o.telefono?' · 📞 '+escHtml(o.telefono):'')+'</div>'+
 (escActiva?'<div class="order-route">📤 '+escHtml(o.origen_local)+' → 🔄 '+escHtml(escActiva.escala)+' → 📥 '+escHtml(o.destino_local)+(o.transporte?' · 🚛 '+escHtml(o.transporte):'')+'</div>':'<div class="order-route">📤 '+escHtml(o.origen_local)+' ('+escHtml(o.origen_almacen)+') → 📥 '+escHtml(o.destino_local)+' ('+escHtml(o.destino_almacen)+')'+(o.transporte?' · 🚛 '+escHtml(o.transporte):'')+'</div>')+
 '</div><span class="badge '+cls+'">'+icon+' '+label+'</span></div>'+
@@ -1251,7 +1256,7 @@ const {data:creadores}=await db.from('perfiles').select('id,nombre,apellido,loca
 selCreador.innerHTML='<option value="">Realizado por: todos</option>'+(creadores||[]).map(c=>{
 const lbl=(c.nombre||'')+' '+(c.apellido||'')+' · '+(c.local_nombre||'');
 return '<option value="'+c.id+'"'+(cvC===c.id?' selected':'')+'>'+escHtml(lbl)+'</option>';
-}).join('');
+}).join('')+'<option value="__public__"'+(cvC==='__public__'?' selected':'')+'>🔗 Enlace público</option>';
 }
 
 let q=db.from('pedidos').select('*,pedido_productos(*)')
@@ -1268,7 +1273,8 @@ const creador = isAdmin && selCreador ? selCreador.value : '';
 if(estado)  q=q.eq('estado',estado);
 if(origen)  q=q.eq('origen_local',origen);
 if(destino) q=q.eq('destino_local',destino);
-if(creador) q=q.eq('creado_por',creador);
+if(creador==='__public__') q=q.eq('canal_creacion','publico');
+else if(creador) q=q.eq('creado_por',creador);
 
 q=q.order('created_at',{ascending:true});
 
@@ -1343,7 +1349,7 @@ const {data:creadores}=await db.from('perfiles').select('id,nombre,apellido,loca
 selCreador.innerHTML='<option value="">Realizado por: todos</option>'+(creadores||[]).map(c=>{
 const lbl=(c.nombre||'')+' '+(c.apellido||'')+' · '+(c.local_nombre||'');
 return '<option value="'+c.id+'"'+(cvC===c.id?' selected':'')+'>'+escHtml(lbl)+'</option>';
-}).join('');
+}).join('')+'<option value="__public__"'+(cvC==='__public__'?' selected':'')+'>🔗 Enlace público</option>';
 }
 
 // Locales para los cuales soy escala
@@ -1360,7 +1366,8 @@ q=q.eq('origen_local',local);
 } else {
 if(selOrigen.value)  q=q.eq('origen_local',selOrigen.value);
 if(selDestino.value) q=q.eq('destino_local',selDestino.value);
-if(selCreador?.value) q=q.eq('creado_por',selCreador.value);
+if(selCreador?.value==='__public__') q=q.eq('canal_creacion','publico');
+else if(selCreador?.value) q=q.eq('creado_por',selCreador.value);
 }
 
 const estadoFiltroEnv=el('filter-env-estado').value;
@@ -1419,7 +1426,7 @@ const {data:creadores}=await db.from('perfiles').select('id,nombre,apellido,loca
 selCreador.innerHTML='<option value="">Realizado por: todos</option>'+(creadores||[]).map(c=>{
 const lbl=(c.nombre||'')+' '+(c.apellido||'')+' · '+(c.local_nombre||'');
 return '<option value="'+c.id+'"'+(cvC===c.id?' selected':'')+'>'+escHtml(lbl)+'</option>';
-}).join('');
+}).join('')+'<option value="__public__"'+(cvC==='__public__'?' selected':'')+'>🔗 Enlace público</option>';
 } else if(selCreador) selCreador.style.display='none';
 let q=db.from('pedidos').select('*,pedido_productos(*)').in('estado',['completo','incompleto','denegado']).order('updated_at',{ascending:false});
 if(tipo==='misPedidos')  q=q.eq('destino_local',local);
@@ -1428,7 +1435,8 @@ else if(!isAdmin) q=q.or('origen_local.eq.'+local+',destino_local.eq.'+local);
 if(estado) q=q.eq('estado',estado);
 if(selOrigen?.value) q=q.eq('origen_local',selOrigen.value);
 if(isAdmin && selDestino?.value) q=q.eq('destino_local',selDestino.value);
-if(isAdmin && selCreador?.value) q=q.eq('creado_por',selCreador.value);
+if(isAdmin && selCreador?.value==='__public__') q=q.eq('canal_creacion','publico');
+else if(isAdmin && selCreador?.value) q=q.eq('creado_por',selCreador.value);
 const desde=el('filter-hist-desde')?.value;
 const hasta=el('filter-hist-hasta')?.value;
 if(desde) q=q.gte('updated_at',desde+'T00:00:00');
@@ -1596,7 +1604,7 @@ actions='<div class="actions-bar"><button class="btn btn-success btn-sm" onclick
 }
 
 el('modal-detalle-body').innerHTML=
-'<div class="detail-section"><h4>Estado</h4><span class="badge '+cls+'" style="font-size:13px;padding:5px 12px">'+icon+' '+label+'</span>'+(o.urgente?' <span class="priority-badge">🔴 URGENTE</span>':'')+' </div>'+
+'<div class="detail-section"><h4>Estado</h4><span class="badge '+cls+'" style="font-size:13px;padding:5px 12px">'+icon+' '+label+'</span>'+(o.canal_creacion==='publico'?' <span class="public-order-badge">🔗 PEDIDO PÚBLICO</span>':'')+(o.urgente?' <span class="priority-badge">🔴 URGENTE</span>':'')+' </div>'+
 '<div class="detail-section"><h4>Ruta</h4><div class="route-box"><div class="route-local"><div class="rl-label">SALE DE</div><div class="rl-name">'+escHtml(o.origen_local)+'</div><div class="rl-code">'+escHtml(o.origen_almacen)+'</div></div><div class="arrow">→</div><div class="route-local"><div class="rl-label">LLEGA A</div><div class="rl-name">'+escHtml(o.destino_local)+'</div><div class="rl-code">'+escHtml(o.destino_almacen)+'</div></div></div></div>'+
 '<div class="detail-section"><h4>Cliente</h4><div class="detail-row"><span class="label">Nombre:</span><span class="value">'+escHtml(o.cliente||'–')+'</span></div><div class="detail-row"><span class="label">Teléfono:</span><span class="value">'+escHtml(o.telefono||'–')+'</span></div></div>'+
 (o.cliente_aviso_pendiente?'<div class="warning-box" style="margin-bottom:14px;border-color:#f59e0b;color:#f59e0b"><strong>📞 La mercadería ya fue recibida.</strong><br>Este pedido quedó completado y todavía hay que avisarle al cliente.</div>':'')+
@@ -1617,6 +1625,7 @@ actions+
 (o.telefono?'<button class="btn btn-success btn-sm" onclick="abrirWhatsApp(\''+escJsStr(o.telefono)+'\',\''+escJsStr(o.cliente||'')+'\')" style="background:#25d366;border-color:#25d366;color:#fff">💬 WhatsApp cliente</button>':'')+
 (o.cliente_aviso_pendiente&&canDestino?'<button class="btn btn-primary btn-sm" onclick="marcarClienteAvisado(\''+o.id+'\')">✅ Marcar cliente avisado</button>':'')+
 '<button class="btn btn-ghost btn-sm" onclick="generarEtiqueta(\''+o.id+'\')">🖨️ Etiqueta de envío</button>'+
+(o.canal_creacion==='publico'?'<button class="btn btn-ghost btn-sm" onclick="regenerarSeguimientoPublico(\''+o.id+'\')">🔗 Regenerar seguimiento</button>':'')+
 (['completo','incompleto'].includes(o.estado)?'<button class="btn btn-ghost btn-sm" onclick="exportarXLSPedido(\''+o.id+'\')" style="color:#22c55e;border-color:rgba(34,197,94,0.35)">📊 Exportar XLS comparativo</button>':'')+
 (isSupervisorRole(appState.currentPerfil.role)?
 '<button class="btn btn-warning btn-sm" onclick="retrocederEstado(\''+o.id+'\')">↩️ Retroceder estado</button>'+
@@ -2645,6 +2654,105 @@ await updateBadges(); navigateTo('misPedidos');
 }
 
 // ═══════════════════════════════════════════
+//  PEDIDOS PÚBLICOS — enlaces y seguimiento
+// ═══════════════════════════════════════════
+function publicLinkStorageKey(localId){ return 'sucan_public_order_link_'+String(localId||''); }
+function loadPublicLinkSecret(localId){
+try{return JSON.parse(localStorage.getItem(publicLinkStorageKey(localId))||'null');}catch(_){return null;}
+}
+function savePublicLinkSecret(localId,linkId,token){
+try{localStorage.setItem(publicLinkStorageKey(localId),JSON.stringify({linkId,token}));}catch(_){}
+}
+function clearPublicLinkSecret(localId){ try{localStorage.removeItem(publicLinkStorageKey(localId));}catch(_){} }
+function publicOrderLinkUrl(token){return token?location.origin+'/pedido-publico#'+encodeURIComponent(token):'';}
+async function copyAppText(value){
+try{await navigator.clipboard.writeText(value);notify('Enlace copiado','success');}
+catch(_){const area=document.createElement('textarea');area.value=value;document.body.appendChild(area);area.select();document.execCommand('copy');area.remove();notify('Enlace copiado','success');}
+}
+async function openPublicOrderLinks(){
+if(!requireAdminAction('administrar enlaces públicos')) return;
+const select=el('public-link-local');
+select.innerHTML=appState.localesCache.map(local=>'<option value="'+escAttr(local.id)+'">'+escHtml(local.nombre)+' ('+escHtml(local.almacen)+')</option>').join('');
+if(appState.publicOrderLink.localId&&appState.localesCache.some(local=>local.id===appState.publicOrderLink.localId)) select.value=appState.publicOrderLink.localId;
+appState.publicOrderLink.localId=select.value||null;
+openModal('modal-public-order-links');
+await refreshPublicOrderLink();
+}
+async function refreshPublicOrderLink(){
+const localId=el('public-link-local')?.value;
+if(!localId)return;
+appState.publicOrderLink.localId=localId;
+const panel=el('public-link-panel');panel.innerHTML='<div class="empty-state"><div class="icon">⏳</div><p>Consultando enlace…</p></div>';
+const {data,error}=await db.rpc('pedido_publico_enlace_estado',{p_local:localId});
+if(error){panel.innerHTML='<div class="public-link-warning">No se pudo consultar el enlace: '+escHtml(error.message)+'</div>';return;}
+appState.publicOrderLink.status=data;
+const saved=loadPublicLinkSecret(localId);
+appState.publicOrderLink.token=saved&&saved.linkId===data.link_id?saved.token:null;
+renderPublicOrderLink();
+}
+function renderPublicOrderLink(){
+const panel=el('public-link-panel'),status=appState.publicOrderLink.status||{},local=status.local||{};
+if(!status.link_id||status.revoked){
+panel.innerHTML='<div class="public-link-card"><div class="public-link-status"><div><strong>'+escHtml(local.nombre||'Local')+'</strong><span>Todavía no tiene un enlace disponible.</span></div><span class="public-link-pill paused">SIN ENLACE</span></div><button class="btn btn-primary btn-sm" onclick="createPublicOrderLink()">Generar enlace seguro</button></div>';
+return;
+}
+const token=appState.publicOrderLink.token,url=publicOrderLinkUrl(token),active=!!status.active;
+let body='';
+if(token){
+body='<div class="public-link-share"><div class="public-link-qr" id="public-link-qr"></div><div><div class="public-link-url">'+escHtml(url)+'</div><div class="public-link-actions"><button class="btn btn-primary btn-sm" onclick="copyPublicOrderLink()">Copiar</button><button class="btn btn-ghost btn-sm" onclick="sharePublicOrderLink()">Compartir</button><button class="btn btn-ghost btn-sm" onclick="togglePublicOrderLink()">'+(active?'Pausar':'Reactivar')+'</button><button class="btn btn-warning btn-sm" onclick="regeneratePublicOrderLink()">Regenerar</button></div></div></div>';
+}else{
+body='<div class="public-link-warning"><strong>Este enlace fue creado en otro dispositivo.</strong><br>Por seguridad el token no se guarda en Supabase. Regeneralo para copiarlo y mostrar su QR en esta computadora.</div><button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="regeneratePublicOrderLink()">Generar un enlace nuevo</button>';
+}
+panel.innerHTML='<div class="public-link-card"><div class="public-link-status"><div><strong>'+escHtml(local.nombre||'Local')+'</strong><span>Creado '+fmtDateTime(status.created_at)+'</span></div><span class="public-link-pill '+(active?'':'paused')+'">'+(active?'ACTIVO':'PAUSADO')+'</span></div>'+body+'</div>';
+if(token&&window.QRCode){const qr=el('public-link-qr');new QRCode(qr,{text:url,width:132,height:132,colorDark:'#111119',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});}
+}
+async function createPublicOrderLink(){
+const localId=appState.publicOrderLink.localId;if(!localId)return;
+showSpinner();
+try{
+const {data,error}=await db.rpc('pedido_publico_crear_enlace',{p_local:localId});
+if(error)throw error;savePublicLinkSecret(localId,data.link_id,data.token);notify('Enlace público generado','success');await refreshPublicOrderLink();
+}catch(error){notify('No se pudo generar: '+error.message,'error');}finally{hideSpinner();}
+}
+function regeneratePublicOrderLink(){
+showConfirm('El enlace anterior dejará de funcionar inmediatamente. Las personas necesitarán el nuevo enlace para crear pedidos.',createPublicOrderLink,{title:'Regenerar enlace público',btnLabel:'Regenerar',btnClass:'btn-warning'});
+}
+async function togglePublicOrderLink(){
+const localId=appState.publicOrderLink.localId,status=appState.publicOrderLink.status;if(!localId||!status)return;
+const action=status.active?'pausar':'reactivar';
+const {error}=await db.rpc('pedido_publico_configurar_enlace',{p_local:localId,p_accion:action});
+if(error)return notify('No se pudo '+action+': '+error.message,'error');
+notify(action==='pausar'?'Enlace pausado':'Enlace reactivado','success');await refreshPublicOrderLink();
+}
+function copyPublicOrderLink(){const url=publicOrderLinkUrl(appState.publicOrderLink.token);if(url)copyAppText(url);}
+async function sharePublicOrderLink(){
+const url=publicOrderLinkUrl(appState.publicOrderLink.token);if(!url)return;
+if(navigator.share){try{await navigator.share({title:'Crear pedido · Sucaneitor',text:'Ingresá tus datos y creá el pedido para este local:',url});return;}catch(error){if(error?.name==='AbortError')return;}}
+await copyAppText(url);
+}
+function regenerarSeguimientoPublico(orderId){
+showConfirm('Se invalidará el enlace de seguimiento anterior. Regeneralo únicamente si el cliente lo perdió o el enlace fue compartido por error.',async()=>{
+showSpinner();
+try{
+const {data,error}=await db.rpc('pedido_publico_regenerar_seguimiento',{p_pedido:orderId});if(error)throw error;
+const url=location.origin+'/seguimiento-pedido#'+encodeURIComponent(data.tracking_token);
+showConfirm('<div id="admin-tracking-qr" style="display:grid;place-items:center;width:170px;min-height:170px;margin:0 auto 12px;padding:9px;border-radius:12px;background:#fff"></div><div class="public-link-url">'+escHtml(url)+'</div>',()=>copyAppText(url),{title:'Nuevo seguimiento · #'+escHtml(data.order_code),btnLabel:'Copiar enlace',btnClass:'btn-primary'});
+setTimeout(()=>{const qr=el('admin-tracking-qr');if(qr&&window.QRCode)new QRCode(qr,{text:url,width:150,height:150,colorDark:'#111119',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});},80);
+}catch(error){notify('No se pudo regenerar el seguimiento: '+error.message,'error');}finally{hideSpinner();}
+},{title:'Regenerar seguimiento',btnLabel:'Regenerar',btnClass:'btn-warning'});
+}
+function publicManagementTokenFromHash(){
+const match=String(location.hash||'').match(/^#manage=(.+)$/);if(!match)return '';
+try{return decodeURIComponent(match[1]);}catch(_){return '';}
+}
+async function resolvePublicManagementToken(token){
+if(!token)return;
+const {data,error}=await db.rpc('pedido_publico_resolver_gestion',{p_token:token});
+if(error||!data?.order_id){notify(error?.message||'No tenés permisos para gestionar este pedido','error');return;}
+await openDetalle(data.order_id);
+}
+
+// ═══════════════════════════════════════════
 //  CHAT
 // ═══════════════════════════════════════════
 async function openChat(orderId){
@@ -3479,6 +3587,8 @@ el('btn-suggest-sidebar')?.addEventListener('click', ()=>openModal('modal-sugere
 el('btn-new-consulta')?.addEventListener('click', ()=>openModal('modal-sugerencia'));
 el('btn-limpiar-consultas')?.addEventListener('click', limpiarConsultasRespondidas);
 el('fab-btn')?.addEventListener('click', openNuevoPedido);
+el('btn-public-order-links')?.addEventListener('click', openPublicOrderLinks);
+el('public-link-local')?.addEventListener('change', refreshPublicOrderLink);
 el('btn-conv-photo')?.addEventListener('click', ()=>el('conv-photo-input')?.click());
 el('btn-conv-audio')?.addEventListener('click', ()=>el('conv-audio-input')?.click());
 el('btn-conv-plus')?.addEventListener('click', abrirMenuAdjuntosChat);
