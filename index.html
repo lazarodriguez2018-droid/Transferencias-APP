@@ -19,7 +19,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="style.css?v=public-responsive-v4">
-<link rel="stylesheet" href="landing.css?v=labama-home-v1">
+<link rel="stylesheet" href="landing.css?v=labama-home-v2">
 <style>
 .conv-list { display:flex; flex-direction:column; }
 .conv-item { position:relative; display:flex; align-items:center; gap:10px; padding:12px 14px; cursor:pointer; border-bottom:1px solid var(--border); transition:background .15s; }
@@ -143,7 +143,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
       <a href="#personalizacion">A medida</a>
       <a href="#contacto">Contacto</a>
     </nav>
-    <a class="landing-login-link" href="#acceso-empresa">Entrar a mi empresa</a>
+    <button class="landing-login-link" id="btn-open-company-access" type="button">Entrar a la web de mi empresa</button>
   </header>
 
   <main>
@@ -163,25 +163,6 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         </div>
       </div>
 
-      <div class="company-access-card" id="acceso-empresa">
-        <div class="company-access-topline">
-          <span class="company-access-icon">→</span>
-          <span>Acceso para clientes</span>
-        </div>
-        <h2>Entrar a la web de mi empresa</h2>
-        <p>Ingresá la clave asignada a tu organización para acceder al inicio de sesión o crear tu cuenta.</p>
-        <div id="empresa-screen">
-          <div class="auth-error" id="empresa-error" role="alert"></div>
-          <div class="company-key-field">
-            <label for="empresa-clave">Clave de empresa</label>
-            <div class="company-key-control">
-              <input type="password" id="empresa-clave" name="empresa-access-key" autocomplete="new-password" placeholder="Ej.: SUCAN" aria-label="Clave de acceso de empresa">
-              <button type="button" id="btn-verificar-empresa">Continuar <span>→</span></button>
-            </div>
-          </div>
-        </div>
-        <div class="company-access-help"><span>?</span> Si todavía no tenés una clave, contactanos y diseñamos una solución para tu empresa.</div>
-      </div>
     </section>
 
     <section class="landing-proof" aria-label="Resumen de capacidades">
@@ -335,8 +316,40 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   <footer class="landing-footer">
     <a class="landing-brand" href="#inicio"><img src="/logo.svg?v=2" alt="" width="34" height="34"><span><strong>LABAMA</strong><small>Soluciones empresariales</small></span></a>
     <p>Herramientas digitales diseñadas a la medida de cada empresa.</p>
-    <div><a href="#soluciones">Soluciones</a><a href="#contacto">Contacto</a><a href="#acceso-empresa">Acceso clientes</a></div>
+    <div><a href="#soluciones">Soluciones</a><a href="#contacto">Contacto</a></div>
   </footer>
+</div>
+
+<!-- ══════════════════ ACCESO DE EMPRESA ══════════════════ -->
+<div id="company-page" class="page company-page" style="display:none">
+  <header class="company-gate-header">
+    <a class="landing-brand" href="#" id="company-brand-home" aria-label="Volver a Labama">
+      <img src="/logo.svg?v=2" alt="" width="38" height="38">
+      <span><strong>LABAMA</strong><small>Soluciones empresariales</small></span>
+    </a>
+    <button type="button" class="company-back-button" id="btn-company-back-home">← Volver al inicio</button>
+  </header>
+  <main class="company-gate-main">
+    <section class="company-access-card company-gate-card" aria-labelledby="company-gate-title">
+      <div class="company-access-topline">
+        <span class="company-access-icon">→</span>
+        <span>Acceso privado para clientes</span>
+      </div>
+      <h1 id="company-gate-title">Entrar a la web de mi empresa</h1>
+      <p>Ingresá la clave privada asignada a tu organización. Después podrás iniciar sesión o registrar una cuenta.</p>
+      <div id="empresa-screen">
+        <div class="auth-error" id="empresa-error" role="alert"></div>
+        <div class="company-key-field">
+          <label for="empresa-clave">Clave de empresa</label>
+          <div class="company-key-control">
+            <input type="password" id="empresa-clave" name="empresa-access-key" autocomplete="current-password" placeholder="Ingresá tu clave privada" aria-label="Clave privada de empresa">
+            <button type="button" id="btn-verificar-empresa">Continuar <span>→</span></button>
+          </div>
+        </div>
+      </div>
+      <div class="company-access-help"><span>🔒</span> La clave no se muestra ni se informa públicamente en este sitio.</div>
+    </section>
+  </main>
 </div>
 
 <!-- ══════════════════ AUTH PAGE ══════════════════ -->
@@ -1399,7 +1412,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
 
 <script src="barcode-utils.js?v=barcode-catalog-v1"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-<script src="app.js?v=labama-home-v1"></script>
+<script src="app.js?v=labama-home-v2"></script>
 </body>
 </html>
 

@@ -50,6 +50,7 @@
   font-size: 12px;
   font-weight: 700;
   box-shadow: 0 9px 28px rgba(108, 99, 255, .18);
+  white-space: nowrap;
 }
 
 .landing-hero {
@@ -58,10 +59,11 @@
   margin: 0 auto;
   padding: 84px 0 68px;
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(390px, .95fr);
+  grid-template-columns: 1fr;
   align-items: center;
   gap: 68px;
 }
+.landing-hero-copy { max-width: 920px; }
 
 .landing-eyebrow {
   display: inline-flex;
@@ -74,9 +76,9 @@
   text-transform: uppercase;
 }
 .landing-eyebrow i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent3); box-shadow: 0 0 0 5px rgba(67, 233, 123, .1); }
-.landing-hero h1 { max-width: 690px; margin-top: 22px; font-size: clamp(44px, 5vw, 69px); line-height: .99; letter-spacing: -.065em; }
+.landing-hero h1 { max-width: 900px; margin-top: 22px; font-size: clamp(44px, 6vw, 76px); line-height: .99; letter-spacing: -.065em; }
 .landing-hero h1 em { display: block; color: color-mix(in srgb, var(--accent) 82%, #fff); font-style: normal; }
-.landing-hero-copy > p { max-width: 620px; margin-top: 25px; color: var(--text2); font-size: 17px; line-height: 1.65; }
+.landing-hero-copy > p { max-width: 720px; margin-top: 25px; color: var(--text2); font-size: 17px; line-height: 1.65; }
 .landing-hero-actions { margin-top: 31px; display: flex; flex-wrap: wrap; align-items: center; gap: 11px; }
 .landing-primary, .landing-secondary {
   min-height: 48px;
@@ -104,6 +106,32 @@
   background: linear-gradient(145deg, color-mix(in srgb, var(--surface) 92%, var(--accent) 8%), var(--surface));
   box-shadow: 0 30px 90px rgba(0, 0, 0, .26), 0 0 55px rgba(108, 99, 255, .09);
 }
+.company-page {
+  --landing-max: 1200px;
+  --landing-line: color-mix(in srgb, var(--border) 78%, transparent);
+  min-height: 100vh;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at 22% 35%, color-mix(in srgb, var(--accent) 19%, transparent), transparent 28rem),
+    radial-gradient(circle at 82% 18%, rgba(14,165,233,.09), transparent 24rem),
+    var(--bg);
+}
+.company-gate-header {
+  width: 100%;
+  min-height: 72px;
+  padding: 12px max(24px, calc((100vw - var(--landing-max)) / 2));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--landing-line);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+}
+.company-back-button { min-height: 40px; padding: 0 15px; border: 1px solid var(--landing-line); border-radius: 10px; color: var(--text2); background: var(--surface); font-size: 11px; font-weight: 700; }
+.company-back-button:hover { color: var(--text); background: var(--surface2); }
+.company-gate-main { width: 100%; min-height: calc(100vh - 72px); padding: 42px 18px; display: grid; place-items: center; }
+.company-gate-card { width: min(100%, 560px); padding: 42px; }
+.company-gate-card h1 { margin-top: 25px; max-width: 440px; font-size: 38px; line-height: 1.05; letter-spacing: -.045em; }
+.company-gate-card > p { margin-top: 13px; max-width: 470px; color: var(--text2); font-size: 14px; line-height: 1.6; }
 .company-access-card::after { content: ''; position: absolute; z-index: -1; width: 190px; height: 190px; top: -95px; right: -60px; border-radius: 50%; background: var(--accent); opacity: .11; filter: blur(4px); }
 .company-access-topline { display: flex; align-items: center; gap: 10px; color: color-mix(in srgb, var(--accent) 72%, #fff); font-size: 10px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
 .company-access-icon { width: 28px; height: 28px; display: inline-grid; place-items: center; border-radius: 9px; color: #fff; background: var(--accent); }
@@ -275,7 +303,6 @@
   .landing-login-link { margin-left: auto; }
   .landing-hero { min-height: 0; padding-top: 60px; grid-template-columns: 1fr; gap: 48px; }
   .landing-hero-copy { max-width: 760px; }
-  .company-access-card { max-width: 680px; }
   .landing-proof { grid-template-columns: 1fr 1fr; gap: 22px 0; }
   .landing-proof div:nth-child(2) { border-right: 0; }
   .solution-showcase, .solution-showcase.solution-reverse { grid-template-columns: 1fr; gap: 34px; }
@@ -294,7 +321,7 @@
   .landing-page { --landing-mobile-gap: 28px; }
   .landing-header { min-height: 64px; padding: 10px 14px; }
   .landing-brand small { display: none; }
-  .landing-login-link { min-height: 40px; padding: 0 12px; font-size: 10px; }
+  .landing-login-link { min-height: 40px; padding: 0 11px; font-size: 9px; }
   .landing-hero, .landing-proof, .landing-section, .custom-solution, .landing-process, .contact-section, .landing-footer { width: calc(100% - var(--landing-mobile-gap)); }
   .landing-hero { padding: 50px 0; gap: 37px; }
   .landing-hero h1 { font-size: clamp(39px, 13vw, 55px); }
@@ -302,8 +329,11 @@
   .landing-hero-actions { align-items: stretch; flex-direction: column; }
   .landing-primary, .landing-secondary { width: 100%; }
   .landing-trust-row { display: grid; }
-  .company-access-card { padding: 23px 18px; border-radius: 18px; }
-  .company-access-card h2 { font-size: 26px; }
+  .company-gate-header { min-height: 64px; padding: 10px 14px; }
+  .company-back-button { padding: 0 10px; font-size: 10px; }
+  .company-gate-main { min-height: calc(100vh - 64px); padding: 28px 14px; }
+  .company-gate-card { padding: 28px 20px; border-radius: 18px; }
+  .company-gate-card h1 { font-size: 31px; }
   .company-key-control { grid-template-columns: 1fr; }
   .company-key-control input, .company-key-control button { min-height: 48px; font-size: 16px; }
   .company-key-control button { font-size: 12px; }
@@ -346,7 +376,7 @@
 
 @media (max-width: 390px) {
   .landing-brand strong { font-size: 12px; }
-  .landing-login-link { padding: 0 10px; }
+  .landing-login-link { max-width: 155px; padding: 0 9px; white-space: normal; line-height: 1.2; }
   .landing-hero h1 { font-size: 39px; }
   .landing-proof { grid-template-columns: 1fr; gap: 14px; }
   .landing-proof div { padding-bottom: 14px; border-right: 0; border-bottom: 1px solid var(--landing-line); }

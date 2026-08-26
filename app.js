@@ -108,13 +108,13 @@ setTimeout(()=>e.remove(), 4000);
 }
 
 function showPage(id){
-['landing-page','auth-page','pending-page','app-page'].forEach(pid=>{
+['landing-page','company-page','auth-page','pending-page','app-page'].forEach(pid=>{
 const e=el(pid); if(e){e.style.display='none';e.classList.remove('active');}
 });
 const t=el(id); if(!t) return;
 t.style.display='flex'; t.classList.add('active');
 const themeWidget=el('theme-widget');
-if(themeWidget) themeWidget.style.display=id==='landing-page'?'none':'flex';
+if(themeWidget) themeWidget.style.display=['landing-page','company-page'].includes(id)?'none':'flex';
 }
 
 function fmtDate(iso){
@@ -3636,6 +3636,9 @@ clearAuthMessages();
 showPage('landing-page');
 
 // Auth bindings (sin inline handlers)
+el('btn-open-company-access')?.addEventListener('click', abrirAccesoEmpresa);
+el('btn-company-back-home')?.addEventListener('click', volverALabama);
+el('company-brand-home')?.addEventListener('click', event=>{event.preventDefault();volverALabama();});
 el('empresa-clave')?.addEventListener('keydown', e=>{ if(e.key==='Enter') verificarClaveEmpresa(); });
 el('btn-verificar-empresa')?.addEventListener('click', verificarClaveEmpresa);
 el('btn-auth-back-home')?.addEventListener('click', volverALabama);
@@ -3741,13 +3744,31 @@ if(!clave) return showErr('empresa-error','Ingresá la clave de acceso.');
 const button=el('btn-verificar-empresa');
 if(button){button.disabled=true;button.textContent='Verificando…';}
 try{
-  const claveNormalizada=clave.toLocaleUpperCase('es-UY');
-  let {data,error} = await db.rpc('verificar_clave_empresa',{clave_input:claveNormalizada}).single();
-  // SUCAN es la clave comercial vigente. El respaldo evita bloquear el acceso
-  // mientras la configuración histórica de la empresa termina de normalizarse.
-  if((error||!data)&&claveNormalizada==='SUCAN'){
-    data={nombre:'SUCAN'};
-    error=null;
+  let data=null;
+  let error=null;
+  let validatedByPrivateEndpoint=false;
+  try{
+    const response=await fetch('/api/company-access',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key:clave})
+    });
+    if(response.ok){
+      const result=await response.json();
+      if(result?.ok&&result?.nombre){
+        data={nombre:result.nombre};
+        validatedByPrivateEndpoint=true;
+      }
+    }
+  }catch(_networkError){}
+  if(!data){
+    const rpcResult=await db.rpc('verificar_clave_empresa',{clave_input:clave}).single();
+    data=rpcResult.data;
+    error=rpcResult.error;
+  }
+  if(data&&!validatedByPrivateEndpoint&&normalizeText(data.nombre).includes('sucan')){
+    data=null;
+    error=new Error('Clave anterior deshabilitada');
   }
   if(error||!data) return showErr('empresa-error','Clave incorrecta. Revisala o contactanos para obtener acceso.');
   sessionStorage.setItem('empresa_validada', '1');
@@ -3760,6 +3781,13 @@ try{
 } finally {
   if(button){button.disabled=false;button.innerHTML='Continuar <span>→</span>';}
 }
+}
+
+function abrirAccesoEmpresa(){
+clearAuthMessages();
+if(el('empresa-clave')) el('empresa-clave').value='';
+showPage('company-page');
+requestAnimationFrame(()=>el('empresa-clave')?.focus());
 }
 
 function checkEmpresaClave(){
@@ -3782,7 +3810,7 @@ clearAuthMessages();
 el('auth-forms').style.display='none';
 if(el('empresa-clave')) el('empresa-clave').value='';
 showPage('landing-page');
-requestAnimationFrame(()=>el('acceso-empresa')?.scrollIntoView({block:'center'}));
+window.scrollTo({top:0,behavior:'smooth'});
 }
 
 function enviarConsultaComercial(event){
