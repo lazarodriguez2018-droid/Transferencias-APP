@@ -11,8 +11,10 @@ function assert(condition, message) {
 }
 
 assert(html.includes('id="landing-page"'), 'La portada comercial debe ser la primera pantalla.');
-assert(html.includes('Entrar a la web de mi empresa'), 'Debe existir el acceso destacado para clientes.');
-assert(html.includes('id="empresa-clave"') && html.includes('placeholder="Ej.: SUCAN"'), 'La portada debe solicitar la clave de empresa.');
+assert(html.includes('id="btn-open-company-access"') && html.includes('Entrar a la web de mi empresa'), 'La barra superior debe incluir el botón de acceso para clientes.');
+assert(html.includes('id="company-page"'), 'La clave debe solicitarse en una pantalla independiente.');
+assert(html.includes('id="empresa-clave"') && html.includes('placeholder="Ingresá tu clave privada"'), 'La pantalla privada debe solicitar la clave sin mostrar ejemplos.');
+assert(!html.includes('Ej.: SUCAN') && !html.toLowerCase().includes('tsucan2026'), 'La portada nunca debe revelar la clave de una organización.');
 assert(html.includes('id="auth-forms" style="display:none"'), 'El login y el registro deben permanecer ocultos antes de validar la clave.');
 assert(html.includes('id="contact-form"'), 'Debe existir un formulario de contacto al final de la portada.');
 assert(html.includes('No obligamos a tu empresa a adaptarse al sistema.'), 'Debe comunicarse claramente el enfoque personalizado.');
@@ -28,9 +30,12 @@ assert(html.includes('No obligamos a tu empresa a adaptarse al sistema.'), 'Debe
 
 assert(css.includes('@media (max-width: 980px)') && css.includes('@media (max-width: 650px)'), 'La portada debe adaptarse a tablet y celular.');
 assert(css.includes('.company-key-control') && css.includes('.contact-form-grid'), 'Faltan estilos para acceso o contacto.');
+assert(css.includes('.company-gate-main') && css.includes('.company-gate-card'), 'La pantalla privada debe tener diseño propio.');
 assert(app.includes("showPage(checkEmpresaClave()?'auth-page':'landing-page')"), 'Sin sesión, la navegación debe elegir entre portada y acceso validado.');
 assert(app.includes("showPage('auth-page');\n  await populateRegisterLocales()"), 'La clave válida debe revelar el login y el registro.');
-assert(app.includes("claveNormalizada==='SUCAN'"), 'La clave comercial SUCAN debe estar disponible aunque la configuración histórica todavía no esté normalizada.');
+assert(app.includes("fetch('/api/company-access'"), 'La clave privada debe validarse del lado del servidor.');
+assert(!app.toLowerCase().includes('tsucan2026'), 'La clave privada no debe quedar incluida en el JavaScript público.');
+assert(app.includes("!validatedByPrivateEndpoint&&normalizeText(data.nombre).includes('sucan')"), 'Las claves históricas de SUCAN deben quedar deshabilitadas.');
 assert(app.includes("showPage('landing-page');"), 'Debe poder volver desde el acceso a la portada.');
 assert(app.includes('function enviarConsultaComercial(event)'), 'El formulario de contacto debe tener una acción funcional.');
 
