@@ -7,10 +7,10 @@
 
   const HEADER_ALIASES = {
     sku: ['sku', 'codigo', 'código', 'product_code', 'item'],
-    description: ['description', 'descripcion', 'descripción', 'nombre', 'producto'],
-    qty: ['qty_replenishment', 'qty_replen', 'cantidad', 'cantidad_reposicion', 'cantidad_reposición', 'qty'],
+    description: ['description', 'descripcion', 'descripción', 'descripcion_sku', 'descripción_sku', 'nombre', 'producto'],
+    qty: ['qty_replenishment', 'qty_replen', 'cantidad', 'cantidad_reposicion', 'cantidad_reposición', 'cant_a_reponer', 'cant_reponer', 'cantidad_a_reponer', 'cantidad_reponer', 'qty'],
     origin: ['origin', 'origen', 'local_origen'],
-    destination: ['location', 'destination', 'destino', 'local_destino'],
+    destination: ['location', 'ubicacion', 'ubicación', 'destination', 'destino', 'local_destino'],
     stock: ['stock_origin', 'stock_origen', 'stock origen', 'stock']
   };
 
@@ -47,10 +47,8 @@
 
   function findHeaderRow(rows) {
     for (let index = 0; index < Math.min(rows.length, 30); index += 1) {
-      const normalized = rows[index].map(normalizeHeader);
-      if (normalized.includes('sku') && normalized.some(value => ['qty_replenishment', 'qty_replen', 'cantidad'].includes(value))) {
-        return index;
-      }
+      try { resolveColumns(rows[index]); return index; }
+      catch (error) { /* Puede haber títulos o notas antes del encabezado real. */ }
     }
     throw new Error('No se encontró el encabezado de la reposición');
   }
