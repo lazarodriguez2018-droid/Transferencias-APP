@@ -38,3 +38,15 @@
 
 @media(max-width:620px){.guest-pick-target{padding:14px}.guest-pick-target strong{font-size:38px}.guest-repo-primary-actions{grid-template-columns:1fr}.guest-repo-quantity-actions{grid-template-columns:1fr 1fr}.guest-repo-quantity-actions button:last-child{grid-column:1/-1}.guest-source-breakdown span{min-height:31px}}
 @media(max-width:370px){.guest-source-breakdown{grid-template-columns:1fr}.guest-source-breakdown span{min-height:0}.guest-repo-secondary-actions{grid-template-columns:1fr}}
+
+/* Estabilidad móvil: evita saltos del teclado y conserva el visor entre lecturas. */
+html.guest-overlay-open,body.guest-overlay-open{overflow:hidden;overscroll-behavior:none}
+body.guest-overlay-open{position:fixed;left:0;right:0;width:100%}
+#guest-module-content{overflow-anchor:none}
+#guest-current-product{scroll-margin-top:calc(78px + env(safe-area-inset-top))}
+.guest-modal-layer{height:var(--guest-viewport-height,100dvh);overflow:auto;overscroll-behavior:contain}
+.guest-scanner{height:var(--guest-viewport-height,100dvh);bottom:auto;overflow:hidden;overscroll-behavior:none}
+.guest-scanner #guest-scanner-reader{position:relative;flex:1 1 auto;width:100%;min-height:0;contain:layout paint}
+.guest-scanner #guest-scanner-reader>div{width:100%!important}
+.guest-scanner video{display:block;max-width:100%;object-fit:cover}
+@media(max-width:620px){.guest-search-card{position:relative;top:auto}.guest-search-results{overscroll-behavior:contain}.guest-product-card{scroll-margin-top:calc(78px + env(safe-area-inset-top))}}

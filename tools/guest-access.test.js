@@ -32,6 +32,7 @@ assert.match(host,/Pausar acceso|Reactivar acceso/,'El creador debe poder pausar
 assert.match(host,/removeSessionGuest/,'El creador debe poder expulsar invitados');
 
 assert.match(guestHtml,/capture="user"/,'El teléfono debe abrir la cámara frontal para la identificación');
+assert.match(guestHtml,/interactive-widget=resizes-content/,'Android debe redimensionar el contenido en lugar de desplazar la página al abrir el teclado');
 assert.match(guestHtml,/Acceso limitado a esta sesión/,'La limitación debe ser visible');
 assert.doesNotMatch(guestHtml,/<button[^>]*>[^<]*(descargar|configuración|cambiar de módulo)/i,'La pantalla operativa no debe ofrecer acciones privilegiadas');
 assert.match(guestJs,/setInterval\(\(\)=>loadState\(true\),1250\)/,'El estado debe sincronizarse continuamente');
@@ -48,6 +49,12 @@ assert.match(guestJs,/requestRepoQuantity\(code,current\+num\(delta\)/,'Los acce
 assert.doesNotMatch(guestJs,/guestRepoSet=/,'No debe existir un botón que cambie cantidades sin confirmación');
 assert.match(guestJs,/El motivo se solicita siempre, pero es opcional/,'Saltear debe abrir el motivo opcional');
 assert.match(guestJs,/op_invitado_reposicion_liberar/,'El salto debe pasar por una operación auditada');
+assert.match(guestJs,/clearSearch\(false\)/,'Al elegir un producto debe cerrarse la búsqueda sin volver a abrir el teclado');
+assert.match(guestJs,/focus\(\{preventScroll:true\}\)/,'El foco móvil no debe desplazar la pantalla automáticamente');
+assert.match(guestJs,/centerGuestProduct\(mine\.code\)/,'Cada nuevo producto de reposición debe centrarse una sola vez');
+assert.match(guestJs,/reader\.getBoundingClientRect\(\)/,'El visor debe calcularse con el espacio real disponible');
+assert.match(guestJs,/scannerBusy=true/,'Una lectura debe bloquear duplicados mientras se reinicia la cámara');
+assert.doesNotMatch(guestJs,/aspectRatio:1\.333/,'La cámara móvil no debe conservar una relación de aspecto rígida entre lecturas');
 assert.match(repoParityMigration,/'requested_reposition',i\.pedido_reposicion/,'El invitado debe ver el desglose de la cantidad física');
 assert.match(repoParityMigration,/create or replace function public\.op_invitado_reposicion_liberar/,'Debe existir una operación dedicada para saltear');
 assert.match(repoParityMigration,/item\.asignado_cliente is distinct from g\.cliente_id/,'Solo el invitado asignado puede liberar el producto');
@@ -59,5 +66,8 @@ assert.match(guestCss,/\.guest-pick-target/,'La cantidad a juntar debe destacars
 assert.match(guestCss,/\.guest-scan-guidance/,'La tarjeta debe explicar dónde comprobar el producto');
 assert.match(guestCss,/@media\(max-width:620px\)/,'La vista debe adaptarse a teléfonos');
 assert.match(guestCss,/@media\(max-width:370px\)/,'La vista debe contemplar teléfonos angostos');
+assert.match(guestCss,/body\.guest-overlay-open\{position:fixed/,'Los diálogos y la cámara deben inmovilizar el fondo en iPhone y Android');
+assert.match(guestCss,/\.guest-search-card\{position:relative;top:auto\}/,'El buscador móvil no debe saltar al variar su altura');
+assert.match(guestHtml,/invitado\.js\?v=guest-mobile-stable-v1/,'El navegador debe cargar la corrección sin conservar caché anterior');
 
 console.log('guest-access: OK');
