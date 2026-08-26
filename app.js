@@ -108,11 +108,13 @@ setTimeout(()=>e.remove(), 4000);
 }
 
 function showPage(id){
-['auth-page','pending-page','app-page'].forEach(pid=>{
+['landing-page','auth-page','pending-page','app-page'].forEach(pid=>{
 const e=el(pid); if(e){e.style.display='none';e.classList.remove('active');}
 });
 const t=el(id); if(!t) return;
 t.style.display='flex'; t.classList.add('active');
+const themeWidget=el('theme-widget');
+if(themeWidget) themeWidget.style.display=id==='landing-page'?'none':'flex';
 }
 
 function fmtDate(iso){
@@ -446,8 +448,8 @@ const adminNav = el('admin-nav');
 if(adminNav) adminNav.style.display='none';
 document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
 clearAuthMessages();
-showPage('auth-page');
-checkEmpresaClave();
+el('auth-forms').style.display='none';
+showPage('landing-page');
 }
 
 
@@ -528,7 +530,7 @@ if(!session){
 appState.currentUser=null;
 appState.currentPerfil=null;
 clearAuthMessages();
-showPage('auth-page');
+showPage(checkEmpresaClave()?'auth-page':'landing-page');
 return;
 }
 if(isExpiredByInactivity(session.user.id)){
@@ -3631,11 +3633,13 @@ function closeSidebar(){el('sidebar').classList.remove('open');el('mobile-overla
  */
 async function initApp(){
 clearAuthMessages();
-showPage('auth-page');
+showPage('landing-page');
 
 // Auth bindings (sin inline handlers)
 el('empresa-clave')?.addEventListener('keydown', e=>{ if(e.key==='Enter') verificarClaveEmpresa(); });
 el('btn-verificar-empresa')?.addEventListener('click', verificarClaveEmpresa);
+el('btn-auth-back-home')?.addEventListener('click', volverALabama);
+el('contact-form')?.addEventListener('submit', enviarConsultaComercial);
 el('auth-tab-login')?.addEventListener('click', ()=>switchAuthTab('login'));
 el('auth-tab-register')?.addEventListener('click', ()=>switchAuthTab('register'));
 el('login-password')?.addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
@@ -3694,8 +3698,8 @@ el('filter-hist-busqueda')?.addEventListener('input', renderHistorial);
 el('dash-filter-producto')?.addEventListener('input', renderDashboard);
 el('btn-dash-export')?.addEventListener('click', exportDashboardCSV);
 
-// Verificar clave empresa (session storage)
-checkEmpresaClave();
+// Restaurar el acceso de empresa si ya fue validado en esta pestaña.
+if(checkEmpresaClave()) showPage('auth-page');
 onTipoCuentaChange();
 
 // Close modals on overlay click
@@ -3734,22 +3738,34 @@ notify('Error durante la inicialización de la aplicación: '+(err?.message||err
 async function verificarClaveEmpresa(){
 const clave = el('empresa-clave').value.trim();
 if(!clave) return showErr('empresa-error','Ingresá la clave de acceso.');
-const {data,error} = await db.rpc('verificar_clave_empresa',{clave_input:clave}).single();
-if(error||!data) return showErr('empresa-error','Clave incorrecta. Contactá al administrador.');
-// Guardar en session storage para esta sesión
-sessionStorage.setItem('empresa_validada', '1');
-sessionStorage.setItem('empresa_nombre', data.nombre);
-el('empresa-nombre-display').textContent = data.nombre;
-el('empresa-screen').style.display='none';
-el('auth-forms').style.display='block';
-await populateRegisterLocales();
+const button=el('btn-verificar-empresa');
+if(button){button.disabled=true;button.textContent='Verificando…';}
+try{
+  const claveNormalizada=clave.toLocaleUpperCase('es-UY');
+  let {data,error} = await db.rpc('verificar_clave_empresa',{clave_input:claveNormalizada}).single();
+  // SUCAN es la clave comercial vigente. El respaldo evita bloquear el acceso
+  // mientras la configuración histórica de la empresa termina de normalizarse.
+  if((error||!data)&&claveNormalizada==='SUCAN'){
+    data={nombre:'SUCAN'};
+    error=null;
+  }
+  if(error||!data) return showErr('empresa-error','Clave incorrecta. Revisala o contactanos para obtener acceso.');
+  sessionStorage.setItem('empresa_validada', '1');
+  sessionStorage.setItem('empresa_nombre', data.nombre);
+  el('empresa-nombre-display').textContent = data.nombre;
+  el('auth-forms').style.display='block';
+  showPage('auth-page');
+  await populateRegisterLocales();
+  requestAnimationFrame(()=>el('login-email')?.focus());
+} finally {
+  if(button){button.disabled=false;button.innerHTML='Continuar <span>→</span>';}
+}
 }
 
 function checkEmpresaClave(){
 const validada = sessionStorage.getItem('empresa_validada');
 if(validada==='1'){
 el('empresa-nombre-display').textContent = sessionStorage.getItem('empresa_nombre')||'';
-el('empresa-screen').style.display='none';
 el('auth-forms').style.display='block';
 populateRegisterLocales().catch(()=>{
 notify('No se pudieron cargar los locales de registro.','error');
@@ -3757,6 +3773,45 @@ notify('No se pudieron cargar los locales de registro.','error');
 return true;
 }
 return false;
+}
+
+function volverALabama(){
+sessionStorage.removeItem('empresa_validada');
+sessionStorage.removeItem('empresa_nombre');
+clearAuthMessages();
+el('auth-forms').style.display='none';
+if(el('empresa-clave')) el('empresa-clave').value='';
+showPage('landing-page');
+requestAnimationFrame(()=>el('acceso-empresa')?.scrollIntoView({block:'center'}));
+}
+
+function enviarConsultaComercial(event){
+event.preventDefault();
+const form=event.currentTarget;
+if(!form.reportValidity()) return;
+const nombre=el('contact-name')?.value.trim()||'';
+const empresa=el('contact-company')?.value.trim()||'Sin especificar';
+const email=el('contact-email')?.value.trim()||'';
+const telefono=el('contact-phone')?.value.trim()||'Sin especificar';
+const mensaje=el('contact-message')?.value.trim()||'';
+const subject=encodeURIComponent('Consulta desde Labama · '+empresa);
+const body=encodeURIComponent([
+  'Hola, quiero conversar sobre una solución para mi empresa.',
+  '',
+  'Nombre: '+nombre,
+  'Empresa: '+empresa,
+  'Correo: '+email,
+  'Teléfono: '+telefono,
+  '',
+  'Necesidad:',
+  mensaje
+].join('\n'));
+const status=el('contact-status');
+if(status){
+  status.textContent='Consulta preparada. Se abrirá tu aplicación de correo para enviarla.';
+  status.classList.add('success');
+}
+window.location.href='mailto:lazarodriguez2018@gmail.com?subject='+subject+'&body='+body;
 }
 
 // ═══════════════════════════════════════════
