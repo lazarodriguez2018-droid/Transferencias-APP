@@ -7,19 +7,19 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; base-uri 'self'; form-action 'self';">
-<title>Labama | Sistemas personalizados para empresas</title>
+<title>Labama | Acceso de empresa</title>
 <link rel="icon" type="image/svg+xml" href="/logo.svg?v=2">
 <link rel="shortcut icon" href="/logo.svg?v=2">
 <link rel="apple-touch-icon" href="/logo.svg?v=2">
-<meta property="og:title" content="Labama | Soluciones empresariales a medida">
-<meta property="og:description" content="Inventario, reposición, pedidos, remitos y procesos digitales diseñados alrededor de tu empresa.">
+<meta property="og:title" content="Labama | Acceso de empresa">
+<meta property="og:description" content="Acceso privado a la plataforma de tu organización.">
 <meta property="og:image" content="https://labama.es/operaciones/sucan_logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="style.css?v=public-responsive-v4">
-<link rel="stylesheet" href="landing.css?v=labama-home-v2">
+<link rel="stylesheet" href="landing.css?v=company-only-v1">
 <style>
 .conv-list { display:flex; flex-direction:column; }
 .conv-item { position:relative; display:flex; align-items:center; gap:10px; padding:12px 14px; cursor:pointer; border-bottom:1px solid var(--border); transition:background .15s; }
@@ -131,203 +131,14 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
   </div>
 </div>
 
-<!-- ══════════════════ LABAMA HOME ══════════════════ -->
-<div id="landing-page" class="page landing-page active" style="display:flex">
-  <header class="landing-header">
-    <a class="landing-brand" href="#inicio" aria-label="Labama, volver al inicio">
-      <img src="/logo.svg?v=2" alt="" width="38" height="38">
-      <span><strong>LABAMA</strong><small>Soluciones empresariales</small></span>
-    </a>
-    <nav class="landing-nav" aria-label="Navegación principal">
-      <a href="#soluciones">Soluciones</a>
-      <a href="#personalizacion">A medida</a>
-      <a href="#contacto">Contacto</a>
-    </nav>
-    <button class="landing-login-link" id="btn-open-company-access" type="button">Entrar a la web de mi empresa</button>
-  </header>
-
-  <main>
-    <section class="landing-hero" id="inicio">
-      <div class="landing-hero-copy">
-        <span class="landing-eyebrow"><i></i> Tecnología que se adapta a tu operación</span>
-        <h1>Todo lo que tu empresa necesita, <em>en un solo lugar.</em></h1>
-        <p>Conectamos inventario, reposición, remitos y pedidos para que cada equipo trabaje con información clara, actualizada y compartida.</p>
-        <div class="landing-hero-actions">
-          <a class="landing-primary" href="#soluciones">Conocer el sistema <span>↓</span></a>
-          <a class="landing-secondary" href="#contacto">Solicitar una solución</a>
-        </div>
-        <div class="landing-trust-row" aria-label="Beneficios principales">
-          <span>✓ Acceso desde cualquier dispositivo</span>
-          <span>✓ Implementación personalizada</span>
-          <span>✓ Información en tiempo real</span>
-        </div>
-      </div>
-
-    </section>
-
-    <section class="landing-proof" aria-label="Resumen de capacidades">
-      <div><strong>4</strong><span>módulos conectados</span></div>
-      <div><strong>1</strong><span>padrón centralizado</span></div>
-      <div><strong>24/7</strong><span>acceso web y móvil</span></div>
-      <div><strong>100%</strong><span>adaptable a tu empresa</span></div>
-    </section>
-
-    <section class="landing-section landing-solutions" id="soluciones">
-      <div class="landing-section-heading">
-        <span class="landing-eyebrow">El sistema en acción</span>
-        <h2>Una solución completa para cada etapa</h2>
-        <p>Los módulos comparten usuarios, locales y productos. La información viaja con el trabajo, sin volver a cargarla ni depender de planillas separadas.</p>
-      </div>
-
-      <article class="solution-showcase">
-        <div class="solution-copy">
-          <span class="solution-number">01 · INVENTARIO</span>
-          <h3>Contá el stock con precisión y sin frenar la operación.</h3>
-          <p>Varios colaboradores pueden contar al mismo tiempo desde PC o celular. El sistema centraliza cada registro y ayuda a detectar diferencias antes de cerrar.</p>
-          <ul>
-            <li>Búsqueda rápida por nombre, SKU o código de barras.</li>
-            <li>Conteo colaborativo y seguimiento del avance.</li>
-            <li>Comparación entre stock registrado y cantidad física.</li>
-            <li>Reportes de stock, diferencias y faltantes.</li>
-          </ul>
-        </div>
-        <figure class="product-shot product-shot-wide">
-          <div class="shot-bar"><i></i><i></i><i></i><span>Inventario · Buscar productos</span></div>
-          <div class="shot-viewport shot-inventory"><img src="/assets/showcase/inventory-search.png" alt="Buscador rápido de productos dentro del módulo de inventario" loading="lazy"></div>
-          <figcaption>Encontrá productos mientras escribís y verificá cantidades sin esperas.</figcaption>
-        </figure>
-      </article>
-
-      <article class="solution-showcase solution-reverse">
-        <div class="solution-copy">
-          <span class="solution-number orange">02 · REPOSICIÓN</span>
-          <h3>Prepará mercadería con una lista clara y compartida.</h3>
-          <p>Organizá lo que debe reponerse, cubrí pedidos aceptados y registrá cada unidad preparada. Todos ven el mismo avance en tiempo real.</p>
-          <ul>
-            <li>Priorización de productos pendientes.</li>
-            <li>Trabajo simultáneo entre varios colaboradores.</li>
-            <li>Separación automática de pedidos y extras.</li>
-            <li>Generación de remitos y archivos finales.</li>
-          </ul>
-        </div>
-        <figure class="product-shot">
-          <div class="shot-bar"><i></i><i></i><i></i><span>Reposición · Operaciones</span></div>
-          <div class="shot-viewport shot-overview"><img src="/assets/showcase/modules-overview.svg" alt="Vista de los módulos operativos de Inventario, Reposición, Remitos y Pedidos" loading="lazy"></div>
-          <figcaption>Cada tarea tiene su módulo, pero toda la información permanece conectada.</figcaption>
-        </figure>
-      </article>
-
-      <article class="solution-showcase">
-        <div class="solution-copy">
-          <span class="solution-number blue">03 · CONTROL DE REMITOS</span>
-          <h3>Verificá lo que llega antes de incorporarlo al local.</h3>
-          <p>Compará lo enviado con lo recibido, buscá o escaneá productos y registrá diferencias de forma ordenada para conservar una trazabilidad completa.</p>
-          <ul>
-            <li>Control por nombre, SKU o escáner.</li>
-            <li>Registro de faltantes, sobrantes y diferencias.</li>
-            <li>Historial de quién verificó cada producto.</li>
-            <li>Exportación de informes verificables.</li>
-          </ul>
-        </div>
-        <figure class="product-shot">
-          <div class="shot-bar"><i></i><i></i><i></i><span>Remitos · Archivos finales</span></div>
-          <div class="shot-viewport shot-reports"><img src="/assets/showcase/final-reports.png" alt="Panel de descarga de remitos, faltantes y resúmenes" loading="lazy"></div>
-          <figcaption>Descargá remitos, faltantes y resúmenes listos para verificar.</figcaption>
-        </figure>
-      </article>
-
-      <article class="solution-showcase solution-reverse">
-        <div class="solution-copy">
-          <span class="solution-number green">04 · PEDIDOS ENTRE LOCALES</span>
-          <h3>Seguí cada pedido desde la solicitud hasta la entrega.</h3>
-          <p>Los locales pueden solicitar mercadería, aceptar pedidos, preparar el envío y compartir el seguimiento con el cliente desde un mismo circuito.</p>
-          <ul>
-            <li>Pedidos públicos mediante enlace o código QR.</li>
-            <li>Aceptación, preparación y seguimiento del envío.</li>
-            <li>Avisos al cliente e historial de estados.</li>
-            <li>Panel de resultados para supervisores.</li>
-          </ul>
-        </div>
-        <figure class="product-shot product-shot-portrait">
-          <div class="shot-bar"><i></i><i></i><i></i><span>Pedidos · Acceso público</span></div>
-          <div class="shot-viewport shot-qr"><img src="/assets/showcase/public-access-qr.svg" alt="Código QR ilustrativo y enlace público para compartir una tarea o pedido" loading="lazy"></div>
-          <figcaption>Compartí accesos seguros por QR y trabajá con colaboradores sin crear cuentas adicionales.</figcaption>
-        </figure>
-      </article>
-    </section>
-
-    <section class="custom-solution" id="personalizacion">
-      <div class="custom-visual" aria-hidden="true">
-        <div class="custom-orbit orbit-one"><span>Stock</span></div>
-        <div class="custom-orbit orbit-two"><span>Pedidos</span></div>
-        <div class="custom-center"><img src="/logo.svg?v=2" alt=""><strong>Tu empresa</strong></div>
-        <span class="custom-chip chip-one">Tus procesos</span>
-        <span class="custom-chip chip-two">Tus equipos</span>
-        <span class="custom-chip chip-three">Tus reportes</span>
-      </div>
-      <div class="custom-copy">
-        <span class="landing-eyebrow">Hecho alrededor de tu operación</span>
-        <h2>No obligamos a tu empresa a adaptarse al sistema.</h2>
-        <p class="custom-lead">Adaptamos el sistema a la forma real en la que trabaja tu empresa.</p>
-        <p>Cada negocio tiene circuitos, responsables y necesidades diferentes. Por eso escuchamos el problema, estudiamos el proceso y desarrollamos una solución a medida que pueda crecer con vos.</p>
-        <div class="custom-points">
-          <span><b>01</b> Relevamos tu forma de trabajo</span>
-          <span><b>02</b> Diseñamos una solución simple</span>
-          <span><b>03</b> Ajustamos y acompañamos su uso</span>
-        </div>
-        <a class="landing-primary" href="#contacto">Contanos qué necesitás <span>→</span></a>
-      </div>
-    </section>
-
-    <section class="landing-process">
-      <div class="landing-section-heading compact">
-        <span class="landing-eyebrow">Cómo trabajamos</span>
-        <h2>De una necesidad concreta a una herramienta útil</h2>
-      </div>
-      <div class="process-grid">
-        <article><span>01</span><h3>Escuchamos</h3><p>Entendemos el problema, las personas involucradas y cómo se resuelve hoy.</p></article>
-        <article><span>02</span><h3>Diseñamos</h3><p>Proponemos un flujo claro y una experiencia fácil de usar en cualquier dispositivo.</p></article>
-        <article><span>03</span><h3>Implementamos</h3><p>Construimos, probamos con tu equipo y ajustamos el sistema a la operación real.</p></article>
-        <article><span>04</span><h3>Acompañamos</h3><p>Seguimos mejorando la solución cuando tu empresa cambia o aparecen nuevas necesidades.</p></article>
-      </div>
-    </section>
-
-    <section class="contact-section" id="contacto">
-      <div class="contact-copy">
-        <span class="landing-eyebrow">Hablemos de tu empresa</span>
-        <h2>¿Qué proceso te gustaría mejorar?</h2>
-        <p>Contanos qué necesitás resolver. Vamos a analizarlo y pensar una herramienta que se adapte a tu forma de trabajar.</p>
-        <div class="contact-note"><span>✦</span><div><strong>La primera conversación es para entenderte.</strong><small>Sin soluciones genéricas ni compromisos. Queremos conocer tu desafío.</small></div></div>
-      </div>
-      <form class="contact-form" id="contact-form">
-        <div class="contact-form-grid">
-          <label><span>Nombre y apellido</span><input id="contact-name" name="name" type="text" autocomplete="name" required placeholder="Tu nombre"></label>
-          <label><span>Empresa</span><input id="contact-company" name="company" type="text" autocomplete="organization" placeholder="Nombre de tu empresa"></label>
-          <label><span>Correo electrónico</span><input id="contact-email" name="email" type="email" autocomplete="email" required placeholder="tu@empresa.com"></label>
-          <label><span>Teléfono</span><input id="contact-phone" name="phone" type="tel" autocomplete="tel" placeholder="Ej.: 099 123 456"></label>
-          <label class="contact-full"><span>¿Qué necesitás resolver?</span><textarea id="contact-message" name="message" rows="5" required placeholder="Contanos brevemente cómo trabajan hoy y qué les gustaría mejorar..."></textarea></label>
-        </div>
-        <button type="submit" class="contact-submit">Enviar consulta <span>→</span></button>
-        <p class="contact-status" id="contact-status" aria-live="polite">Al enviar, se abrirá tu aplicación de correo con la consulta preparada.</p>
-      </form>
-    </section>
-  </main>
-
-  <footer class="landing-footer">
-    <a class="landing-brand" href="#inicio"><img src="/logo.svg?v=2" alt="" width="34" height="34"><span><strong>LABAMA</strong><small>Soluciones empresariales</small></span></a>
-    <p>Herramientas digitales diseñadas a la medida de cada empresa.</p>
-    <div><a href="#soluciones">Soluciones</a><a href="#contacto">Contacto</a></div>
-  </footer>
-</div>
 
 <!-- ══════════════════ ACCESO DE EMPRESA ══════════════════ -->
-<div id="company-page" class="page company-page" style="display:none">
+<div id="company-page" class="page company-page active" style="display:flex">
   <header class="company-gate-header">
-    <a class="landing-brand" href="#" id="company-brand-home" aria-label="Volver a Labama">
+    <div class="landing-brand" aria-label="Labama">
       <img src="/logo.svg?v=2" alt="" width="38" height="38">
       <span><strong>LABAMA</strong><small>Soluciones empresariales</small></span>
-    </a>
-    <button type="button" class="company-back-button" id="btn-company-back-home">← Volver al inicio</button>
+    </div>
   </header>
   <main class="company-gate-main">
     <section class="company-access-card company-gate-card" aria-labelledby="company-gate-title">
@@ -355,7 +166,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
 <!-- ══════════════════ AUTH PAGE ══════════════════ -->
 <div id="auth-page" class="page" style="display:none">
   <div class="auth-card">
-    <button type="button" class="auth-back-home" id="btn-auth-back-home">← Volver a Labama</button>
+    <button type="button" class="auth-back-home" id="btn-auth-back-home">← Cambiar código de empresa</button>
     <div class="auth-logo">
       <div class="logo-icon">📦</div>
       <h1>Sucaneitor</h1>
@@ -1412,7 +1223,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
 
 <script src="barcode-utils.js?v=barcode-catalog-v1"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-<script src="app.js?v=labama-home-v2"></script>
+<script src="app.js?v=company-only-v1"></script>
 </body>
 </html>
 

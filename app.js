@@ -108,13 +108,13 @@ setTimeout(()=>e.remove(), 4000);
 }
 
 function showPage(id){
-['landing-page','company-page','auth-page','pending-page','app-page'].forEach(pid=>{
+['company-page','auth-page','pending-page','app-page'].forEach(pid=>{
 const e=el(pid); if(e){e.style.display='none';e.classList.remove('active');}
 });
 const t=el(id); if(!t) return;
 t.style.display='flex'; t.classList.add('active');
 const themeWidget=el('theme-widget');
-if(themeWidget) themeWidget.style.display=['landing-page','company-page'].includes(id)?'none':'flex';
+if(themeWidget) themeWidget.style.display=id==='company-page'?'none':'flex';
 }
 
 function fmtDate(iso){
@@ -449,7 +449,7 @@ if(adminNav) adminNav.style.display='none';
 document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
 clearAuthMessages();
 el('auth-forms').style.display='none';
-showPage('landing-page');
+showPage('company-page');
 }
 
 
@@ -530,7 +530,7 @@ if(!session){
 appState.currentUser=null;
 appState.currentPerfil=null;
 clearAuthMessages();
-showPage(checkEmpresaClave()?'auth-page':'landing-page');
+showPage(checkEmpresaClave()?'auth-page':'company-page');
 return;
 }
 if(isExpiredByInactivity(session.user.id)){
@@ -3633,16 +3633,12 @@ function closeSidebar(){el('sidebar').classList.remove('open');el('mobile-overla
  */
 async function initApp(){
 clearAuthMessages();
-showPage('landing-page');
+showPage('company-page');
 
 // Auth bindings (sin inline handlers)
-el('btn-open-company-access')?.addEventListener('click', abrirAccesoEmpresa);
-el('btn-company-back-home')?.addEventListener('click', volverALabama);
-el('company-brand-home')?.addEventListener('click', event=>{event.preventDefault();volverALabama();});
 el('empresa-clave')?.addEventListener('keydown', e=>{ if(e.key==='Enter') verificarClaveEmpresa(); });
 el('btn-verificar-empresa')?.addEventListener('click', verificarClaveEmpresa);
 el('btn-auth-back-home')?.addEventListener('click', volverALabama);
-el('contact-form')?.addEventListener('submit', enviarConsultaComercial);
 el('auth-tab-login')?.addEventListener('click', ()=>switchAuthTab('login'));
 el('auth-tab-register')?.addEventListener('click', ()=>switchAuthTab('register'));
 el('login-password')?.addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
@@ -3809,37 +3805,9 @@ sessionStorage.removeItem('empresa_nombre');
 clearAuthMessages();
 el('auth-forms').style.display='none';
 if(el('empresa-clave')) el('empresa-clave').value='';
-showPage('landing-page');
-window.scrollTo({top:0,behavior:'smooth'});
-}
-
-function enviarConsultaComercial(event){
-event.preventDefault();
-const form=event.currentTarget;
-if(!form.reportValidity()) return;
-const nombre=el('contact-name')?.value.trim()||'';
-const empresa=el('contact-company')?.value.trim()||'Sin especificar';
-const email=el('contact-email')?.value.trim()||'';
-const telefono=el('contact-phone')?.value.trim()||'Sin especificar';
-const mensaje=el('contact-message')?.value.trim()||'';
-const subject=encodeURIComponent('Consulta desde Labama · '+empresa);
-const body=encodeURIComponent([
-  'Hola, quiero conversar sobre una solución para mi empresa.',
-  '',
-  'Nombre: '+nombre,
-  'Empresa: '+empresa,
-  'Correo: '+email,
-  'Teléfono: '+telefono,
-  '',
-  'Necesidad:',
-  mensaje
-].join('\n'));
-const status=el('contact-status');
-if(status){
-  status.textContent='Consulta preparada. Se abrirá tu aplicación de correo para enviarla.';
-  status.classList.add('success');
-}
-window.location.href='mailto:lazarodriguez2018@gmail.com?subject='+subject+'&body='+body;
+showPage('company-page');
+window.scrollTo({top:0,behavior:'auto'});
+requestAnimationFrame(()=>el('empresa-clave')?.focus());
 }
 
 // ═══════════════════════════════════════════

@@ -11,6 +11,9 @@ let repoCatalogIndex = null;
 let repoCatalogIndexSource = null;
 let repoVerificationContinuation = null;
 const repoProductSearchTimers = new Map();
+const repoOriginalBytesCache = new Map();
+let repoScannerClosingPromise = Promise.resolve();
+let repoScannerGeneration = 0;
 
 const REPO_NOT_FOUND_REASONS = [
   {code:'stock_insuficiente', label:'Stock insuficiente'},
@@ -1019,8 +1022,18 @@ async function loadHtml5QrcodeForRepo() {
 }
 
 async function openRepoScanner(mode = 'requested', verifyCurrent = false) {
-  if (!requireRepoEditable()) return;
+  if (!requireRepoEditable() || repoScanner || repoScannerOpening) return;
+  repoScannerOpening = true;
+  const scannerGeneration = ++repoScannerGeneration;
+  await repoScannerClosingPromise.catch(() => {});
+  if (scannerGeneration !== repoScannerGeneration) {
+    repoScannerOpening = false;
+    return;
+  }
+  repoScannerBusy = false;
   repoScannerMode = mode === 'extra' ? 'extra' : 'requested';
+  repoLastScanCode = '';
+  repoLastScanTime = 0;
   const modal = document.getElementById('repo-camera-modal');
   document.getElementById('repo-camera-title').textContent = verifyCurrent && repoState?.items?.[repoCurrentIndex]
     ? `Comprobar: ${repoState.items[repoCurrentIndex].nombre}`
@@ -1028,35 +1041,56 @@ async function openRepoScanner(mode = 'requested', verifyCurrent = false) {
   const help = document.getElementById('repo-camera-help');
   help.textContent = verifyCurrent ? 'El código debe coincidir con el producto mostrado.' : 'Cada lectura válida suma una unidad.';
   help.style.color = '#d7e6ed';
+  const reader = document.getElementById('repo-camera-reader');
+  resetOperationsScannerReader(reader);
   modal.classList.add('show');
   try {
     await loadHtml5QrcodeForRepo();
+    await nextScannerPaint();
+    if (scannerGeneration !== repoScannerGeneration || !modal.classList.contains('show')) return;
     repoScanner = new Html5Qrcode('repo-camera-reader');
-    const width = Math.min(window.innerWidth - 40, 480);
-    await repoScanner.start({facingMode:'environment'}, {fps:15,qrbox:{width:Math.max(220,Math.round(width*.82)),height:150},aspectRatio:1.333}, decodedText => {
+    await repoScanner.start({facingMode:'environment'}, {fps:15,qrbox:operationsQrbox}, decodedText => {
+      if (!repoScanner || repoScannerBusy) return;
       const now = Date.now();
       if (decodedText === repoLastScanCode && now - repoLastScanTime < 1200) return;
       repoLastScanCode = decodedText;
       repoLastScanTime = now;
+      repoScannerBusy = true;
       tactileFeedback(35);
-      handleRepoBarcode(decodedText, 'camera');
+      Promise.resolve(handleRepoBarcode(decodedText, 'camera')).finally(() => { repoScannerBusy = false; });
     }, () => {});
   } catch (error) {
     help.textContent = 'No se pudo abrir la cámara. Podés escribir el código manualmente.';
     help.style.color = '#ff7185';
     toast('No se pudo iniciar la cámara', 'e');
+    if (repoScanner) {
+      try { await repoScanner.stop(); } catch (_) {}
+      try { await repoScanner.clear(); } catch (_) {}
+      repoScanner = null;
+    }
+    resetOperationsScannerReader(reader);
+  } finally {
+    repoScannerOpening = false;
   }
 }
 
 async function closeRepoScanner() {
   document.getElementById('repo-camera-modal')?.classList.remove('show');
-  if (repoScanner) {
-    try { await repoScanner.stop(); } catch (error) {}
-    try { await repoScanner.clear(); } catch (error) {}
-    repoScanner = null;
-  }
-  const reader = document.getElementById('repo-camera-reader');
-  if (reader) reader.innerHTML = '';
+  repoScannerGeneration += 1;
+  repoScannerOpening = false;
+  repoScannerBusy = false;
+  const scanner = repoScanner;
+  repoScanner = null;
+  const previousClosingPromise = repoScannerClosingPromise;
+  repoScannerClosingPromise = (async () => {
+    await previousClosingPromise.catch(() => {});
+    if (scanner) {
+      try { await scanner.stop(); } catch (error) {}
+      try { await scanner.clear(); } catch (error) {}
+    }
+    resetOperationsScannerReader(document.getElementById('repo-camera-reader'));
+  })();
+  return repoScannerClosingPromise;
 }
 
 function repoSafeName(value) {
@@ -1087,15 +1121,37 @@ async function repoBuildSummary() {
   return SucaneitorRepositionExport.buildSummary(repoState,XLSX,SucaneitorReposition);
 }
 
-async function repoGenerateExports() {
+async function repoLoadOriginalForReport() {
+  if(repoOriginalBytesCache.has(sessionId))return repoOriginalBytesCache.get(sessionId).slice(0);
+  const response=await repoApi(`/api/reposicion/original?rid=${encodeURIComponent(sessionId)}`);
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok||!data.ok||!data.url)throw new Error(data.error||'Archivo original no disponible');
+  const original=await fetch(data.url);
+  if(!original.ok)throw new Error('No se pudo recuperar el archivo original');
+  const bytes=await original.arrayBuffer();
+  repoOriginalBytesCache.set(sessionId,bytes.slice(0));
+  return bytes;
+}
+
+async function repoBuildProcessedSource() {
+  const XLSX=await waitForXlsx(),source=await repoLoadOriginalForReport();
+  const workbook=SucaneitorRepositionExport.buildProcessedSource(source,XLSX,repoState,SucaneitorReposition,'xlsx');
+  return SucaneitorRepositionExport.applyProcessedSourcePresentation(workbook,window.JSZip);
+}
+
+async function repoGenerateExports(options={}) {
   const route = `${repoSafeName(repoState.origin)}_${repoSafeName(repoState.destination)}`;
-  return [
+  const files = [
     {type:'main',name:`Remito_Reposicion_${route}.xls`,mime:'application/vnd.ms-excel',buffer:await repoBuildTransfer(SucaneitorReposition.mainTransferRows(repoState))},
     {type:'orders',name:`Remito_Pedidos_${route}.xls`,mime:'application/vnd.ms-excel',buffer:await repoBuildTransfer(SucaneitorReposition.orderTransferRows(repoState))},
     {type:'extras',name:`Remito_Extras_${route}.xls`,mime:'application/vnd.ms-excel',buffer:await repoBuildTransfer(SucaneitorReposition.extraTransferRows(repoState))},
     {type:'missing',name:`Faltantes_${route}.xlsx`,mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:await repoBuildMissing()},
     {type:'summary',name:`Resumen_Reposicion_${route}.xlsx`,mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:await repoBuildSummary()}
   ];
+  if(options.includeProcessed){
+    files.push({type:'processed',name:`Reposicion_Procesada_${route}.xlsx`,mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:await repoBuildProcessedSource()});
+  }
+  return files;
 }
 
 function repoDownloadBuffer(buffer, name, mime) {
@@ -1123,7 +1179,7 @@ async function downloadRepoExport(type) {
   }
   try {
     toast('Generando archivos…','i');
-    const files = await repoGenerateExports();
+    const files = await repoGenerateExports({includeProcessed:type==='processed'||type==='package'});
     if (type === 'package') {
       const response = await repoApi('/api/reposicion/export_package',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reposition_id:sessionId,usuario:usuarioNombre,filename:`Reposicion_${repoSafeName(repoState.origin)}_${repoSafeName(repoState.destination)}.zip`,files:files.map(file => ({name:file.name,base64:repoArrayBufferToBase64(file.buffer)}))})});
       if (!response.ok) { const data=await response.json().catch(()=>({})); throw new Error(data.error || 'No se pudo generar el paquete'); }

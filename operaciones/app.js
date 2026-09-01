@@ -32,6 +32,8 @@ let repoScanner = null;
 let repoScannerMode = 'requested';
 let repoLastScanCode = '';
 let repoLastScanTime = 0;
+let repoScannerOpening = false;
+let repoScannerBusy = false;
 let appDialogResolver = null;
 let appDialogValidator = null;
 let appDialogLastFocus = null;
@@ -86,6 +88,26 @@ let lastScanCode = '';
 let lastScanTime = 0;
 let scanTriggerArmed = false;
 let scanTriggerTimer = null;
+let scannerStarting = false;
+let scannerStoppingPromise = Promise.resolve();
+
+function nextScannerPaint() {
+  return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+}
+
+function operationsQrbox(viewfinderWidth, viewfinderHeight) {
+  const availableWidth = Math.max(220, Number(viewfinderWidth) || window.innerWidth - 32);
+  const availableHeight = Math.max(220, Number(viewfinderHeight) || window.visualViewport?.height || window.innerHeight);
+  const width = Math.max(190, Math.min(420, availableWidth - 28, Math.round(availableWidth * .8)));
+  const height = Math.max(110, Math.min(170, Math.round(width * .48), availableHeight - 72));
+  return { width, height };
+}
+
+function resetOperationsScannerReader(reader) {
+  if (!reader) return;
+  reader.replaceChildren();
+  reader.style.removeProperty('height');
+}
 
 // Debounce búsqueda
 let searchTimer = null;
@@ -2738,9 +2760,12 @@ function exportBarcodeAssignmentsExcel() {
 }
 
 async function startScanner() {
-  if (scanActive) return;
+  if (scanActive || scannerStarting) return;
+  scannerStarting = true;
+  await scannerStoppingPromise.catch(() => {});
   if (window.AndroidBridge && window.AndroidBridge.isAndroidApp()) {
     window.AndroidBridge.startNativeScanner();
+    scannerStarting = false;
     return;
   }
 
@@ -2824,10 +2849,12 @@ async function startScanner() {
       }
       qrDiv.style.display = 'block';
 
+      resetOperationsScannerReader(qrDiv);
+      await nextScannerPaint();
       html5QrScanner = new Html5Qrcode('html5qr-container');
       await html5QrScanner.start(
         { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 250, height: 150 } },
+        { fps: 10, qrbox: operationsQrbox },
         (code) => {
           if (scanPaused || !consumeScannerTrigger()) return;
           if (navigator.vibrate) navigator.vibrate(80);
@@ -2858,6 +2885,8 @@ async function startScanner() {
     document.getElementById('trigger-scan-btn').style.display = 'none';
     document.getElementById('start-scan-btn').style.display = '';
     document.getElementById('stop-scan-btn').style.display = 'none';
+  } finally {
+    scannerStarting = false;
   }
 }
 
@@ -2889,12 +2918,19 @@ function stopScanner() {
   flashOn = false;
   const fb = document.getElementById('flash-btn');
   if (fb) { fb.style.display = 'none'; fb.textContent = '🔦 Flash'; fb.style.background = ''; fb.style.color = ''; }
-  if (html5QrScanner) {
-    html5QrScanner.stop().catch(()=>{});
-    html5QrScanner = null;
-    const qrDiv = document.getElementById('html5qr-container');
+  const activeHtml5Scanner = html5QrScanner;
+  html5QrScanner = null;
+  const qrDiv = document.getElementById('html5qr-container');
+  const previousStoppingPromise = scannerStoppingPromise;
+  scannerStoppingPromise = (async () => {
+    await previousStoppingPromise.catch(() => {});
+    if (activeHtml5Scanner) {
+      try { await activeHtml5Scanner.stop(); } catch (_) {}
+      try { await activeHtml5Scanner.clear(); } catch (_) {}
+    }
+    resetOperationsScannerReader(qrDiv);
     if (qrDiv) qrDiv.style.display = 'none';
-  }
+  })();
   if (scannerStream) { scannerStream.getTracks().forEach(t => t.stop()); scannerStream = null; }
   const video = document.getElementById('scanner-video');
   video.style.display = 'none'; video.srcObject = null;
@@ -2904,6 +2940,7 @@ function stopScanner() {
   document.getElementById('trigger-scan-btn').style.display = 'none';
   document.getElementById('stop-scan-btn').style.display = 'none';
   resetScannerResult('Escáner detenido');
+  return scannerStoppingPromise;
 }
 
 let scanPaused = false;

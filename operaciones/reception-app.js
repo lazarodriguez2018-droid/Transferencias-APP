@@ -14,6 +14,10 @@ let receiptScannerMode = 'expected';
 let receiptLastScanCode = '';
 let receiptLastScanTime = 0;
 let receiptScanNoticeOpen = false;
+let receiptScannerOpening = false;
+let receiptScannerBusy = false;
+let receiptScannerClosingPromise = Promise.resolve();
+let receiptScannerGeneration = 0;
 let receiptListLimit = 250;
 let receiptVerificationContinuation = null;
 let receiptSearchSourceCache = [];
@@ -300,10 +304,13 @@ async function receiptOfferScannedQuantity(product,isExtra,addedQuantity=1) {
   else await receiptEditQty(receiptEncode(code));
 }
 async function openReceiptScanner(mode='expected') {
-  if(!requireReceiptEditable())return;receiptScannerMode=mode;const modal=document.getElementById('receipt-camera-modal'),help=document.getElementById('receipt-camera-help');document.getElementById('receipt-camera-title').textContent=mode==='extra'?'Escanear producto extra':'Escanear producto recibido';help.textContent='Cada lectura válida suma una unidad.';help.style.color='#d7e6ed';modal.classList.add('show');
-  try{await loadHtml5QrcodeForRepo();receiptScanner=new Html5Qrcode('receipt-camera-reader');const width=Math.min(window.innerWidth-40,480);await receiptScanner.start({facingMode:'environment'},{fps:15,qrbox:{width:Math.max(220,Math.round(width*.82)),height:150},aspectRatio:1.333},decoded=>{if(receiptScanNoticeOpen)return;const now=Date.now();if(decoded===receiptLastScanCode&&now-receiptLastScanTime<1200)return;receiptLastScanCode=decoded;receiptLastScanTime=now;tactileFeedback(35);handleReceiptBarcode(decoded,'camera');},()=>{});}catch(error){help.textContent='No se pudo abrir la cámara. Podés escribir el código manualmente.';help.style.color='#ff7185';toast('No se pudo iniciar la cámara','e');}
+  if(!requireReceiptEditable()||receiptScanner||receiptScannerOpening)return;
+  receiptScannerOpening=true;const scannerGeneration=++receiptScannerGeneration;await receiptScannerClosingPromise.catch(()=>{});if(scannerGeneration!==receiptScannerGeneration){receiptScannerOpening=false;return;}receiptScannerBusy=false;receiptScannerMode=mode;receiptLastScanCode='';receiptLastScanTime=0;
+  const modal=document.getElementById('receipt-camera-modal'),help=document.getElementById('receipt-camera-help'),reader=document.getElementById('receipt-camera-reader');
+  document.getElementById('receipt-camera-title').textContent=mode==='extra'?'Escanear producto extra':'Escanear producto recibido';help.textContent='Cada lectura válida suma una unidad.';help.style.color='#d7e6ed';resetOperationsScannerReader(reader);modal.classList.add('show');
+  try{await loadHtml5QrcodeForRepo();await nextScannerPaint();if(scannerGeneration!==receiptScannerGeneration||!modal.classList.contains('show'))return;receiptScanner=new Html5Qrcode('receipt-camera-reader');await receiptScanner.start({facingMode:'environment'},{fps:15,qrbox:operationsQrbox},decoded=>{if(!receiptScanner||receiptScanNoticeOpen||receiptScannerBusy)return;const now=Date.now();if(decoded===receiptLastScanCode&&now-receiptLastScanTime<1200)return;receiptLastScanCode=decoded;receiptLastScanTime=now;receiptScannerBusy=true;tactileFeedback(35);Promise.resolve(handleReceiptBarcode(decoded,'camera')).finally(()=>{receiptScannerBusy=false;});},()=>{});}catch(error){help.textContent='No se pudo abrir la cámara. Podés escribir el código manualmente.';help.style.color='#ff7185';toast('No se pudo iniciar la cámara','e');if(receiptScanner){try{await receiptScanner.stop();}catch(_){}try{await receiptScanner.clear();}catch(_){}receiptScanner=null;}resetOperationsScannerReader(reader);}finally{receiptScannerOpening=false;}
 }
-async function closeReceiptScanner(){document.getElementById('receipt-camera-modal')?.classList.remove('show');if(receiptScanner){try{await receiptScanner.stop();}catch(_){}try{await receiptScanner.clear();}catch(_){}receiptScanner=null;}const reader=document.getElementById('receipt-camera-reader');if(reader)reader.innerHTML='';}
+async function closeReceiptScanner(){document.getElementById('receipt-camera-modal')?.classList.remove('show');receiptScannerGeneration+=1;receiptScannerOpening=false;receiptScannerBusy=false;receiptScanNoticeOpen=false;const scanner=receiptScanner;receiptScanner=null;const previousClosingPromise=receiptScannerClosingPromise;receiptScannerClosingPromise=(async()=>{await previousClosingPromise.catch(()=>{});if(scanner){try{await scanner.stop();}catch(_){}try{await scanner.clear();}catch(_){}}resetOperationsScannerReader(document.getElementById('receipt-camera-reader'));})();return receiptScannerClosingPromise;}
 
 function renderReceiptSummary() {
   if(!receiptState)return;const summary=SucaneitorReception.summary(receiptState),status=document.getElementById('receipt-summary-status'),detail=document.getElementById('receipt-summary-detail'),participants=document.getElementById('receipt-participants');
