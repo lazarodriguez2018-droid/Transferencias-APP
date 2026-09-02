@@ -80,7 +80,10 @@
     const extension = splitName(filename).extension.toLowerCase();
     const path = `${data.user.id}/${root.crypto.randomUUID()}/archivo${extension}`;
     const storage = client.storage.from(BUCKET);
-    const {error: uploadError} = await storage.upload(path, blob, {
+    // Storage's multipart uploader uses Blob.type rather than options.contentType.
+    // Normalize the transport MIME without modifying a single file byte.
+    const uploadBlob = new Blob([blob], {type: 'application/octet-stream'});
+    const {error: uploadError} = await storage.upload(path, uploadBlob, {
       contentType: 'application/octet-stream', upsert: false, cacheControl: '0'
     });
     if (uploadError) {

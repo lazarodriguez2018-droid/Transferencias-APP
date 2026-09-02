@@ -25,7 +25,7 @@ function setup() {
   }
   const document = {documentElement: {style: {overflow: 'auto'}}, body: new Element('body'), activeElement: new Element('opener'), createElement: tag => new Element(tag)};
   const storage = {
-    async upload(...args) { calls.push(['upload', ...args]); return {}; },
+    async upload(...args) { assert.equal(args[1].type, 'application/octet-stream'); calls.push(['upload', ...args]); return {}; },
     async createSignedUrl(...args) { calls.push(['sign', ...args]); return {data: {signedUrl: 'https://example.test/storage/v1/object/sign/file?token=test&download=remito.xls'}}; },
     async remove(paths) { calls.push(['cleanup', paths]); return {}; }
   };
@@ -90,10 +90,18 @@ async function main() {
   assert.equal(sign[2], 604800);
   assert.equal(sign[3].download, 'Remito José.xls');
   const upload = test.calls.find(call => call[0] === 'upload');
-  assert.equal(upload[2], blob);
+  assert.equal(await upload[2].text(), await blob.text());
+  assert.equal(upload[2].type, 'application/octet-stream');
   assert.equal(upload[3].upsert, false);
   assert.equal(upload[3].contentType, 'application/octet-stream');
   assert(link.expiresAt > Date.now() + 604700000);
+  for (const mime of ['text/csv;charset=utf-8', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/zip']) {
+    const typedFile = new Blob([new Uint8Array([0, 1, 127, 255])], {type: mime});
+    await test.api.createSharedFile(typedFile, 'typed-file.xls');
+    const sent = test.calls.filter(call => call[0] === 'upload').at(-1)[2];
+    assert.equal(sent.type, 'application/octet-stream');
+    assert.deepEqual(new Uint8Array(await sent.arrayBuffer()), new Uint8Array(await typedFile.arrayBuffer()));
+  }
   await assert.rejects(test.api.createSharedFile({size: 52428801}, 'Grande.zip'), /50 MB/);
   test.storage.createSignedUrl = async () => ({error: new Error('no signing')});
   await assert.rejects(test.api.createSharedFile(blob, 'file.xls'), /crear el enlace/);
