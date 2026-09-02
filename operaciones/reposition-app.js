@@ -1299,15 +1299,13 @@ async function repoGenerateExports(options={}) {
   return files;
 }
 
-function repoDownloadBuffer(buffer, name, mime) {
+function repoDownloadBuffer(buffer, name, mime, onAction) {
   const blob = new Blob([buffer],{type:mime});
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a'); anchor.href=url; anchor.download=name; document.body.appendChild(anchor); anchor.click(); anchor.remove();
-  setTimeout(() => URL.revokeObjectURL(url),1000);
+  return window.SucanDownloads.open({blob, filename:name, onAction});
 }
 
-async function repoLogExport(file) {
-  try { await repoApi('/api/reposicion/export_log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reposition_id:sessionId,usuario:usuarioNombre,tipo:file.type,nombre:file.name})}); } catch (error) {}
+async function repoLogExport(file, exportSessionId = sessionId) {
+  try { await repoApi('/api/reposicion/export_log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reposition_id:exportSessionId,usuario:usuarioNombre,tipo:file.type,nombre:file.name})}); } catch (error) {}
 }
 
 async function downloadRepoExport(type) {
@@ -1324,20 +1322,20 @@ async function downloadRepoExport(type) {
   }
   try {
     toast('Generando archivos…','i');
+    const exportSessionId = sessionId;
     const files = await repoGenerateExports({includeProcessed:type==='processed'||type==='package'});
     if (type === 'package') {
-      const response = await repoApi('/api/reposicion/export_package',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reposition_id:sessionId,usuario:usuarioNombre,filename:`Reposicion_${repoSafeName(repoState.origin)}_${repoSafeName(repoState.destination)}.zip`,files:files.map(file => ({name:file.name,base64:repoArrayBufferToBase64(file.buffer)}))})});
-      if (!response.ok) { const data=await response.json().catch(()=>({})); throw new Error(data.error || 'No se pudo generar el paquete'); }
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob); const anchor=document.createElement('a'); anchor.href=url; anchor.download=`Reposicion_${repoSafeName(repoState.origin)}_${repoSafeName(repoState.destination)}.zip`; anchor.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
-      toast('Paquete completo descargado','s');
+      if (!window.JSZip) throw new Error('El generador de paquetes todavía se está cargando.');
+      const zip = new window.JSZip();
+      files.forEach(file => zip.file(file.name, file.buffer));
+      const blob = await zip.generateAsync({type:'blob', compression:'DEFLATE'});
+      const filename = `Reposicion_${repoSafeName(repoState.origin)}_${repoSafeName(repoState.destination)}.zip`;
+      window.SucanDownloads.open({blob, filename, onAction: result => repoLogExport({type:'package',name:result.filename},exportSessionId)});
       return;
     }
     const file = files.find(item => item.type === type);
     if (!file) return;
-    repoDownloadBuffer(file.buffer,file.name,file.mime);
-    await repoLogExport(file);
-    toast(`${file.name} descargado`,'s');
+    repoDownloadBuffer(file.buffer,file.name,file.mime,result => repoLogExport({...file,name:result.filename},exportSessionId));
   } catch (error) { toast(error.message || 'No se pudo generar el archivo','e'); }
 }
 
@@ -1345,7 +1343,7 @@ async function downloadRepoOriginal() {
   if (!sessionId) return;
   try {
     if (window.SucanCloud) await window.SucanCloud.loadOriginal(sessionId);
-    else if (serverUrl) window.location.href = `${serverUrl}/api/reposicion/original?rid=${encodeURIComponent(sessionId)}`;
+    else if (serverUrl) await window.SucanDownloads.openRemote(`${serverUrl}/api/reposicion/original?rid=${encodeURIComponent(sessionId)}`,repoState?.original_filename || 'Reposicion_original.xls');
   } catch (error) { toast(error.message || 'Archivo original no disponible','e'); }
 }
 

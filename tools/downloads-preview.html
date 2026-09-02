@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Prueba local · Descargas SUCAN</title>
+<link rel="stylesheet" href="/downloads.css"><style>body{margin:0;padding:28px;background:#101018;color:#eee;font:16px system-ui}main{max-width:880px;margin:auto}button,select{font:inherit;padding:14px;margin:8px 0;display:block}p{color:#aaa;line-height:1.6}h1{font-size:26px}.card{border:1px solid #333348;padding:22px;border-radius:20px;background:#191923}</style></head>
+<body><main><p>SUCAN / PRUEBA LOCAL</p><h1>Descargas unificadas</h1><section class="card"><h2>Archivo de prueba</h2><p>Esta pantalla no usa cuentas ni datos reales. La descarga es un CSV de prueba; el enlace compartido es simulado y no se publica ningún archivo.</p><label for="mode">Modo de prueba</label><select id="mode"><option value="fallback">Descarga habitual (móvil / navegador sin explorador)</option><option value="picker">Explorador nativo del dispositivo</option><option value="offline">Compartir sin conexión (simulado)</option></select><button id="open-file">Abrir descarga de prueba (.csv)</button><p id="audit" role="status">Todavía no se descargó ni compartió.</p></section></main>
+<script src="/downloads.js"></script><script>
+const nativePicker=window.showSaveFilePicker?.bind(window);
+const storage={upload:async()=>document.getElementById('mode').value==='offline'?{error:new Error('offline')}:{},createSignedUrl:async()=>({data:{signedUrl:'https://example.test/archivo-de-prueba?token=solo-demo&download=prueba.csv'}}),remove:async()=>({})};
+SucanDownloads.configure({getClient:()=>({auth:{getUser:async()=>({data:{user:{id:'demo-user'}}})},storage:{from:()=>storage}})});
+document.getElementById('open-file').addEventListener('click',()=>{
+window.showSaveFilePicker=document.getElementById('mode').value==='picker'?nativePicker:undefined;
+SucanDownloads.open({blob:new Blob(['codigo,producto,cantidad\nTEST-01,Producto de prueba,3\n'],{type:'text/csv;charset=utf-8'}),filename:'Remito de prueba SUCAN.csv',onAction:result=>document.getElementById('audit').textContent=JSON.stringify(result)});
+});
+</script></body></html>

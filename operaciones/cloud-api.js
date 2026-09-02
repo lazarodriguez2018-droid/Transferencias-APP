@@ -483,7 +483,7 @@
       }
       if(path==='/api/recepcion/extra/remove' && method==='POST') { const {error}=await cloud.db.from('op_recepcion_extras').delete().eq('recepcion_id',data.reception_id).eq('codigo',data.codigo);if(error)throw error;const receipt=await receptionSnapshot(data.reception_id);return json({ok:true,summary:receipt.summary}); }
       if(path==='/api/recepcion/close' && method==='POST') { const result=await cloud.finalizeReception(data.reception_id,data.observations);return json({ok:true,result,receipt:await receptionSnapshot(data.reception_id)}); }
-      if(path==='/api/recepcion/original') { const {data:receipt,error}=await cloud.db.from('op_recepciones').select('original_path,original_filename').eq('id',url.searchParams.get('rid')).single();if(error)throw error;if(!receipt.original_path)return json({ok:false,error:'Archivo original no disponible'},404);const {data:signed,error:signError}=await cloud.db.storage.from('op-recepciones').createSignedUrl(receipt.original_path,60,{download:receipt.original_filename||'remito.xls'});if(signError)throw signError;return json({ok:true,url:signed.signedUrl}); }
+      if(path==='/api/recepcion/original') { const {data:receipt,error}=await cloud.db.from('op_recepciones').select('original_path,original_filename').eq('id',url.searchParams.get('rid')).single();if(error)throw error;if(!receipt.original_path)return json({ok:false,error:'Archivo original no disponible'},404);const {data:signed,error:signError}=await cloud.db.storage.from('op-recepciones').createSignedUrl(receipt.original_path,60,{download:receipt.original_filename||'remito.xls'});if(signError)throw signError;return json({ok:true,url:signed.signedUrl,filename:receipt.original_filename||'remito.xls'}); }
       if(path==='/api/reposicion/delete' && method==='POST') {
         const repoId=clean(data.reposition_id);
         if(!repoId) throw new Error('Reposición no indicada');
@@ -546,7 +546,7 @@
       if(path==='/api/reposicion/extra/remove' && method==='POST') { const {error}=await cloud.db.from('op_reposicion_extras').delete().eq('reposicion_id',data.reposition_id).eq('codigo',data.codigo); if(error)throw error; const repo=await repoSnapshot(data.reposition_id); return json({ok:true,codigo:data.codigo,summary:repo.summary}); }
       if(path==='/api/reposicion/export_log' && method==='POST') { await cloud.db.from('op_reposicion_eventos').insert({reposicion_id:data.reposition_id,usuario_id:cloud.user.id,usuario_nombre:cloud.displayName,accion:'exportar',detalle:{tipo:data.tipo,nombre:data.nombre}}); return json({ok:true}); }
       if(path==='/api/reposicion/export_package' && method==='POST') return exportZip(data);
-      if(path==='/api/reposicion/original') { const {data:repo,error}=await cloud.db.from('op_reposiciones').select('original_path,original_filename').eq('id',url.searchParams.get('rid')).single(); if(error)throw error; if(!repo.original_path)return json({ok:false,error:'Archivo original no disponible'},404); const {data:signed,error:signError}=await cloud.db.storage.from('op-reposiciones').createSignedUrl(repo.original_path,60,{download:repo.original_filename||'reposicion.xls'}); if(signError)throw signError; return json({ok:true,url:signed.signedUrl}); }
+      if(path==='/api/reposicion/original') { const {data:repo,error}=await cloud.db.from('op_reposiciones').select('original_path,original_filename').eq('id',url.searchParams.get('rid')).single(); if(error)throw error; if(!repo.original_path)return json({ok:false,error:'Archivo original no disponible'},404); const {data:signed,error:signError}=await cloud.db.storage.from('op-reposiciones').createSignedUrl(repo.original_path,60,{download:repo.original_filename||'reposicion.xls'}); if(signError)throw signError; return json({ok:true,url:signed.signedUrl,filename:repo.original_filename||'reposicion.xls'}); }
       if(path==='/api/barcode_assignments' && method==='GET') { const result=await barcodeAssignments(); return json({ok:true,...result,total:result.assignments.length}); }
       if(path==='/api/barcode_assignments' && method==='POST') { const result=await createBarcodeAssignment(data); return json({ok:true,...result}); }
       if(/^\/api\/barcode_assignments\/[^/]+\/discard$/.test(path) && method==='POST') { const id=decodeURIComponent(path.split('/')[3]); const {data:row,error}=await cloud.db.from('op_asignaciones_barras').update({status:'discarded',updated_at:new Date().toISOString()}).eq('id',id).select().single(); if(error)throw error; const result=await barcodeAssignments(); return json({ok:true,assignment:row,effective:result.effective}); }
@@ -565,7 +565,7 @@
   cloud.loadOriginal = async function (repoId) {
     const response=await handleApi(`/api/reposicion/original?rid=${encodeURIComponent(repoId)}`);
     const data=await response.json(); if(!response.ok||!data.ok)throw new Error(data.error||'Original no disponible');
-    location.href=data.url;
+    await window.SucanDownloads.openRemote(data.url,data.filename||'Reposicion_original.xls');
   };
   cloud.watchInventory = function (sessionId, callback) {
     const channel=cloud.db.channel(`op-inventory-${sessionId}`)

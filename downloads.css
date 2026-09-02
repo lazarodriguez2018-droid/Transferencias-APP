@@ -1,0 +1,32 @@
+.sucan-download-dialog{box-sizing:border-box;width:min(560px,calc(100% - 28px));max-width:none;max-height:calc(100dvh - 28px);margin:auto;padding:26px;border:1px solid #3c3c50;border-radius:22px;background:#1a1a23;color:#f1f1f8;box-shadow:0 28px 100px #0008;font-family:inherit;overflow:auto;overscroll-behavior:contain;color-scheme:dark}
+.sucan-download-dialog::backdrop{background:rgb(5 5 13 / 76%);backdrop-filter:blur(4px)}
+.sucan-download-dialog *{box-sizing:border-box}
+.sucan-download-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.sucan-download-eyebrow{display:block;color:#aea5ff;font-size:11px;font-weight:800;letter-spacing:.13em;margin-bottom:9px}
+.sucan-download-dialog h2{font-size:24px;line-height:1.2;margin:0;font-weight:750;color:#f1f1f8}
+.sucan-download-dialog p{font-size:14px;line-height:1.55;margin:18px 0;color:#c4c4d4}
+.sucan-download-dialog label{display:block;font-size:14px;font-weight:650;margin:18px 0 9px}
+.sucan-download-dialog button{font:inherit;font-size:14px;font-weight:700;cursor:pointer;min-height:48px;padding:12px 18px;border-radius:12px;border:1px solid #4b4b63;background:#282837;color:#f1f1f8;white-space:normal}
+.sucan-download-dialog button:hover{background:#363648}
+.sucan-download-dialog button:disabled{cursor:wait;opacity:.6}
+.sucan-download-dialog :focus-visible{outline:3px solid #b7aaff;outline-offset:3px}
+.sucan-download-dialog .sucan-download-close{flex-shrink:0;width:44px;min-height:44px;padding:0;font-size:26px;line-height:1}
+.sucan-download-name{display:flex;border:1px solid #555570;border-radius:12px;overflow:hidden;min-width:0;background:#101018}
+.sucan-download-dialog input{min-width:0;width:100%;min-height:50px;padding:13px;font:inherit;font-size:16px;color:#fff;background:#101018;border:1px solid #555570;border-radius:10px}
+.sucan-download-name input{flex:1;border:0;border-radius:0}
+.sucan-download-name span{display:flex;align-items:center;flex-shrink:0;padding:0 13px;background:#282837;color:#d1cbe9;font-size:14px}
+.sucan-download-dialog .sucan-download-meta{font-size:12px;color:#b4b4c8;overflow-wrap:anywhere;margin:9px 0 18px}
+.sucan-download-note{display:grid;gap:6px;border:1px solid #424059;border-radius:12px;background:#242331;padding:14px;font-size:12px;line-height:1.6;color:#c7c4db}
+.sucan-download-note strong{color:#ebe7ff;font-size:13px}
+.sucan-download-actions{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
+.sucan-download-dialog .sucan-download-primary{background:#6653ef;border-color:#7867ff;color:white}
+.sucan-download-dialog .sucan-download-primary:hover{background:#7463f6}
+.sucan-download-dialog .sucan-download-status{color:#c3f4d7;font-size:13px;min-height:0;margin:12px 0 0;overflow-wrap:anywhere}
+.sucan-download-dialog .sucan-download-status:empty{display:none}
+.sucan-download-dialog .sucan-download-status.is-error{color:#ffb5b5}
+.sucan-download-link[hidden]{display:none}
+.sucan-download-link{display:grid;gap:9px;padding-top:10px}
+.sucan-download-link label,.sucan-download-link p{margin:0}
+.sucan-download-link p{font-size:12px;color:#b4b4c8}
+@media(max-width:520px){.sucan-download-dialog{padding:20px 16px;border-radius:18px;max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px)}.sucan-download-dialog h2{font-size:21px}.sucan-download-actions{grid-template-columns:1fr}.sucan-download-primary{grid-row:1}.sucan-download-dialog button{min-height:52px}}
+@media(prefers-reduced-motion:reduce){.sucan-download-dialog{scroll-behavior:auto}}

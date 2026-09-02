@@ -2001,13 +2001,7 @@ async function generateReport() {
 
   const out = write(wb, { bookType: 'xlsx', type: 'array' });
   const blob = new Blob([out], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `Balance_${alm}_${fecha.replace(/\//g,'-')}.xlsx`;
-  a.click();
-  URL.revokeObjectURL(url);
-  toast('✅ Excel descargado', 's');
+  downloadBlob(blob, `Balance_${alm}_${fecha.replace(/\//g,'-')}.xlsx`);
 }
 
 function exportAnalysisReport() {
@@ -2034,7 +2028,6 @@ function exportAnalysisReport() {
   XLSX.utils.book_append_sheet(wb, compensationSheet, 'Compensaciones sugeridas');
   const out = XLSX.write(wb, {bookType:'xlsx', type:'array'});
   downloadBlob(new Blob([out], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), `Analisis_Inventario_${almacen || 'SIN-ALMACEN'}_${new Date().toISOString().slice(0,10)}.xlsx`);
-  toast('Análisis descargado', 's');
 }
 
 
@@ -2053,12 +2046,7 @@ function exportConteo() {
   utils.book_append_sheet(wb, ws, 'Conteo');
   const out = write(wb, { bookType: 'xlsx', type: 'array' });
   const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `Conteo_${new Date().toLocaleDateString('es-UY').replace(/\//g,'-')}.xlsx`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, `Conteo_${new Date().toLocaleDateString('es-UY').replace(/\//g,'-')}.xlsx`);
 }
 
 // ===== ALMACEN =====
@@ -2738,7 +2726,6 @@ async function downloadBarcodePackage() {
     }
     const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
     downloadBlob(blob,`Codigos_Barras_${new Date().toISOString().slice(0,10)}.zip`);
-    toast('Reporte y fotos descargados', 's');
   } catch (error) { toast(error.message || 'No se pudo generar el paquete', 'e'); }
 }
 
@@ -3101,12 +3088,7 @@ function toggleTheme() {
 }
 
 function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return window.SucanDownloads.open({blob, filename});
 }
 
 async function fetchWithTimeout(url, options, timeoutMs) {

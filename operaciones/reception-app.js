@@ -342,7 +342,7 @@ async function closeReceptionFlow() {
 }
 
 function renderReceiptConfig() {const node=document.getElementById('receipt-config-session');if(!node||!receiptState)return;node.innerHTML=`<strong>${esc(receiptState.nombre)}</strong><div class="tm mt2">Remito ${esc(receiptState.document_number)} · ${esc(receiptState.date)}<br>${esc(receiptState.origin)} → ${esc(receiptState.destination)} · ${receiptState.estado==='cerrado'?'Cerrado':'En control'}</div>`;}
-async function downloadReceptionOriginal(){try{const response=await fetch(`/api/recepcion/original?rid=${encodeURIComponent(sessionId)}`),data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'No disponible');location.href=data.url;}catch(error){toast(error.message||'No se pudo descargar','e');}}
+async function downloadReceptionOriginal(){try{const response=await fetch(`/api/recepcion/original?rid=${encodeURIComponent(sessionId)}`),data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'No disponible');await window.SucanDownloads.openRemote(data.url,data.filename||receiptState?.original_filename||'Remito_original.xls');}catch(error){toast(error.message||'No se pudo descargar','e');}}
 
 async function downloadReceptionReport() {
   if(!receiptState)return;try{const XLSX=await waitForXlsx(),book=XLSX.utils.book_new(),summary=SucaneitorReception.summary(receiptState),add=(name,rows)=>XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet(rows),name);
@@ -352,7 +352,8 @@ async function downloadReceptionReport() {
     add('Extras',[['SKU','Producto','Cantidad','Observación','Actualizado por'],...(receiptState.extras||[]).filter(item=>item.cantidad>0).map(item=>[item.codigo,item.nombre,item.cantidad,item.observacion||'',item.updated_by||''])]);
     add('Pedidos clientes',[['Pedido','Cliente','Teléfono','Estado','Aviso pendiente','SKU','Producto','Enviado','Recibido'],...(receiptState.orders||[]).flatMap(order=>(order.pedido_productos||[]).map(item=>[order.id,order.cliente||'',order.telefono||'',order.estado,order.cliente_aviso_pendiente?'Sí':'No',item.codigo,item.nombre,item.cantidad_preparada||item.cantidad_aceptada||item.cantidad||0,item.cantidad_recibida||0]))]);
     add('Auditoría',[['Fecha','Usuario','Acción','SKU','Detalle'],...(receiptState.log||[]).map(row=>[row.ts,row.usuario||'',row.accion,row.codigo||'',JSON.stringify(row.detalle||{})])]);
-    XLSX.writeFile(book,`Control_Remito_${String(receiptState.document_number).replace(/[^A-Za-z0-9_-]/g,'_')}.xlsx`);toast('Informe descargado','s');
+    const buffer=XLSX.write(book,{bookType:'xlsx',type:'array'});
+    repoDownloadBuffer(buffer,`Control_Remito_${String(receiptState.document_number).replace(/[^A-Za-z0-9_-]/g,'_')}.xlsx`,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   }catch(error){toast(error.message||'No se pudo generar el informe','e');}
 }
 
@@ -367,6 +368,5 @@ async function downloadReceiptTransfer(type) {
     toast('Generando remito para el sistema…','i');
     const buffer=await repoBuildTransfer(rows),route=`${repoSafeName(receiptState.origin)}_${repoSafeName(receiptState.destination)}`,number=repoSafeName(receiptState.document_number),name=type==='extras'?`Remito_Extras_Recibidos_${route}_${number}.xls`:`Remito_Recibido_${route}_${number}.xls`;
     repoDownloadBuffer(buffer,name,'application/vnd.ms-excel');
-    toast(`${name} descargado`,'s');
   }catch(error){toast(error.message||'No se pudo generar el remito','e');}
 }

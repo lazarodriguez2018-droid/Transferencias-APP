@@ -5,6 +5,7 @@ const SUPABASE_URL = 'https://akqqpodyijzjdoibkint.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_ClVgs8WdyAu0McGi0eAaEQ_MovUmDCC';
 const { createClient } = supabase;
 const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+window.SucanDownloads.configure({getClient: () => db});
 
 // ═══════════════════════════════════════════
 //  STATE
@@ -1226,14 +1227,7 @@ if(!rows.length) return notify('No hay datos para exportar','info');
 const headers = ['codigo','nombre','marca','local','cantidad','estado','fecha','pedido'];
 const csv = [headers.join(',')].concat(rows.map(r=>headers.map(h=>'"'+String(r[h]??'').replace(/"/g,'""')+'"').join(','))).join('\n');
 const blob = new Blob([csv],{type:'text/csv;charset=utf-8'});
-const url = URL.createObjectURL(blob);
-const a = document.createElement('a');
-a.href = url;
-a.download = 'dashboard-transferencias.csv';
-document.body.appendChild(a);
-a.click();
-a.remove();
-URL.revokeObjectURL(url);
+window.SucanDownloads.open({blob, filename: 'dashboard-transferencias.csv'});
 }
 
 async function renderMisPedidos(){
@@ -3461,13 +3455,8 @@ async function exportarXLSPedido(orderId){
   const nombreArchivo='pedido_'+pedidoRef.replace('#','')+'_'+fecha.replace(/\//g,'-')+'.xlsx';
   try {
     const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
-    const blob = new Blob([wbout], {type:'application/octet-stream'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = nombreArchivo;
-    document.body.appendChild(a); a.click();
-    setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
-    notify('✅ XLS descargado: '+nombreArchivo,'success');
+    const blob = new Blob([wbout], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    window.SucanDownloads.open({blob, filename: nombreArchivo});
   } catch(err) {
     notify('Error al generar XLS: '+err.message,'error');
   }
