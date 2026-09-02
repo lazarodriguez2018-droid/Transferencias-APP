@@ -24,8 +24,8 @@ const repo = {
   nombre:'Prueba',origin:'PDE',destination:'MDO',created_at:'2026-08-21',updated_at:'2026-08-21',
   participantes:[{nombre:'Ana'}],
   items:[
-    {codigo:'00123',nombre:'Producto uno',descripcion_archivo:'Product one',pedido:10,stock_origen:20,preparado:7,no_encontrado:true,motivo_codigo:'otro',motivo_label:'Otro',motivo_otro:'Caja sin identificar',comentario:'Revisar con depósito',updated_by:'Ana',updated_at:'2026-08-21'},
-    {codigo:'B2',nombre:'Producto dos',descripcion_archivo:'Product two',pedido:2,stock_origen:4,preparado:2,updated_by:'Luis',updated_at:'2026-08-21'}
+    {codigo:'00123',nombre:'Producto uno',descripcion_archivo:'Product one',pedido:12,pedido_reposicion:10,pedido_clientes:2,stock_origen:20,preparado:9,no_encontrado:true,motivo_codigo:'otro',motivo_label:'Otro',motivo_otro:'Caja sin identificar',comentario:'Revisar con depósito',updated_by:'Ana',updated_at:'2026-08-21'},
+    {codigo:'B2',nombre:'Producto dos',descripcion_archivo:'Product two',pedido:2,pedido_reposicion:2,pedido_clientes:0,stock_origen:4,preparado:2,updated_by:'Luis',updated_at:'2026-08-21'}
   ],
   extras:[{codigo:'00123',nombre:'Producto uno',cantidad:3,nota:'Separado',updated_by:'Ana',updated_at:'2026-08-21'}],
   log:[{ts:'2026-08-21',usuario:'Ana',accion:'cantidad',codigo:'00123',detalle:{despues:7}}]
@@ -56,12 +56,15 @@ XLSX.utils.book_append_sheet(sourceBook,sourceSheet,'Rep FR100');
 const sourceBytes=XLSX.write(sourceBook,{bookType:'biff8',type:'array',cellStyles:true});
 const processed=XLSX.read(exporter.buildProcessedSource(sourceBytes,XLSX,repo,engine,'xlsx'),{type:'array',cellStyles:true,cellFormula:true});
 const processedSheet=processed.Sheets['Rep FR100'];
-assert.strictEqual(processedSheet['!ref'],'A1:H3','Solo deben quedar encabezado y productos que cumplieron la regla');
+assert.strictEqual(processedSheet['!ref'],'A1:I3','Solo deben quedar encabezado, productos que cumplieron la regla y la nueva columna');
 assert.strictEqual(processedSheet.A2.v,'B2','Los productos deben ordenarse alfabéticamente por descripción');
 assert.strictEqual(processedSheet.A3.v,'00123');
 assert.strictEqual(processedSheet.H2.f,'+G2-D2','La fórmula debe conservarse y apuntar a la nueva fila');
 assert.strictEqual(processedSheet.H3.f,'+G3-D3','Las fórmulas deben reindexarse tras filtrar filas');
 assert.strictEqual(processedSheet.H2.v,2);
+assert.strictEqual(processedSheet.I1.v,'Qty_diferente','La nueva columna debe quedar visible en el reporte');
+assert.strictEqual(processedSheet.I2.v,'','Si se envió exactamente lo pedido, la diferencia debe quedar vacía');
+assert.strictEqual(processedSheet.I3.v,7,'La diferencia debe mostrar lo realmente enviado a reposición, sin mezclar pedidos de clientes');
 assert.strictEqual(processedSheet['!cols'][1].hidden,true,'La columna auxiliar location debe quedar agrupada y oculta');
 assert.strictEqual(processedSheet['!cols'][4].level,1,'Las columnas auxiliares deben conservarse dentro de un grupo');
 assert.strictEqual(processedSheet['!cols'][5].hidden,true,'day_to_replenish no debe eliminarse');
@@ -69,7 +72,7 @@ assert.strictEqual(processedSheet['!cols'][6].hidden,true,'stock_origin debe con
 const exporterSource=fs.readFileSync(path.join(__dirname,'..','reposition-export.js'),'utf8');
 assert.match(exporterSource,/fgColor rgb=\\?"FFFFFF00/,'El reporte debe aplicar amarillo a las filas juntadas');
 assert.match(exporterSource,/highlightedRows\.push\(newRow\+1\)/,'El resaltado debe abarcar cualquier fila con cantidad juntada');
-assert.match(exporterSource,/tableBorder=.*border.*left style=\\?"thin/,'Toda la tabla resultante debe tener bordes');
+assert.match(exporterSource,/tableBorder=.*FF000000/,'Toda la tabla resultante debe tener bordes negros');
 assert.match(exporterSource,/localeCompare\(rightValue,'es'/,'La planilla debe ordenarse alfabéticamente');
 
 console.log('reposition-export: OK');

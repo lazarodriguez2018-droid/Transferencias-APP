@@ -85,15 +85,27 @@
     return next;
   }
 
+  function repositionPreparedQuantity(item) {
+    const prepared=Math.max(0,Math.trunc(Number(item?.preparado)||0));
+    const orderRequested=Math.max(0,Math.trunc(Number(item?.pedido_clientes)||0));
+    const repoRequested=Math.max(0,Math.trunc(Number(item?.pedido_reposicion==null?item?.pedido:item?.pedido_reposicion)||0));
+    const allocatedToOrders=orderRequested>0?(repoRequested>0?Math.min(prepared,orderRequested):prepared):0;
+    return Math.max(0,prepared-allocatedToOrders);
+  }
+
   function buildProcessedSource(sourceBytes, XLSX, repo, engine, outputType='biff8') {
     if(!sourceBytes)throw new Error('Archivo original no disponible');
     const workbook=XLSX.read(sourceBytes,{type:'array',cellStyles:true,cellFormula:true,cellNF:true,cellDates:true});
     if(!workbook.SheetNames?.length)throw new Error('El archivo original no contiene hojas');
     const name=workbook.SheetNames[0],source=workbook.Sheets[name],columns=findSourceColumns(source,XLSX,engine);
     const range=XLSX.utils.decode_range(source['!ref']||'A1:A1');
+    const qtyDifferentColumn=range.e.c+1;
     const originalItems=new Map((repo.items||[])
       .filter(item=>Number(item.pedido_reposicion==null?item.pedido:item.pedido_reposicion)>0)
       .map(item=>[String(item.codigo||'').trim(),item]));
+    const touchedCodes=new Set((repo.log||[])
+      .filter(event=>['cantidad','invitado_cantidad','cantidad_verificada','no_encontrado','cerrado_incompleto','invitado_no_encontrado'].includes(String(event.accion||'')))
+      .map(event=>String(event.codigo||'').trim()));
     const target={};
     const rowMap=new Map();
     const highlightedRows=[];
@@ -122,12 +134,25 @@
       const item=originalItems.get(sku);
       const highlight=Boolean(item&&Number(item.preparado)>0);
       if(highlight)highlightedRows.push(newRow+1);
-      for(let column=range.s.c;column<=range.e.c;column+=1){
+      for(let column=range.s.c;column<=qtyDifferentColumn;column+=1){
         const sourceAddress=XLSX.utils.encode_cell({r:sourceRow,c:column});
         const sourceCell=source[sourceAddress];
         const targetAddress=XLSX.utils.encode_cell({r:newRow,c:column});
         let targetCell=cloneCell(sourceCell)||{t:'s',v:''};
-        if(sourceRow>columns.rowIndex&&column===columns.calculation){
+        if(column===qtyDifferentColumn){
+          const templateCell=cloneCell(source[XLSX.utils.encode_cell({r:sourceRow,c:columns.qty})]);
+          targetCell=templateCell||{t:'s',v:''};
+          delete targetCell.f;delete targetCell.w;
+          if(sourceRow===columns.rowIndex){
+            targetCell.t='s';targetCell.v='Qty_diferente';
+          }else if(sourceRow>columns.rowIndex&&item){
+            const requested=Math.max(0,Math.trunc(Number(item.pedido_reposicion==null?item.pedido:item.pedido_reposicion)||0));
+            const actual=repositionPreparedQuantity(item);
+            const handled=Number(item.preparado)>0||item.no_encontrado||item.cerrado_incompleto||touchedCodes.has(sku);
+            if(handled&&actual!==requested){targetCell.t='n';targetCell.v=actual;targetCell.w=String(actual);targetCell.z='0';}
+            else{targetCell.t='s';targetCell.v='';}
+          }else{targetCell.t='s';targetCell.v='';}
+        }else if(sourceRow>columns.rowIndex&&column===columns.calculation){
           const excelRow=newRow+1;
           const stockColumn=XLSX.utils.encode_col(columns.stock),qtyColumn=XLSX.utils.encode_col(columns.qty);
           targetCell.f=`+${stockColumn}${excelRow}-${qtyColumn}${excelRow}`;
@@ -139,13 +164,14 @@
       }
     }
 
-    target['!ref']=XLSX.utils.encode_range({s:range.s,e:{r:targetRow-1,c:range.e.c}});
-    target['!autofilter']={ref:XLSX.utils.encode_range({s:{r:columns.rowIndex,c:range.s.c},e:{r:targetRow-1,c:range.e.c}})};
+    target['!ref']=XLSX.utils.encode_range({s:range.s,e:{r:targetRow-1,c:qtyDifferentColumn}});
+    target['!autofilter']={ref:XLSX.utils.encode_range({s:{r:columns.rowIndex,c:range.s.c},e:{r:targetRow-1,c:qtyDifferentColumn}})};
     target['!cols']=(source['!cols']||[]).map(column=>column?{...column}:column);
     [1,4,5,columns.stock].filter((index,position,list)=>index<=range.e.c&&list.indexOf(index)===position).forEach(index=>{
       target['!cols'][index]={...(target['!cols'][index]||{}),hidden:true,level:1,outlineLevel:1};
     });
     target['!cols'][columns.calculation]={...(target['!cols'][columns.calculation]||{}),wch:Math.max(Number(target['!cols'][columns.calculation]?.wch)||0,16)};
+    target['!cols'][qtyDifferentColumn]={...(target['!cols'][qtyDifferentColumn]||{}),wch:16};
     target['!rows']=[];
     for(const [sourceRow,newRow] of rowMap){
       if(source['!rows']?.[sourceRow])target['!rows'][newRow]={...source['!rows'][sourceRow]};
@@ -153,7 +179,7 @@
     workbook.Sheets[name]=target;
     const output=XLSX.write(workbook,{bookType:outputType,type:'array',cellStyles:true});
     output.highlightedRows=highlightedRows;
-    output.tableBounds={startRow:range.s.r+1,endRow:targetRow,startColumn:range.s.c,endColumn:range.e.c};
+    output.tableBounds={startRow:range.s.r+1,endRow:targetRow,startColumn:range.s.c,endColumn:qtyDifferentColumn};
     return output;
   }
 
@@ -180,7 +206,7 @@
     const fillId=Number(fillsMatch[1]);
     const borderId=Number(bordersMatch[1]);
     const yellowFill='<fill><patternFill patternType="solid"><fgColor rgb="FFFFFF00"/><bgColor indexed="64"/></patternFill></fill>';
-    const tableBorder='<border><left style="thin"><color rgb="FFB7C1CE"/></left><right style="thin"><color rgb="FFB7C1CE"/></right><top style="thin"><color rgb="FFB7C1CE"/></top><bottom style="thin"><color rgb="FFB7C1CE"/></bottom><diagonal/></border>';
+    const tableBorder='<border><left style="thin"><color rgb="FF000000"/></left><right style="thin"><color rgb="FF000000"/></right><top style="thin"><color rgb="FF000000"/></top><bottom style="thin"><color rgb="FF000000"/></bottom><diagonal/></border>';
     if(highlightedRows.length)styles=styles.replace(fillsMatch[0],fillsMatch[0].replace(`count="${fillsMatch[1]}"`,`count="${fillId+1}"`).replace('</fills>',`${yellowFill}</fills>`));
     styles=styles.replace(bordersMatch[0],bordersMatch[0].replace(`count="${bordersMatch[1]}"`,`count="${borderId+1}"`).replace('</borders>',`${tableBorder}</borders>`));
     const xfNodes=xfsMatch[2].match(/<xf\b[^>]*(?:\/>|>[\s\S]*?<\/xf>)/g)||[];
