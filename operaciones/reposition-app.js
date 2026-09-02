@@ -14,6 +14,7 @@ const repoProductSearchTimers = new Map();
 const repoOriginalBytesCache = new Map();
 let repoScannerClosingPromise = Promise.resolve();
 let repoScannerGeneration = 0;
+let repoSupervisionMode = false;
 
 const REPO_NOT_FOUND_REASONS = [
   {code:'stock_insuficiente', label:'Stock insuficiente'},
@@ -121,7 +122,7 @@ async function createRepositionSession(url, usuario, requestedName) {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo crear la reposición');
-    await joinReposition(data.reposition_id, data.repo.nombre, url, usuario, data.repo);
+    await joinReposition(data.reposition_id, data.repo.nombre, url, usuario, data.repo, {supervise:true});
     repoParsedSource = null;
     repoSourceBytes = null;
   } catch (error) {
@@ -146,6 +147,7 @@ async function joinReposition(rid, nombre, url, usuario, initialRepo, options = 
       loaded = data.repo;
     }
     repoState = loaded;
+    repoLoadSupervisionMode(options);
     try {
       const pdata = await fetch(`${url}/api/padron`).then(response => response.json());
       if (pdata.padron && pdata.padron.length) {
@@ -155,7 +157,12 @@ async function joinReposition(rid, nombre, url, usuario, initialRepo, options = 
     } catch (error) {}
     repoHydrateStateFromCatalog(repoState);
     await loadBarcodeAssignments();
-    if (repoCanEdit()) await repoClaimNext({render:false,silent:true});
+    if (repoIsSupervising()) {
+      const released = await repoReleaseAssignment(null,{silent:true});
+      if (released !== null) repoClearOwnedAssignments();
+    } else if (repoShouldAutoAssign()) {
+      await repoClaimNext({render:false,silent:true});
+    }
     enterRepositionApp(options);
     connectRepositionSSE();
     startRepoUrgentWatcher();
@@ -197,6 +204,48 @@ function repoViewerClientId() {
   return String(repoState?.viewer_client_id || window.SucanCloud?.clientId || '');
 }
 
+function repoSupervisionStorageKey() {
+  return `sucan_repo_supervision_${String(sessionId || 'unknown')}`;
+}
+
+function repoLoadSupervisionMode(options = {}) {
+  try {
+    if (options.supervise === true) {
+      repoSupervisionMode = true;
+      localStorage.setItem(repoSupervisionStorageKey(),'1');
+      return;
+    }
+    repoSupervisionMode = localStorage.getItem(repoSupervisionStorageKey()) === '1';
+  } catch (_) { repoSupervisionMode = options.supervise === true; }
+}
+
+function repoPersistSupervisionMode() {
+  try { localStorage.setItem(repoSupervisionStorageKey(),repoSupervisionMode ? '1' : '0'); } catch (_) {}
+}
+
+function repoIsSupervising() {
+  return repoSupervisionMode && repoCanEdit();
+}
+
+function repoShouldAutoAssign() {
+  return repoCanEdit() && !repoSupervisionMode;
+}
+
+function repoClearOwnedAssignments() {
+  if (!repoState) return;
+  const clientId = repoViewerClientId();
+  (repoState.items || []).forEach(item => {
+    if (clientId && String(item.asignado_cliente || '') === clientId) {
+      item.asignado_a = '';
+      item.asignado_cliente = '';
+      item.asignado_nombre = '';
+      item.asignado_at = null;
+    }
+  });
+  repoCurrentIndex = repoFindInitialIndex();
+  repoExhausted = false;
+}
+
 function repoItemPending(item) {
   return !!item && ['pendiente','parcial'].includes(SucaneitorReposition.status(item));
 }
@@ -220,7 +269,7 @@ function repoMergeItem(item) {
 }
 
 async function repoClaimProduct(code, options = {}) {
-  if (!window.SucanCloud || !repoCanEdit() || !sessionId) return null;
+  if (!window.SucanCloud || !repoCanEdit() || repoSupervisionMode || !sessionId) return null;
   if (repoClaimInFlight) {
     try { await repoClaimInFlight; } catch (_) {}
     const own = repoState?.items.find(repoItemOwnedByMe);
@@ -260,6 +309,10 @@ function repoClaimNext(options = {}) {
 
 async function repoEnsureClaim(item, options = {}) {
   if (!item || !repoCanEdit()) return false;
+  if (repoSupervisionMode) {
+    if (!options.silent) toast('Este dispositivo está en modo supervisión. Activá “Empezar a recoger” para modificar productos.','i');
+    return false;
+  }
   if (repoItemOwnedByMe(item)) return true;
   const claimed = await repoClaimProduct(item.codigo,options);
   return !!claimed && repoItemOwnedByMe(claimed);
@@ -270,18 +323,52 @@ async function repoHeartbeat() {
   try {
     const response = await repoApi('/api/reposicion/heartbeat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reposition_id:sessionId})});
     if (!response.ok) throw new Error('heartbeat');
+    if (repoIsSupervising()) await repoReleaseAssignment(null,{silent:true});
     setSyncStatus('online');
   } catch (_) { setSyncStatus('offline'); }
 }
 
-async function repoReleaseAssignment(code = null) {
-  if (!window.SucanCloud || !sessionId) return;
+async function repoReleaseAssignment(code = null, options = {}) {
+  if (!window.SucanCloud || !sessionId) return null;
   try {
-    await repoApi('/api/reposicion/release',{
+    const response = await repoApi('/api/reposicion/release',{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({reposition_id:sessionId,codigo:code || null}),keepalive:true
     });
-  } catch (_) {}
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo liberar el producto');
+    return Number(data.released) || 0;
+  } catch (error) {
+    if (!options.silent) toast(error.message || 'No se pudo liberar el producto','e');
+    return null;
+  }
+}
+
+async function toggleRepoSupervisionMode() {
+  if (!repoCanEdit()) return;
+  if (!repoSupervisionMode) {
+    // Cambiar el modo antes de liberar evita que un evento en tiempo real
+    // asigne otro producto durante el breve intervalo de la petición.
+    repoSupervisionMode = true;
+    repoPersistSupervisionMode();
+    const released = await repoReleaseAssignment(null,{silent:false});
+    if (released === null) {
+      repoSupervisionMode = false;
+      repoPersistSupervisionMode();
+      renderRepositionAll();
+      return;
+    }
+    repoClearOwnedAssignments();
+    renderRepositionAll();
+    toast('Modo supervisión activo. Este dispositivo ya no reserva productos.','s');
+    return;
+  }
+  repoSupervisionMode = false;
+  repoPersistSupervisionMode();
+  repoExhausted = false;
+  await repoClaimNext({render:false,silent:true});
+  renderRepositionAll();
+  toast('Este dispositivo volvió a participar del reparto.','s');
 }
 
 async function repoRefreshState({claimIfNeeded = true} = {}) {
@@ -300,7 +387,7 @@ async function repoRefreshState({claimIfNeeded = true} = {}) {
       if (index >= 0) repoExhausted = false;
       if (index < 0 && currentCode != null) index = repoState.items.findIndex(item => String(item.codigo) === String(currentCode));
       repoCurrentIndex = index >= 0 ? index : repoFindInitialIndex();
-      if (claimIfNeeded && repoCanEdit() && !repoState.items.some(repoItemOwnedByMe) && repoState.items.some(repoItemPending)) {
+      if (claimIfNeeded && repoShouldAutoAssign() && !repoState.items.some(repoItemOwnedByMe) && repoState.items.some(repoItemPending)) {
         await repoClaimNext({render:false,silent:true});
       }
       renderRepositionAll();
@@ -337,7 +424,7 @@ function repoHandleRealtime(change) {
       if (kept >= 0) repoCurrentIndex = kept;
     }
     renderRepositionAll();
-    if (repoCanEdit() && !repoState.items.some(repoItemOwnedByMe) && repoState.items.some(repoItemPending)) {
+    if (repoShouldAutoAssign() && !repoState.items.some(repoItemOwnedByMe) && repoState.items.some(repoItemPending)) {
       repoClaimNext({silent:true});
     }
     setSyncStatus('online');
@@ -431,8 +518,10 @@ function showRepoTab(name, options = {}) {
 function renderRepositionAll() {
   if (!repoState) return;
   document.body.classList.toggle('repo-readonly',!repoCanEdit());
+  document.body.classList.toggle('repo-supervising',repoIsSupervising());
   const accessBanner = document.getElementById('repo-access-banner');
   if (accessBanner) accessBanner.classList.toggle('show',repoState.can_edit === false && repoState.estado === 'preparando');
+  renderRepoAssignmentMode();
   document.getElementById('repo-session-title').textContent = repoState.nombre || 'Preparar mercadería';
   document.getElementById('repo-route-badge').textContent = `${repoState.origin} → ${repoState.destination}`;
   document.getElementById('repo-list-count').textContent = repoState.items.length;
@@ -464,6 +553,18 @@ function renderRepoKpis() {
 function repoEncoded(code) { return encodeURIComponent(String(code || '')); }
 function repoDecoded(code) { try { return decodeURIComponent(code); } catch (error) { return String(code || ''); } }
 function repoCanEdit() { return repoState?.estado === 'preparando' && repoState?.can_edit !== false; }
+function renderRepoAssignmentMode() {
+  const button = document.getElementById('repo-assignment-mode-btn');
+  const banner = document.getElementById('repo-supervision-banner');
+  const editable = repoCanEdit();
+  if (button) {
+    button.style.display = editable ? '' : 'none';
+    button.classList.toggle('active',repoIsSupervising());
+    button.textContent = repoIsSupervising() ? 'Empezar a recoger' : 'Solo supervisar';
+    button.setAttribute('aria-pressed',repoIsSupervising() ? 'true' : 'false');
+  }
+  if (banner) banner.classList.toggle('show',repoIsSupervising());
+}
 function requireRepoEditable() {
   if (repoCanEdit()) return true;
   toast(repoState?.estado === 'preparando' ? 'Esta reposición se prepara desde el local de origen. Tu acceso es de consulta.' : 'Esta reposición ya fue enviada y quedó en modo consulta.','w');
@@ -473,7 +574,7 @@ function requireRepoEditable() {
 function renderRepoCurrent() {
   const card = document.getElementById('repo-current-card');
   if (!card || !repoState) return;
-  if (!repoState.items.length || (repoCanEdit() && repoExhausted && !repoState.items.some(repoItemOwnedByMe))) {
+  if (!repoState.items.length || (repoShouldAutoAssign() && repoExhausted && !repoState.items.some(repoItemOwnedByMe))) {
     const pickup = SucaneitorReposition.pickupState(repoState);
     const subtitle = pickup.completed
       ? 'Recorriste todos los productos. Podés revisar cantidades, faltantes y corregir cualquier registro desde la lista completa.'
@@ -507,20 +608,24 @@ function renderRepoCurrent() {
     : '';
   const sourceHtml = (Number(item.pedido_clientes) > 0 || Number(item.pedido_reposicion) > 0) ? `${customerOrderHtml}<div class="repo-order-coverage"><div><span>Reposición automática</span><strong>${Number(item.pedido_reposicion)||0}</strong></div><div><span>Pedido de ${esc(repoState.destination || 'destino')}</span><strong>${Number(item.pedido_clientes)||0}</strong></div><div><span>Total físico</span><strong>${Number(item.pedido)||0}</strong></div></div>${orders.length ? `<div class="repo-client-orders"><strong>Pedidos de clientes:</strong> ${orders.map(order=>`${esc(order.cliente || 'Sin nombre')} ×${Number(order.cantidad)||0}${order.urgente?' · URGENTE':''}`).join(' · ')}</div>` : ''}` : '';
   const verificationHtml = item.requiere_verificacion ? `<div class="repo-status-banner warn" style="margin-top:10px"><strong>Control final pendiente</strong><br>Hay más de una unidad registrada. Antes del envío se pedirá confirmar la cantidad física.</div>` : '';
-  const controls = repoCanEdit() ? `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:9px">
-      <button class="btn btn-p" style="min-height:58px;font-size:16px" onclick="repoFound('${code}')">✓ Encontrado</button>
-      <button class="btn btn-s" style="min-height:58px" onclick="openRepoScanner('requested',true)">▣ Escanear para comprobación</button>
-    </div>
-    <div class="repo-fast"><button class="btn btn-s" onclick="repoChangeQty('${code}',1,'rapido')">+1</button><button class="btn btn-s" onclick="repoAddFive('${code}')">+5</button><button class="btn btn-s" onclick="repoEditQty('${code}')">Editar cantidad</button></div>
-    <div class="repo-inline" style="margin-top:12px"><button class="btn btn-s" onclick="repoMark('${code}','no_encontrado')">No encontrado</button><button class="btn btn-s" onclick="repoMark('${code}','cerrado_incompleto')">Cerrar incompleto</button></div>`
-    : `<div class="app-dialog-product" style="margin-top:14px"><strong>${repoState.estado === 'preparando' ? 'Seguimiento en tiempo real' : 'Preparación cerrada'}</strong><span>${repoState.estado === 'preparando' ? 'El local de origen está preparando esta mercadería. Los cambios aparecerán automáticamente.' : 'Esta mercadería ya fue marcada como enviada. El detalle queda en modo consulta.'}</span></div>`;
+  const sourceDetails = sourceHtml ? `<details class="repo-context-details"><summary>Ver desglose de la solicitud</summary><div class="repo-context-details-body">${sourceHtml}</div></details>` : '';
+  const controls = repoShouldAutoAssign() ? `
+    <div class="repo-primary-decisions" aria-label="Acciones para este producto">
+      <button class="btn repo-decision repo-decision-found" onclick="repoFound('${code}')">✓ Encontrado</button>
+      <button class="btn repo-decision repo-decision-missing" onclick="repoMark('${code}','no_encontrado')">No encontrado</button>
+      <button class="btn repo-decision repo-decision-scan" onclick="openRepoScanner('requested',true)">▣ Escanear para comprobación</button>
+    </div>`
+    : repoIsSupervising()
+      ? `<div class="repo-supervision-note"><strong>Este producto está libre para los colaboradores</strong><span>La PC solo está supervisando y no lo reserva. Si querés juntarlo desde este dispositivo, elegí “Empezar a recoger”.</span></div>`
+      : `<div class="app-dialog-product" style="margin-top:14px"><strong>${repoState.estado === 'preparando' ? 'Seguimiento en tiempo real' : 'Preparación cerrada'}</strong><span>${repoState.estado === 'preparando' ? 'El local de origen está preparando esta mercadería. Los cambios aparecerán automáticamente.' : 'Esta mercadería ya fue marcada como enviada. El detalle queda en modo consulta.'}</span></div>`;
   card.innerHTML = `
     <div class="repo-status-banner ${bannerClass}">${repoCurrentIndex + 1} de ${repoState.items.length} · ${label}</div>
-    <span class="eyebrow">PRODUCTO ACTUAL</span>
-    <h2 class="repo-product-name">${esc(item.nombre)}</h2>
-    <div class="repo-source-name">SKU <strong>${esc(item.codigo)}</strong>${item.barras ? ` · Barras ${esc(item.barras)}` : ' · Sin código de barras en el padrón'}${item.descripcion_archivo && item.descripcion_archivo !== item.nombre ? `<br>Archivo: ${esc(item.descripcion_archivo)}` : ''}</div>
-    <div class="repo-quantities"><div class="repo-quantity"><span>Total físico</span><strong>${item.pedido}</strong></div><div class="repo-quantity"><span>Juntado</span><strong>${item.preparado}</strong></div><div class="repo-quantity pending"><span>Falta</span><strong>${pending}</strong></div></div>${sourceHtml}${reasonHtml}${verificationHtml}
+    <div class="repo-transfer-route"><div class="repo-transfer-stop"><span>Origen</span><strong>${esc(repoState.origin || '—')}</strong></div><span class="repo-transfer-arrow" aria-hidden="true">→</span><div class="repo-transfer-stop"><span>Destino</span><strong>${esc(repoState.destination || '—')}</strong></div></div>
+    <div class="repo-product-identity"><span class="eyebrow">PRODUCTO ACTUAL</span><h2 class="repo-product-name">${esc(item.nombre)}</h2></div>
+    <div class="repo-product-codes"><div class="repo-product-code"><span>Código</span><strong>${esc(item.codigo)}</strong></div><div class="repo-product-code"><span>Código de barras</span><strong>${esc(item.barras || 'No informado')}</strong></div></div>
+    ${item.descripcion_archivo && item.descripcion_archivo !== item.nombre ? `<div class="repo-source-name" style="margin-top:8px">Nombre en archivo: ${esc(item.descripcion_archivo)}</div>` : ''}
+    <div class="repo-pick-target" role="status"><span>Cantidad a juntar ahora</span><strong>${pending}</strong><small>${pending === 1 ? 'unidad pendiente' : 'unidades pendientes'}</small></div>
+    <div class="repo-quantities"><div class="repo-quantity"><span>Solicitado</span><strong>${item.pedido}</strong></div><div class="repo-quantity"><span>Juntado</span><strong>${item.preparado}</strong></div><div class="repo-quantity pending"><span>Falta</span><strong>${pending}</strong></div></div>${sourceDetails}${reasonHtml}${verificationHtml}
     ${controls}`;
 }
 
@@ -627,7 +732,7 @@ async function repoUpdateQuantity(encodedCode, change, source) {
     const index = repoState.items.findIndex(row => String(row.codigo) === code);
     repoState.items[index] = repoHydrateItemFromCatalog(data.item);
     tactileFeedback(24);
-    if (Number(data.item.preparado) >= Number(data.item.pedido) && source !== 'lista') {
+    if (repoShouldAutoAssign() && Number(data.item.preparado) >= Number(data.item.pedido) && source !== 'lista') {
       await repoClaimNext({excludeCode:code,render:false,silent:true});
     }
     renderRepositionAll();
@@ -717,14 +822,14 @@ async function repoMark(encodedCode, field) {
     if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo guardar');
     const index = repoState.items.findIndex(row => String(row.codigo) === code);
     repoState.items[index] = repoHydrateItemFromCatalog(data.item);
-    await repoClaimNext({excludeCode:code,render:false,silent:true});
+    if (repoShouldAutoAssign()) await repoClaimNext({excludeCode:code,render:false,silent:true});
     renderRepositionAll();
   } catch (error) { toast(error.message, 'e'); }
 }
 
 async function repoSelectNext(preferPending, direction = 1) {
   if (!repoState || !repoState.items.length) return;
-  if (preferPending && repoCanEdit() && window.SucanCloud) {
+  if (preferPending && repoShouldAutoAssign() && window.SucanCloud) {
     const current = repoState.items[repoCurrentIndex];
     const claimed = await repoClaimNext({excludeCode:current?.codigo || null,silent:true});
     if (!claimed) toast('No quedan productos disponibles; los restantes pueden estar asignados a otras personas.','i');
@@ -786,7 +891,7 @@ function renderRepoList() {
     const code = repoEncoded(item.codigo);
     const reason = item.motivo_label || item.motivo || '';
     const source = Number(item.pedido_clientes) > 0 ? ` · Repo ${Number(item.pedido_reposicion)||0} · Clientes ${Number(item.pedido_clientes)||0}` : '';
-    const actions=repoCanEdit()?`<div class="repo-row-actions"><button class="btn btn-s" onclick="repoChangeQty('${code}',-1,'lista')">−</button><input class="input repo-qty-input" type="number" min="0" inputmode="numeric" value="${item.preparado}" onchange="repoSetAbsolute('${code}',this.value,'lista')"><button class="btn btn-s" onclick="repoChangeQty('${code}',1,'lista')">+</button></div>`:`<strong>${item.preparado}/${item.pedido}</strong>`;
+    const actions=repoShouldAutoAssign()?`<div class="repo-row-actions"><button class="btn btn-s" onclick="repoChangeQty('${code}',-1,'lista')">−</button><input class="input repo-qty-input" type="number" min="0" inputmode="numeric" value="${item.preparado}" onchange="repoSetAbsolute('${code}',this.value,'lista')"><button class="btn btn-s" onclick="repoChangeQty('${code}',1,'lista')">+</button></div>`:`<strong>${item.preparado}/${item.pedido}</strong>`;
     return `<article class="repo-row ${rowClass}"><div onclick="repoOpenItem('${code}')" style="cursor:pointer"><h3>${esc(item.nombre)}</h3><div class="repo-row-meta">SKU ${esc(item.codigo)} · Total físico ${item.pedido}${source} · Stock archivo ${item.stock_origen} · ${esc(status.replaceAll('_',' '))}${reason ? ` · ${esc(reason)}` : ''}${item.updated_by ? ` · Último cambio: ${esc(item.updated_by)}` : ''}</div></div>${actions}</article>`;
   }).join('') + (rows.length > visibleRows.length ? `<button class="btn btn-s btn-full" onclick="repoShowMoreItems()">Mostrar ${Math.min(200,rows.length-visibleRows.length)} más · quedan ${rows.length-visibleRows.length}</button>` : '') : '<div class="repo-empty">No hay productos para este filtro.</div>';
 }
@@ -1144,9 +1249,7 @@ async function repoGenerateExports(options={}) {
   const files = [
     {type:'main',name:`Remito_Reposicion_${route}.xls`,mime:'application/vnd.ms-excel',buffer:await repoBuildTransfer(SucaneitorReposition.mainTransferRows(repoState))},
     {type:'orders',name:`Remito_Pedidos_${route}.xls`,mime:'application/vnd.ms-excel',buffer:await repoBuildTransfer(SucaneitorReposition.orderTransferRows(repoState))},
-    {type:'extras',name:`Remito_Extras_${route}.xls`,mime:'application/vnd.ms-excel',buffer:await repoBuildTransfer(SucaneitorReposition.extraTransferRows(repoState))},
-    {type:'missing',name:`Faltantes_${route}.xlsx`,mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:await repoBuildMissing()},
-    {type:'summary',name:`Resumen_Reposicion_${route}.xlsx`,mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:await repoBuildSummary()}
+    {type:'extras',name:`Remito_Extras_${route}.xls`,mime:'application/vnd.ms-excel',buffer:await repoBuildTransfer(SucaneitorReposition.extraTransferRows(repoState))}
   ];
   if(options.includeProcessed){
     files.push({type:'processed',name:`Reposicion_Procesada_${route}.xlsx`,mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:await repoBuildProcessedSource()});
@@ -1172,7 +1275,7 @@ async function downloadRepoExport(type) {
     const confirmed = await appConfirm({
       title: 'La reposición todavía tiene faltantes',
       subtitle: `${stats.faltantes} unidades pendientes en ${stats.productos_faltantes} productos.`,
-      message: 'El remito incluirá únicamente las cantidades que ya fueron juntadas. El archivo de faltantes conservará los motivos y comentarios registrados.',
+      message: 'El remito incluirá únicamente las cantidades que ya fueron juntadas. Los motivos y comentarios seguirán visibles en el detalle de faltantes de esta pestaña.',
       icon: '!', tone: 'warning', confirmText: 'Generar igualmente'
     });
     if (!confirmed) return;

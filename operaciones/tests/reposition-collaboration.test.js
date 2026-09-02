@@ -10,6 +10,7 @@ const lifecycleMigration = read('supabase/migrations/20260824130000_reposicion_c
 const cloud = read('operaciones/cloud-api.js');
 const app = read('operaciones/reposition-app.js');
 const html = read('operaciones/index.html');
+const guest = read('operaciones/invitado.js');
 
 // El contrato productivo debe resolver la carrera en PostgreSQL, no sólo en pantalla.
 assert.match(migration,/for update skip locked/i);
@@ -45,7 +46,7 @@ assert.match(cloud,/itemsByRepo\.get\(row\.id\)\|\|\[\]\)\.map\(item=>repoItem\(
 assert.match(cloud,/typeof catalogByCode\?\.get === 'function'/,
   'El enriquecimiento debe tolerar llamadas sin un índice de padrón');
 assert.match(html,/cloud-api\.js\?v=repo-list-fix-v1/);
-assert.match(html,/reposition-app\.js\?v=qr-report-v1/);
+assert.match(html,/reposition-app\.js\?v=supervision-mode-v1/);
 assert.doesNotMatch(html,/repo-dispatch-card|Marcar todo como enviado|Confirmar envío/);
 assert.match(app,/No existen más productos para recoger/);
 assert.match(app,/Ver y modificar toda la lista/);
@@ -57,6 +58,18 @@ assert.match(lifecycleMigration,/create or replace function public\.op_eliminar_
 assert.match(lifecycleMigration,/estado=case when t\.solicitada>0 and t\.preparada>=t\.solicitada then 'listo'/);
 assert.match(lifecycleMigration,/p\.estado in \('aceptado','listo'\)/,
   'El despacho debe incluir los pedidos que ya pasaron automáticamente a Listo');
+
+// La PC que crea la reposición puede coordinar sin reservar un producto.
+assert.match(app,/joinReposition\(data\.reposition_id, data\.repo\.nombre, url, usuario, data\.repo, \{supervise:true\}\)/,
+  'La PC creadora debe iniciar como supervisora');
+assert.match(app,/async function toggleRepoSupervisionMode\(\)/);
+assert.match(app,/function repoShouldAutoAssign\(\)/);
+assert.match(app,/if \(repoIsSupervising\(\)\) await repoReleaseAssignment/,
+  'El heartbeat no debe conservar una reserva accidental en la PC supervisora');
+assert.match(html,/id="repo-assignment-mode-btn"/);
+assert.match(html,/id="repo-supervision-banner"/);
+assert.match(guest,/operate\('repo_claim'/,
+  'Los invitados por QR deben conservar el reparto automático de productos');
 
 // Simulación determinista del resultado esperado con muchos dispositivos.
 class Coordinator {
