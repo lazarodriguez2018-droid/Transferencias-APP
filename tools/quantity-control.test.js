@@ -67,7 +67,7 @@ assert.doesNotMatch(countExportBody,/openInventoryQuantityVerification/,'El cont
 assert.match(inventory,/Confirmar \$\{quantity\}/,'El modal de inventario debe mostrar la cantidad exacta');
 assert.match(guest,/pending=Math\.max\(0,num\(item\?\.requested\)-current\)/,'El invitado debe calcular la cantidad pendiente');
 assert.match(guest,/saveRepoQuantity\(code,current\+value\)/,'El invitado debe sumar lo pendiente sin reemplazar el total acumulado');
-assert.match(operationsHtml,/reposition-app\.js\?v=shared-files-v1/,'La sesión normal debe invalidar el JavaScript anterior');
-assert.match(guestHtml,/invitado\.js\?v=visitor-finder-v1/,'La sesión QR debe invalidar el JavaScript anterior');
+assert.match(operationsHtml,/reposition-app\.js\?v=user-copy-v1/,'La sesión normal debe invalidar el JavaScript anterior');
+assert.match(guestHtml,/invitado\.js\?v=user-copy-v1/,'La sesión QR debe invalidar el JavaScript anterior');
 
 console.log('quantity-control: OK');

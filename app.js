@@ -808,7 +808,7 @@ document.querySelectorAll('[id^="view-"]').forEach(v=>v.style.display='none');
 const ve=el('view-'+view); if(ve) ve.style.display='block';
 const ni=el('nav-'+view); if(ni) ni.classList.add('active');
 const titles={
-hub:'Módulos',dashboard:'Dashboard',misPedidos:'Pedidos de mi local',paraEnviar:'Pedidos a despachar',
+hub:'Módulos',dashboard:'Resumen de pedidos',misPedidos:'Pedidos de mi local',paraEnviar:'Pedidos a despachar',
 historial:'Historial',misConsultas:'Mis Consultas',chats:'Chats',agenda:'Agenda',
 perfil:'Mi Perfil',usuarios:'Usuarios',sugerencias:'Sugerencias',config:'Configuración'
 };
@@ -1069,7 +1069,7 @@ q = q.or('origen_local.eq.'+local+',destino_local.eq.'+local);
 }
 const {data,error}=await q.limit(2000);
 if(error){
-notify('No se pudo cargar el dashboard: '+error.message,'error');
+notify('No se pudo cargar el resumen de pedidos: '+error.message,'error');
 return [];
 }
 return data || [];
@@ -1149,7 +1149,7 @@ function renderMetricList(targetId, rows){
 const target = el(targetId);
 if(!target) return;
 if(!rows.length){
-target.innerHTML='<div class="empty-state"><div class="icon">📦</div><p>No hay datos para el periodo</p></div>';
+target.innerHTML='<div class="empty-state"><div class="icon">📦</div><p>No hay datos para el período seleccionado.</p></div>';
 return;
 }
 const max = Math.max(...rows.map(r=>r.value),1);
@@ -1185,20 +1185,20 @@ function renderDashboardBuffer(recs, selectedLocal){
 const target=el('dash-buffer');
 if(!target) return;
 if(!selectedLocal){
-target.innerHTML='<div class="dashboard-note">Elegir un local arriba permite ver que productos conviene reforzar. La recomendacion usa la demanda del periodo y calcula un buffer sugerido para 10 dias.</div>';
+target.innerHTML='<div class="dashboard-note">Elegí un local para estimar cuántas unidades cubrirían 10 días de pedidos. Esta referencia no descuenta el stock disponible.</div>';
 return;
 }
 if(!recs.length){
-target.innerHTML='<div class="empty-state"><div class="icon">✅</div><p>No hay demanda suficiente para recomendar buffer en '+escHtml(selectedLocal)+'</p></div>';
+target.innerHTML='<div class="empty-state"><div class="icon">✅</div><p>No hay pedidos suficientes para estimar el stock de '+escHtml(selectedLocal)+'</p></div>';
 return;
 }
 target.innerHTML=recs.map(r=>
 '<div class="buffer-card '+r.level+'">'+
  '<div class="buffer-title">'+escHtml(r.nombre)+'</div>'+
  '<div class="buffer-meta">'+
-  'Pedido en el periodo: <strong>'+r.selectedUnits+' un.</strong><br>'+
+  'Solicitado en el período: <strong>'+r.selectedUnits+' un.</strong><br>'+
   'Promedio diario: <strong>'+r.daily.toFixed(1)+' un.</strong><br>'+
-  'Sugerencia: aumentar buffer a <strong>'+r.suggested+' un.</strong> para cubrir 10 dias.'+
+  'Referencia para 10 días: <strong>'+r.suggested+' un.</strong>. Revisá el stock disponible antes de reponer.'+
  '</div>'+
 '</div>').join('');
 }
@@ -1207,7 +1207,7 @@ function renderDashboardRisk(orders){
 const target=el('dash-risk');
 if(!target) return;
 if(!orders.length){
-target.innerHTML='<div class="empty-state"><div class="icon">✅</div><p>No hay pedidos con riesgo</p></div>';
+target.innerHTML='<div class="empty-state"><div class="icon">✅</div><p>No hay pedidos para revisar con estos filtros.</p></div>';
 return;
 }
 target.innerHTML='<div class="risk-list">'+orders.map(o=>{
@@ -2735,7 +2735,7 @@ let body='';
 if(token){
 body='<div class="public-link-share"><div class="public-link-qr" id="public-link-qr"></div><div><div class="public-link-url">'+escHtml(url)+'</div><div class="public-link-actions"><button class="btn btn-primary btn-sm" onclick="copyPublicOrderLink()">Copiar</button><button class="btn btn-ghost btn-sm" onclick="sharePublicOrderLink()">Compartir</button><button class="btn btn-ghost btn-sm" onclick="togglePublicOrderLink()">'+(active?'Pausar':'Reactivar')+'</button><button class="btn btn-warning btn-sm" onclick="regeneratePublicOrderLink()">Regenerar</button></div></div></div>';
 }else{
-body='<div class="public-link-warning"><strong>Este enlace fue creado en otro dispositivo.</strong><br>Por seguridad el token no se guarda en Supabase. Regeneralo para copiarlo y mostrar su QR en esta computadora.</div><button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="regeneratePublicOrderLink()">Generar un enlace nuevo</button>';
+body='<div class="public-link-warning"><strong>Este enlace fue creado en otro dispositivo.</strong><br>Abrilo en el dispositivo donde se generó o creá un enlace nuevo. Si lo reemplazás, el enlace y el QR anteriores dejarán de funcionar.</div><button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="regeneratePublicOrderLink()">Generar un enlace nuevo</button>';
 }
 panel.innerHTML='<div class="public-link-card"><div class="public-link-status"><div><strong>'+escHtml(local.nombre||'Local')+'</strong><span>Creado '+fmtDateTime(status.created_at)+'</span></div><span class="public-link-pill '+(active?'':'paused')+'">'+(active?'ACTIVO':'PAUSADO')+'</span></div>'+body+'</div>';
 if(token&&window.QRCode){const qr=el('public-link-qr');new QRCode(qr,{text:url,width:132,height:132,colorDark:'#111119',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});}
@@ -2791,7 +2791,7 @@ return;
 }
 if(!usable){
 clearOrderTrackingSecret(orderId);
-panel.innerHTML='<div class="tracking-share-warning"><div><strong>El pedido tiene seguimiento, pero el enlace fue generado en otro dispositivo.</strong><span>Por seguridad no se puede recuperar el token original. Podés reemplazarlo por uno nuevo.</span></div><button class="btn btn-warning btn-sm" onclick="confirmRegenerateOrderTracking(\''+orderId+'\')">Generar enlace nuevo</button></div>';
+panel.innerHTML='<div class="tracking-share-warning"><div><strong>El pedido tiene seguimiento, pero el enlace fue generado en otro dispositivo.</strong><span>Abrilo en el dispositivo donde se generó o creá uno nuevo. El enlace anterior dejará de funcionar si lo reemplazás.</span></div><button class="btn btn-warning btn-sm" onclick="confirmRegenerateOrderTracking(\''+orderId+'\')">Generar enlace nuevo</button></div>';
 return;
 }
 const url=orderTrackingUrl(saved.token);
@@ -3282,7 +3282,7 @@ const parsed=window.SucaneitorBarcode.parseCatalogRows(rows);
 if(!parsed.ok) return notify(parsed.error,'error');
 const stats=parsed.stats;
 const duplicateText=stats.duplicateBarcodes
-?'<br><strong>'+stats.duplicateBarcodes+'</strong> códigos están compartidos por variantes; al escanear se pedirá elegir el SKU.'
+?'<br><strong>'+stats.duplicateBarcodes+'</strong> códigos están compartidos por variantes; al escanear tendrás que elegir el producto.'
 :'';
 showConfirm(
 'Archivo: <strong>'+escHtml(f.name)+'</strong><br><br>'+
@@ -4363,7 +4363,7 @@ if(childError) throw childError;
 }
 if(deleteError) throw deleteError;
 if(!deletedCount){
-throw new Error('El pedido no se eliminó (0 filas afectadas). Verificá políticas RLS para DELETE en pedidos.');
+throw new Error('No se pudo eliminar el pedido. Actualizá la lista e intentá nuevamente. Si el problema continúa, consultá al administrador.');
 }
 
 await closeModal('modal-detalle');

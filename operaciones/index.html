@@ -657,7 +657,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
     <div style="text-align:center;margin-bottom:28px">
       <img src="sucan_logo.png" alt="Sucaneitor" style="height:90px;width:auto;object-fit:contain;margin-bottom:8px">
       <div style="font-size:24px;font-weight:700;color:var(--accent)">Sucaneitor <span id="session-module-name" style="color:var(--accent)">Inventario</span></div>
-      <div id="session-module-subtitle" style="font-size:13px;color:var(--muted);margin-top:4px">Sistema de conteo colaborativo</div>
+      <div id="session-module-subtitle" style="font-size:13px;color:var(--muted);margin-top:4px">Contá la mercadería junto con tu equipo.</div>
       <a class="btn btn-s btn-sm" href="/" style="margin-top:12px">← Volver al inicio</a>
     </div>
 
@@ -747,7 +747,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
   <div class="tab" onclick="showTab('lista')" id="tab-lista">
     <span class="tab-icon">☷</span><span>Lista</span> <span class="tab-cnt" id="lista-cnt">0</span>
   </div>
-  <div class="tab" onclick="showTab('dashboard')" id="tab-dashboard"><span class="tab-icon">▦</span><span>Dashboard</span></div>
+  <div class="tab" onclick="showTab('dashboard')" id="tab-dashboard"><span class="tab-icon">▦</span><span>Resumen</span></div>
   <div class="tab" onclick="showTab('analisis')" id="tab-analisis"><span class="tab-icon">⌁</span><span>Análisis</span></div>
   <div class="tab" onclick="showTab('config')" id="tab-config"><span class="tab-icon">⚙</span><span>Config.</span></div>
 </div>
@@ -771,19 +771,19 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
 <div class="page repo-page" id="repo-page-preparar">
   <div class="page-heading"><div><span class="eyebrow">REPOSICIÓN COLABORATIVA</span><h1 id="repo-session-title">Preparar mercadería</h1><p><span id="repo-route-badge" class="repo-route">— → —</span></p></div><div class="heading-actions"><button class="btn btn-s repo-assignment-mode" id="repo-assignment-mode-btn" type="button" onclick="toggleRepoSupervisionMode()" aria-pressed="false">Solo supervisar</button><button class="btn btn-s repo-picking-only" onclick="repoSelectNext(true)">Siguiente →</button></div></div>
   <div class="repo-access-banner" id="repo-access-banner"><strong>Modo consulta</strong>Esta reposición pertenece al local de origen. Podés seguir su avance y descargar reportes, pero solamente el origen o un administrador puede modificar cantidades.</div>
-  <div class="repo-supervision-banner" id="repo-supervision-banner"><div class="repo-supervision-icon" aria-hidden="true">◎</div><div><strong>Modo supervisión activo</strong><span>Este dispositivo no se asigna productos. Los celulares e invitados pueden tomar toda la reposición.</span></div><button class="btn btn-s" type="button" onclick="toggleRepoSupervisionMode()">Empezar a recoger</button></div>
+  <div class="repo-supervision-banner" id="repo-supervision-banner"><div class="repo-supervision-icon" aria-hidden="true">◎</div><div><strong>Modo supervisión activo</strong><span>Podés seguir el avance sin reservar productos. Para juntar mercadería, elegí “Empezar a recoger”.</span></div><button class="btn btn-s" type="button" onclick="toggleRepoSupervisionMode()">Empezar a recoger</button></div>
   <div id="repo-kpis-preparar" class="repo-kpis"></div>
   <div class="repo-workspace">
     <section class="card repo-current" id="repo-current-card"><div class="repo-empty">Cargando el primer producto…</div></section>
     <aside class="repo-tools">
       <section class="card repo-tool repo-edit-only repo-picking-only">
-        <div class="card-title">Lector USB o código manual</div>
+        <div class="card-title">Comprobar código de barras</div>
         <div class="repo-inline"><input id="repo-barcode-input" class="input barcode" inputmode="numeric" autocomplete="off" placeholder="Código de barras"><button class="btn btn-s" onclick="submitRepoBarcode()">Comprobar</button></div>
-        <p class="repo-manual-code-note">En PC podés usar un lector conectado o escribir el código. La cámara se abre desde la tarjeta del producto.</p>
+        <p class="repo-manual-code-note">Usá un lector o escribí el código. Para usar la cámara, elegí “Escanear para comprobación”.</p>
       </section>
       <section class="card repo-tool">
-        <div class="card-title">Buscar por nombre o SKU</div>
-        <input id="repo-search-input" class="input" type="search" autocomplete="off" placeholder="Ej: bio cach med" oninput="searchRepoProducts(this.value,'requested')">
+        <div class="card-title">Buscar por nombre o código</div>
+        <input id="repo-search-input" class="input" type="search" autocomplete="off" placeholder="Nombre, código o código de barras" oninput="searchRepoProducts(this.value,'requested')">
         <div id="repo-search-results" class="repo-search-results"></div>
       </section>
       <section class="card repo-tool repo-picking-only"><div class="card-title">Recorrido</div><div class="repo-inline"><button class="btn btn-s" onclick="repoSelectNext(false,-1)">← Anterior</button><button class="btn btn-s" onclick="repoSelectNext(false,1)">Saltar →</button></div><div class="tm mt2">Saltar no modifica el producto. Podés volver desde la lista.</div></section>
@@ -793,12 +793,12 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
 
 <!-- ===== REPOSICIÓN: LISTA ===== -->
 <div class="page repo-page" id="repo-page-lista">
-  <div class="page-heading"><div><span class="eyebrow">CONTROL COMPLETO</span><h1>Lista de productos</h1><p>Consultá y modificá la reposición, los pedidos de clientes y los productos agregados aparte.</p></div></div>
+  <div class="page-heading"><div><span class="eyebrow">CONTROL COMPLETO</span><h1>Lista de productos</h1><p>Elegí un producto para revisar o corregir la cantidad juntada. En Extra encontrás los pedidos de clientes y los productos agregados aparte.</p></div></div>
   <div id="repo-kpis-lista" class="repo-kpis"></div>
   <div class="repo-list-switch" role="tablist" aria-label="Tipo de lista"><button class="active" id="repo-list-section-reposition" type="button" role="tab" aria-selected="true" onclick="showRepoListSection('reposition')">Reposición <small id="repo-reposition-sub-count">0</small></button><button id="repo-list-section-extra" type="button" role="tab" aria-selected="false" onclick="showRepoListSection('extra')">Extra <small id="repo-extra-sub-count">0</small></button></div>
   <section class="repo-list-pane" id="repo-list-pane-reposition" role="tabpanel">
     <div class="repo-list-toolbar"><input id="repo-list-search" class="input" type="search" placeholder="Buscar por nombre, código o barras" oninput="renderRepoList()"></div>
-    <div class="repo-status-filters" id="repo-status-filters"><span>Estados visibles</span><label class="repo-status-check"><input type="checkbox" value="pending" checked onchange="renderRepoList()">Pendiente</label><label class="repo-status-check"><input type="checkbox" value="partial" checked onchange="renderRepoList()">Parcial</label><label class="repo-status-check"><input type="checkbox" value="complete" checked onchange="renderRepoList()">Completo</label><label class="repo-status-check"><input type="checkbox" value="over" checked onchange="renderRepoList()">Excedido</label><label class="repo-status-check"><input type="checkbox" value="not_found" checked onchange="renderRepoList()">No encontrado</label><button class="btn btn-s repo-list-reset" type="button" onclick="repoResetStatusFilters()">Mostrar todos</button></div>
+    <div class="repo-status-filters" id="repo-status-filters"><span>Filtrar por estado (podés marcar varios)</span><label class="repo-status-check"><input type="checkbox" value="pending" checked onchange="renderRepoList()">Pendiente</label><label class="repo-status-check"><input type="checkbox" value="partial" checked onchange="renderRepoList()">Parcial</label><label class="repo-status-check"><input type="checkbox" value="complete" checked onchange="renderRepoList()">Completo</label><label class="repo-status-check"><input type="checkbox" value="over" checked onchange="renderRepoList()">Excedido</label><label class="repo-status-check"><input type="checkbox" value="not_found" checked onchange="renderRepoList()">No encontrado</label><button class="btn btn-s repo-list-reset" type="button" onclick="repoResetStatusFilters()">Mostrar todos</button></div>
     <div id="repo-items-list" class="repo-list"></div>
   </section>
   <section class="repo-list-pane" id="repo-list-pane-extra" role="tabpanel" hidden>
@@ -810,21 +810,21 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
 
 <!-- ===== REPOSICIÓN: RESUMEN ===== -->
 <div class="page repo-page" id="repo-page-resumen">
-  <div class="page-heading"><div><span class="eyebrow">CIERRE Y ARCHIVOS</span><h1>Resumen de reposición</h1><p>Podés descargar cada informe o un paquete completo.</p></div></div>
+  <div class="page-heading"><div><span class="eyebrow">CIERRE Y ARCHIVOS</span><h1>Resumen de reposición</h1><p>Revisá las cantidades y los faltantes antes de descargar o compartir los archivos.</p></div></div>
   <div id="repo-kpis-resumen" class="repo-kpis"></div>
   <div class="dashboard-grid">
     <section class="card"><div class="panel-head"><div><div class="card-title">Estado del trabajo</div><h2 id="repo-summary-status">—</h2></div><div class="panel-icon">✓</div></div><div id="repo-summary-detail" class="panel-copy"></div><div id="repo-participants" class="repo-participants"></div></section>
-    <section class="card"><div class="panel-head"><div><div class="card-title">Archivos finales</div><h2>Descargas verificables</h2></div><div class="panel-icon">⇩</div></div><p class="panel-copy">Reposición automática, pedidos de clientes y extras se exportan sin duplicar unidades.</p><div class="repo-export-grid"><button class="btn btn-s" onclick="downloadRepoExport('main')">Remito reposición (.xls)</button><button class="btn btn-s" onclick="downloadRepoExport('orders')">Remito pedidos (.xls)</button><button class="btn btn-s" onclick="downloadRepoExport('extras')">Remito extras (.xls)</button><button class="btn btn-s" onclick="downloadRepoExport('processed')">Planilla procesada y marcada</button><button class="btn btn-p" style="grid-column:1/-1" onclick="downloadRepoExport('package')">Descargar paquete completo (.zip)</button></div></section>
+    <section class="card"><div class="panel-head"><div><div class="card-title">Archivos finales</div><h2>Remitos y planillas</h2></div><div class="panel-icon">⇩</div></div><p class="panel-copy">Elegí el remito que necesitás o descargá todos los archivos juntos. Cada remito incluye las unidades juntadas que le corresponden.</p><div class="repo-export-grid"><button class="btn btn-s" onclick="downloadRepoExport('main')">Remito reposición (.xls)</button><button class="btn btn-s" onclick="downloadRepoExport('orders')">Remito pedidos (.xls)</button><button class="btn btn-s" onclick="downloadRepoExport('extras')">Remito extras (.xls)</button><button class="btn btn-s" onclick="downloadRepoExport('processed')">Planilla con cantidades y marcas</button><button class="btn btn-p" style="grid-column:1/-1" onclick="downloadRepoExport('package')">Descargar paquete completo (.zip)</button></div></section>
   </div>
   <section class="card"><div class="panel-head compact"><div><div class="card-title">Detalle de faltantes</div><h2>Todo lo pedido que aún no se juntó</h2></div></div><div id="repo-missing-list" class="repo-list"></div></section>
 </div>
 
 <!-- ===== REPOSICIÓN: CONFIG ===== -->
 <div class="page repo-page" id="repo-page-config">
-  <div class="page-heading"><div><span class="eyebrow">CONFIGURACIÓN COMPARTIDA</span><h1>Configuración</h1><p>El padrón es el mismo que utiliza Inventario.</p></div></div>
+  <div class="page-heading"><div><span class="eyebrow">CONFIGURACIÓN COMPARTIDA</span><h1>Configuración</h1><p>El padrón reúne los productos disponibles para todos los módulos.</p></div></div>
   <section class="card"><div class="card-title">Sesión activa</div><div id="repo-config-session"></div><button class="btn btn-s mt2" onclick="cambiarSesion()">Cambiar sesión o módulo</button></section>
-  <section class="card" id="repo-padron-upload"><div class="card-title">Padrón de mercaderías</div><p class="tm mb2">Solo supervisores. Se comprobarán Código, Código de Barras y Nombre antes de reemplazar el padrón compartido.</p><div class="upzone" onclick="document.getElementById('repo-padron-file').click()"><div class="icon">📋</div><p><strong>Cargar nuevo padrón global</strong><br>.xls o .xlsx</p></div><input type="file" id="repo-padron-file" accept=".xls,.xlsx" style="display:none" onchange="loadPadron(this)"><div id="repo-padron-status" class="tm mt2"></div></section>
-  <section class="card"><div class="card-title">Archivo original</div><p class="tm">La planilla cargada queda conservada con el historial de esta reposición.</p><button class="btn btn-s mt2" onclick="downloadRepoOriginal()">Descargar archivo original</button></section>
+  <section class="card" id="repo-padron-upload"><div class="card-title">Padrón de mercaderías</div><p class="tm mb2">Solo supervisores: cargá una planilla con Código, Código de Barras y Nombre. Reemplazará el padrón de todos los módulos.</p><div class="upzone" onclick="document.getElementById('repo-padron-file').click()"><div class="icon">📋</div><p><strong>Reemplazar padrón</strong><br>.xls o .xlsx</p></div><input type="file" id="repo-padron-file" accept=".xls,.xlsx" style="display:none" onchange="loadPadron(this)"><div id="repo-padron-status" class="tm mt2"></div></section>
+  <section class="card"><div class="card-title">Archivo original</div><p class="tm">Descargá la planilla original, tal como se cargó al crear esta reposición.</p><button class="btn btn-s mt2" onclick="downloadRepoOriginal()">Descargar archivo original</button></section>
 </div>
 
 <div id="repo-camera-modal" class="repo-camera-modal">
@@ -855,26 +855,26 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
 
 <!-- ===== RECEPCIÓN: LISTA ===== -->
 <div class="page receipt-page" id="receipt-page-lista">
-  <div class="page-heading"><div><span class="eyebrow">TODO EL REMITO</span><h1>Productos esperados</h1><p>Las cantidades se actualizan en tiempo real entre todos los usuarios.</p></div></div>
+  <div class="page-heading"><div><span class="eyebrow">TODO EL REMITO</span><h1>Productos esperados</h1><p>Consultá las cantidades registradas por el equipo y elegí un producto para revisar su recepción.</p></div></div>
   <div id="receipt-kpis-lista" class="repo-kpis"></div>
-  <div class="repo-list-toolbar"><input id="receipt-list-search" class="input" type="search" placeholder="Filtrar por nombre o SKU" oninput="renderReceiptList()"><select id="receipt-list-filter" class="input repo-filter" onchange="renderReceiptList()"><option value="all">Toda la lista</option><option value="pending">Pendientes o parciales</option><option value="exact">Recepciones confirmadas</option><option value="short">Con faltantes</option><option value="over">Con excedentes</option><option value="not_received">No recibidos</option></select></div>
+  <div class="repo-list-toolbar"><input id="receipt-list-search" class="input" type="search" placeholder="Filtrar por nombre o código" oninput="renderReceiptList()"><select id="receipt-list-filter" class="input repo-filter" onchange="renderReceiptList()"><option value="all">Toda la lista</option><option value="pending">Pendientes o parciales</option><option value="exact">Recepciones confirmadas</option><option value="short">Con faltantes</option><option value="over">Con excedentes</option><option value="not_received">No recibidos</option></select></div>
   <div id="receipt-items-list" class="repo-list"></div>
 </div>
 
 <!-- ===== RECEPCIÓN: EXTRAS ===== -->
 <div class="page receipt-page" id="receipt-page-extras">
   <div class="page-heading"><div><span class="eyebrow">FUERA DEL REMITO</span><h1>Productos extra recibidos</h1><p>Mercadería que llegó físicamente, pero no figura en el documento.</p></div><div class="heading-actions receipt-edit-only"><button class="btn btn-p" onclick="openReceiptScanner('extra')">▣ Escanear extra</button></div></div>
-  <section class="card receipt-edit-only"><div class="card-title">Buscar por nombre, SKU o barras</div><input id="receipt-extra-search" class="input" type="search" autocomplete="off" placeholder="Buscar producto extra" onfocus="searchReceiptProducts(this.value,'extra')" oninput="searchReceiptProducts(this.value,'extra')"><div id="receipt-extra-results" class="repo-search-results"></div></section>
+  <section class="card receipt-edit-only"><div class="card-title">Buscar por nombre, código o barras</div><input id="receipt-extra-search" class="input" type="search" autocomplete="off" placeholder="Buscar producto extra" onfocus="searchReceiptProducts(this.value,'extra')" oninput="searchReceiptProducts(this.value,'extra')"><div id="receipt-extra-results" class="repo-search-results"></div></section>
   <div id="receipt-extras-list" class="repo-list"></div>
 </div>
 
 <!-- ===== RECEPCIÓN: RESUMEN ===== -->
 <div class="page receipt-page" id="receipt-page-resumen">
-  <div class="page-heading"><div><span class="eyebrow">CIERRE DEL CONTROL</span><h1>Resumen de recepción</h1><p>El cierre puede realizarse con diferencias; la aplicación mostrará una advertencia.</p></div></div>
+  <div class="page-heading"><div><span class="eyebrow">CIERRE DEL CONTROL</span><h1>Resumen de recepción</h1><p>Revisá los faltantes, los sobrantes y los productos pendientes antes de cerrar la recepción.</p></div></div>
   <div id="receipt-kpis-resumen" class="repo-kpis"></div>
   <div class="dashboard-grid">
     <section class="card"><div class="panel-head"><div><div class="card-title">Estado</div><h2 id="receipt-summary-status">—</h2></div><div class="panel-icon">⌕</div></div><div id="receipt-summary-detail" class="panel-copy"></div><div id="receipt-participants" class="repo-participants"></div></section>
-    <section class="card"><div class="panel-head"><div><div class="card-title">Informe final</div><h2>Control verificable</h2></div><div class="panel-icon">⇩</div></div><p class="panel-copy">El informe analiza todo. Los archivos para el ERP se separan entre mercadería recibida dentro del remito y productos extra.</p><div class="repo-export-grid"><button class="btn btn-p" onclick="downloadReceiptTransfer('received')">Remito recibido (.xls)</button><button class="btn btn-s" onclick="downloadReceiptTransfer('extras')">Remito extras (.xls)</button><button class="btn btn-s" onclick="downloadReceptionReport()">Informe de control (.xlsx)</button><button class="btn btn-s" onclick="downloadReceptionOriginal()">Remito original</button></div></section>
+    <section class="card"><div class="panel-head"><div><div class="card-title">Informe final</div><h2>Remitos e informe de recepción</h2></div><div class="panel-icon">⇩</div></div><p class="panel-copy">Descargá por separado la mercadería del remito y los extras recibidos. El informe de control incluye las diferencias, los pedidos de clientes y el historial de cambios.</p><div class="repo-export-grid"><button class="btn btn-p" onclick="downloadReceiptTransfer('received')">Remito recibido (.xls)</button><button class="btn btn-s" onclick="downloadReceiptTransfer('extras')">Remito extras (.xls)</button><button class="btn btn-s" onclick="downloadReceptionReport()">Informe de control (.xlsx)</button><button class="btn btn-s" onclick="downloadReceptionOriginal()">Remito original</button></div></section>
   </div>
   <section class="card" id="receipt-orders-card"><div class="panel-head compact"><div><div class="card-title">Pedidos entre locales</div><h2>Productos destinados a clientes</h2></div></div><div id="receipt-orders-list" class="receipt-orders-list"></div></section>
   <section class="card receipt-edit-only" id="receipt-close-card"><div class="panel-head"><div><div class="card-title">Finalizar</div><h2>Cerrar control del remito</h2></div><div class="panel-icon">✓</div></div><p class="panel-copy">Al cerrar, los pedidos vinculados quedarán completos o incompletos según las cantidades recibidas.</p><button class="btn btn-p" id="receipt-close-button" onclick="closeReceptionFlow()">Cerrar recepción</button></section>
@@ -882,9 +882,9 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
 
 <!-- ===== RECEPCIÓN: CONFIG ===== -->
 <div class="page receipt-page" id="receipt-page-config">
-  <div class="page-heading"><div><span class="eyebrow">DATOS DEL CONTROL</span><h1>Configuración</h1><p>El padrón es el mismo que utilizan Inventario y Reposición.</p></div></div>
+  <div class="page-heading"><div><span class="eyebrow">DATOS DEL CONTROL</span><h1>Configuración</h1><p>El padrón reúne los productos disponibles para todos los módulos.</p></div></div>
   <section class="card"><div class="card-title">Recepción activa</div><div id="receipt-config-session"></div><button class="btn btn-s mt2" onclick="cambiarSesion()">Cambiar recepción o módulo</button></section>
-  <section class="card" id="receipt-padron-upload"><div class="card-title">Padrón de mercaderías</div><p class="tm mb2">Solo supervisores. El cambio se comparte con todos los módulos.</p><div class="upzone" onclick="document.getElementById('receipt-padron-file').click()"><div class="icon">📋</div><p><strong>Cargar nuevo padrón global</strong><br>.xls o .xlsx</p></div><input type="file" id="receipt-padron-file" accept=".xls,.xlsx" style="display:none" onchange="loadPadron(this)"><div id="receipt-padron-status" class="tm mt2"></div></section>
+  <section class="card" id="receipt-padron-upload"><div class="card-title">Padrón de mercaderías</div><p class="tm mb2">Solo supervisores: reemplazar el padrón actualiza los productos disponibles en todos los módulos.</p><div class="upzone" onclick="document.getElementById('receipt-padron-file').click()"><div class="icon">📋</div><p><strong>Reemplazar padrón</strong><br>.xls o .xlsx</p></div><input type="file" id="receipt-padron-file" accept=".xls,.xlsx" style="display:none" onchange="loadPadron(this)"><div id="receipt-padron-status" class="tm mt2"></div></section>
 </div>
 
 <div id="receipt-camera-modal" class="repo-camera-modal">
@@ -968,7 +968,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
 <!-- ===== DASHBOARD ===== -->
 <div class="page" id="page-dashboard">
   <div class="page-heading">
-    <div><span class="eyebrow">CONTROL CENTRAL</span><h1>Dashboard de inventario</h1><p>Balance, reportes y correcciones de códigos en un solo lugar.</p></div>
+    <div><span class="eyebrow">CONTROL CENTRAL</span><h1>Resumen de inventario</h1><p>Balance, reportes y correcciones de códigos en un solo lugar.</p></div>
   </div>
   <div class="dashboard-stats">
     <div class="metric"><span>Productos contados</span><strong id="d-items">0</strong></div>
@@ -993,7 +993,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
 
     <section class="card panel-card">
       <div class="panel-head"><div><div class="card-title">Actualización del padrón</div><h2>Códigos de barras</h2></div><span class="panel-icon">▤</span></div>
-      <p class="panel-copy">Asignaciones confirmadas desde celulares, compartidas con todas las sesiones.</p>
+      <p class="panel-copy">Revisá los códigos de barras registrados por el equipo y descargá el detalle con sus fotos.</p>
       <div class="mini-metrics">
         <div><strong id="ba-pending">0</strong><span>Pendientes</span></div>
         <div><strong id="ba-incorporated">0</strong><span>Incorporados</span></div>
@@ -1007,7 +1007,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
   </div>
 
   <section class="card panel-card">
-    <div class="panel-head compact"><div><div class="card-title">Trazabilidad</div><h2>Correcciones registradas</h2></div><button class="btn btn-s btn-sm" onclick="loadBarcodeAssignments()">Actualizar</button></div>
+    <div class="panel-head compact"><div><div class="card-title">Historial de cambios</div><h2>Correcciones registradas</h2></div><button class="btn btn-s btn-sm" onclick="loadBarcodeAssignments()">Actualizar</button></div>
     <div id="barcode-assignment-list" class="assignment-list"><div class="empty"><div class="icon">▤</div><p>Todavía no hay asignaciones.</p></div></div>
   </section>
 </div>
@@ -1015,11 +1015,11 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
 <!-- ===== ANÁLISIS DE DIFERENCIAS ===== -->
 <div class="page" id="page-analisis">
   <div class="page-heading">
-    <div><span class="eyebrow">CONTROL DE DIFERENCIAS</span><h1>Análisis del inventario</h1><p>Detecta faltantes, sobrantes y posibles errores entre productos relacionados.</p></div>
+    <div><span class="eyebrow">CONTROL DE DIFERENCIAS</span><h1>Análisis del inventario</h1><p>Compará el stock del sistema con lo contado y revisá las diferencias.</p></div>
     <div class="heading-actions"><button class="btn btn-s" onclick="refreshReport()">Actualizar</button><button class="btn btn-p" onclick="exportAnalysisReport()">Exportar análisis</button></div>
   </div>
   <div id="no-bal-msg" class="card empty-state">
-    <div class="icon">▦</div><h2>Falta cargar el balance</h2><p>Hacelo desde Dashboard para comenzar el análisis.</p><button class="btn btn-p" onclick="showTab('dashboard')">Ir al Dashboard</button>
+    <div class="icon">▦</div><h2>Falta cargar el balance</h2><p>Cargá el balance en Resumen para comparar el stock con el conteo.</p><button class="btn btn-p" onclick="showTab('dashboard')">Ir a Resumen</button>
   </div>
   <div id="reporte-area" style="display:none">
     <div id="alm-info" class="almacen-badge"></div>
@@ -1030,8 +1030,8 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
       <div class="metric warn"><span>Compensaciones</span><strong id="r-compensations">0</strong></div>
     </div>
     <section class="card panel-card">
-      <div class="panel-head compact"><div><div class="card-title">Sugerencias inteligentes</div><h2>Posibles compensaciones</h2></div></div>
-      <p class="panel-copy">Solo son sugerencias para revisar. El programa nunca modifica cantidades automáticamente.</p>
+      <div class="panel-head compact"><div><div class="card-title">Productos para revisar</div><h2>Posibles compensaciones</h2></div></div>
+      <p class="panel-copy">Un faltante y un sobrante de productos similares pueden indicar una confusión al contar. Revisalos físicamente antes de corregir cantidades; estas sugerencias no cambian el conteo.</p>
       <div id="compensation-list" class="compensation-list"></div>
     </section>
     <section class="card panel-card">
@@ -1047,7 +1047,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
 <!-- ===== ESCÁNER DE CÁMARA ===== -->
 <div class="page scanner-page" id="page-scanner">
   <div class="page-heading scanner-heading">
-    <div><span class="eyebrow">CONTEO RÁPIDO</span><h1>Escáner de productos</h1><p>Activá la cámara y tocá el gatillo para realizar cada lectura.</p></div>
+    <div><span class="eyebrow">CONTEO RÁPIDO</span><h1>Escáner de productos</h1><p>Activá la cámara, apuntá al código de barras y tocá “Escanear ahora”.</p></div>
   </div>
   <div class="scanner-layout">
     <section class="card scanner-card">
@@ -1099,7 +1099,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
     </div>
     <div id="net-online" class="net-card">
       <div style="color:var(--green);font-weight:600;font-size:13px;margin-bottom:6px">✅ Conectado a Sucaneitor</div>
-      <p class="tm">Los avances se guardan en la web y se comparten automáticamente entre celulares, tablets y PC.</p>
+      <p class="tm">El equipo ve las cantidades guardadas en esta sesión. Mantené la conexión a internet mientras trabajás.</p>
       <div class="net-url" id="net-url-display" style="display:none"></div>
       <div class="tm mt2" id="net-clients"></div>
     </div>
@@ -1107,7 +1107,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
 
   <div class="card" id="inventory-padron-upload">
     <div class="card-title">Padrón de Mercaderías</div>
-    <p class="tm mb2">Solo supervisores. Se comprobarán Código, Código de Barras y Nombre antes de reemplazar el padrón compartido.</p>
+    <p class="tm mb2">Solo supervisores: cargá una planilla con Código, Código de Barras y Nombre. Reemplazará el padrón de todos los módulos.</p>
     <div class="upzone" onclick="document.getElementById('padron-file').click()">
       <div class="icon">📋</div>
       <p><strong>Toca para cargar</strong> nuevo Padrón (.xls / .xlsx)</p>
@@ -1178,18 +1178,18 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
 <script src="html5-qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script src="cloud-config.js"></script>
-<link rel="stylesheet" href="/downloads.css?v=shared-files-v1">
-<script src="/downloads.js?v=shared-files-v1"></script>
-<script src="cloud-api.js?v=shared-files-v1"></script>
+<link rel="stylesheet" href="/downloads.css?v=user-copy-v1">
+<script src="/downloads.js?v=user-copy-v1"></script>
+<script src="cloud-api.js?v=user-copy-v1"></script>
 <script src="search-engine.js?v=search-fast-v6"></script>
 <script src="reposition-engine.js?v=fillrate-es-v1"></script>
 <script src="reception-engine.js?v=receipt-collab-v1"></script>
 <script src="reposition-export.js?v=processed-report-v4"></script>
 <script src="/barcode-utils.js?v=barcode-catalog-v1"></script>
-<script src="app.js?v=shared-files-v1"></script>
-<script src="reposition-app.js?v=shared-files-v1"></script>
-<script src="reception-app.js?v=shared-files-v1"></script>
-<script src="session-invite.js?v=guest-access-v1"></script>
+<script src="app.js?v=user-copy-v1"></script>
+<script src="reposition-app.js?v=user-copy-v1"></script>
+<script src="reception-app.js?v=user-copy-v1"></script>
+<script src="session-invite.js?v=user-copy-v1"></script>
 </body>
 </html>
 

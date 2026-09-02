@@ -87,14 +87,14 @@
       contentType: 'application/octet-stream', upsert: false, cacheControl: '0'
     });
     if (uploadError) {
-      if (/bucket.*not found/i.test(uploadError.message || '')) throw new Error('Compartir todavía no está habilitado en el servidor. Podés descargar el archivo mientras se activa.');
-      throw new Error('No se pudo subir el archivo para compartir. Revisá tu conexión y los permisos de tu cuenta.');
+      if (/bucket.*not found/i.test(uploadError.message || '')) throw new Error('Compartir no está disponible en este momento. Podés descargar el archivo o consultar al responsable de la aplicación.');
+      throw new Error('No se pudo compartir el archivo. Revisá tu conexión e intentá nuevamente. Si el problema continúa, consultá al responsable de la aplicación.');
     }
     try {
       const {data: signed, error: signError} = await storage.createSignedUrl(path, SHARE_SECONDS, {download: filename});
       if (signError || !signed?.signedUrl) throw new Error('No se pudo crear el enlace. Intentá nuevamente.');
       const url = new URL(signed.signedUrl);
-      if (url.protocol !== 'https:') throw new Error('El servidor no devolvió un enlace seguro.');
+      if (url.protocol !== 'https:') throw new Error('No se pudo crear un enlace de descarga válido. Intentá nuevamente.');
       return {url: url.href, expiresAt: Date.now() + SHARE_SECONDS * 1000};
     } catch (error) {
       // Only remove this new upload if signing failed; never remove source documents.
@@ -142,11 +142,11 @@
     // Only static markup; filenames, URLs and errors are always assigned as text/value.
     dialog.innerHTML = `
       <header class="sucan-download-head"><div><span class="sucan-download-eyebrow">ARCHIVO LISTO</span><h2 id="sucan-download-title">Descargar o compartir</h2></div><button type="button" data-action="close" class="sucan-download-close" aria-label="Cerrar ventana">×</button></header>
-      <p id="sucan-download-description">Elegí el nombre del archivo. Su contenido y formato no cambian.</p>
+      <p id="sucan-download-description">Guardá el archivo en tu dispositivo o compartilo por enlace. Podés cambiar el nombre antes de continuar.</p>
       <label for="sucan-download-name">Nombre del archivo</label>
       <div class="sucan-download-name"><input id="sucan-download-name" maxlength="80" autocomplete="off" spellcheck="false"><span data-field="extension"></span></div>
       <p class="sucan-download-meta" data-field="preview"></p>
-      <div class="sucan-download-note"><strong>Al compartir</strong><span>Se sube una copia y se copia un enlace válido por 7 días. Cualquier persona con el enlace podrá descargarla sin iniciar sesión. Compartilo solo con personas autorizadas.</span></div>
+      <div class="sucan-download-note"><strong>Compartir archivo</strong><span>El enlace permite descargar esta versión del archivo durante 7 días, sin iniciar sesión. Compartilo solo con personas autorizadas.</span></div>
       <p class="sucan-download-meta" data-field="location"></p>
       <div class="sucan-download-link" data-field="link-box" hidden><label for="sucan-download-link">Enlace de descarga</label><input id="sucan-download-link" readonly><button type="button" data-action="copy">Copiar enlace</button><p data-field="expiry"></p></div>
       <p class="sucan-download-status" data-field="status" role="status" aria-live="polite" aria-atomic="true"></p>
@@ -177,8 +177,8 @@
     input.value = base;
     field('extension').textContent = extension || 'Archivo';
     field('location').textContent = canPickLocation()
-      ? 'Al descargar se abrirá el explorador para elegir dónde guardar el archivo.'
-      : 'Se usará la descarga habitual del navegador. La carpeta depende del dispositivo; en iPhone/iPad podés elegir Guardar en Archivos desde la vista del archivo.';
+      ? 'Al descargar, podrás elegir dónde guardar el archivo.'
+      : 'El archivo se descargará según la configuración de tu navegador.';
     updatePreview();
     input.addEventListener('input', updatePreview);
     button('close').addEventListener('click', close);
@@ -205,7 +205,7 @@
       try {
         const name = fileName(input.value, extension);
         setBusy(true);
-        announce('Preparando enlace seguro…');
+        announce('Creando enlace de descarga…');
         const existing = links.get(name);
         const linkPromise = existing && existing.expiresAt > Date.now() + 60000 ? Promise.resolve(existing) : createSharedFile(blob, name);
         const copiedPromise = beginClipboardWrite(linkPromise);
@@ -213,9 +213,9 @@
         links.set(name, link);
         linkInput.value = link.url;
         field('link-box').hidden = false;
-        field('expiry').textContent = `Vence: ${new Date(link.expiresAt).toLocaleString('es-UY')}. Al abrirlo, el navegador iniciará la descarga.`;
+        field('expiry').textContent = `Disponible hasta el ${new Date(link.expiresAt).toLocaleString('es-UY', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:false})}.`;
         const copied = await copiedPromise;
-        announce(copied ? 'Enlace copiado. Ya podés pegarlo y compartirlo.' : 'Enlace creado. El navegador no permitió copiarlo automáticamente: pulsá “Copiar enlace” o copialo del campo.');
+        announce(copied ? 'Enlace copiado. Pegalo en el mensaje que quieras enviar.' : 'El enlace está listo. Tocá “Copiar enlace” para compartirlo.');
         record('share', name);
       } catch (error) { announce(error.message || 'No se pudo crear el enlace. Podés descargar el archivo.', true); }
       finally { setBusy(false); }
@@ -224,10 +224,10 @@
       try {
         if (!root.navigator?.clipboard?.writeText) throw new Error('clipboard unavailable');
         await root.navigator.clipboard.writeText(linkInput.value);
-        announce('Enlace copiado. Ya podés pegarlo y compartirlo.');
+        announce('Enlace copiado. Pegalo en el mensaje que quieras enviar.');
       } catch (_) {
         linkInput.focus(); linkInput.select();
-        announce('Seleccionamos el enlace. Mantené pulsado y elegí Copiar, o usá Ctrl+C / ⌘C.');
+        announce('Copiá el enlace seleccionado: mantené pulsado y elegí “Copiar”, o usá Ctrl+C / ⌘C.');
       }
     });
     root.document.body.appendChild(dialog);

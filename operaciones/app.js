@@ -396,7 +396,7 @@ function mostrarPantallaSesion(loadSessions = true) {
   const isRepo = currentModule === 'reposicion';
   const isReceipt = currentModule === 'recepcion';
   document.getElementById('session-module-name').textContent = isRepo ? 'Reposición' : isReceipt ? 'Recepción' : 'Inventario';
-  document.getElementById('session-module-subtitle').textContent = isRepo ? 'Preparación colaborativa y generación de remitos' : isReceipt ? 'Control colaborativo de mercadería recibida' : 'Sistema de conteo colaborativo';
+  document.getElementById('session-module-subtitle').textContent = isRepo ? 'Juntá la mercadería y prepará los remitos de envío.' : isReceipt ? 'Compará lo que llegó con las cantidades del remito.' : 'Contá la mercadería junto con tu equipo.';
   document.getElementById('repo-file-fields').style.display = isRepo ? 'block' : 'none';
   document.getElementById('receipt-file-fields').style.display = isReceipt ? 'block' : 'none';
   document.getElementById('create-session-title').textContent = isRepo ? 'Crear reposición nueva' : isReceipt ? 'Crear control de remito' : 'Crear sesión nueva';
@@ -1637,7 +1637,7 @@ function updateStats() {
 }
 
 function inventoryVerificationItems(){return Object.values(countItems).filter(item=>item.requiere_verificacion&&Number(item.qty)>0);}
-function openInventoryQuantityVerification(continuation){if(typeof continuation==='function')inventoryVerificationContinuation=continuation;const pending=inventoryVerificationItems();if(!pending.length){const next=inventoryVerificationContinuation;inventoryVerificationContinuation=null;closeModal();if(next)setTimeout(next,30);return;}const item=pending[0];window._inventoryVerificationCode=String(item.codigo);document.getElementById('modal-title').textContent='Control final de cantidades';document.getElementById('modal-subtitle').textContent=`${pending.length} ${pending.length===1?'producto pendiente':'productos pendientes'}`;document.getElementById('modal-body').innerHTML=`<div class="app-dialog-product"><strong>${esc(item.nombre)}</strong><span>SKU ${esc(item.codigo)}</span></div><p class="app-dialog-message">Hay más de una unidad registrada. Comprobá la cantidad física antes de generar archivos o informes.</p><div class="receipt-confirm-quantities"><div><span>Registrado</span><strong>${item.qty}</strong></div><div class="final" style="grid-column:span 2"><span>A confirmar</span><strong id="inventory-verification-preview">${item.qty}</strong></div></div><label class="il" for="inventory-verification-qty">Cantidad física comprobada</label><div class="qty-stepper"><button class="qty-step" onclick="stepInventoryVerification(-1)">−</button><input id="inventory-verification-qty" class="input" type="number" min="0" inputmode="numeric" value="${item.qty}" oninput="updateInventoryVerificationPreview()" style="text-align:center;font-size:20px"><button class="qty-step" onclick="stepInventoryVerification(1)">+</button></div>`;document.getElementById('modal-actions').innerHTML='<button class="btn btn-s" onclick="closeModal()">Revisar después</button><button class="btn btn-p" onclick="confirmInventoryQuantityVerification()">Confirmar y continuar</button>';document.getElementById('modal-overlay').classList.add('show');setTimeout(()=>document.getElementById('inventory-verification-qty')?.select(),60);}
+function openInventoryQuantityVerification(continuation){if(typeof continuation==='function')inventoryVerificationContinuation=continuation;const pending=inventoryVerificationItems();if(!pending.length){const next=inventoryVerificationContinuation;inventoryVerificationContinuation=null;closeModal();if(next)setTimeout(next,30);return;}const item=pending[0];window._inventoryVerificationCode=String(item.codigo);document.getElementById('modal-title').textContent='Control final de cantidades';document.getElementById('modal-subtitle').textContent=`${pending.length} ${pending.length===1?'producto pendiente':'productos pendientes'}`;document.getElementById('modal-body').innerHTML=`<div class="app-dialog-product"><strong>${esc(item.nombre)}</strong><span>Código ${esc(item.codigo)}</span></div><p class="app-dialog-message">Hay más de una unidad registrada. Comprobá la cantidad física antes de generar archivos o informes.</p><div class="receipt-confirm-quantities"><div><span>Registrado</span><strong>${item.qty}</strong></div><div class="final" style="grid-column:span 2"><span>A confirmar</span><strong id="inventory-verification-preview">${item.qty}</strong></div></div><label class="il" for="inventory-verification-qty">Cantidad física comprobada</label><div class="qty-stepper"><button class="qty-step" onclick="stepInventoryVerification(-1)">−</button><input id="inventory-verification-qty" class="input" type="number" min="0" inputmode="numeric" value="${item.qty}" oninput="updateInventoryVerificationPreview()" style="text-align:center;font-size:20px"><button class="qty-step" onclick="stepInventoryVerification(1)">+</button></div>`;document.getElementById('modal-actions').innerHTML='<button class="btn btn-s" onclick="closeModal()">Revisar después</button><button class="btn btn-p" onclick="confirmInventoryQuantityVerification()">Confirmar y continuar</button>';document.getElementById('modal-overlay').classList.add('show');setTimeout(()=>document.getElementById('inventory-verification-qty')?.select(),60);}
 function updateInventoryVerificationPreview(){const input=document.getElementById('inventory-verification-qty'),preview=document.getElementById('inventory-verification-preview');if(preview)preview.textContent=String(Math.max(0,Number.parseInt(input?.value,10)||0));}
 function stepInventoryVerification(delta){const input=document.getElementById('inventory-verification-qty');if(!input)return;input.value=String(Math.max(0,(Number.parseInt(input.value,10)||0)+delta));updateInventoryVerificationPreview();}
 async function confirmInventoryQuantityVerification(){const code=String(window._inventoryVerificationCode||''),quantity=Number.parseInt(document.getElementById('inventory-verification-qty')?.value,10);if(!code||!Number.isInteger(quantity)||quantity<0){toast('Ingresá una cantidad válida','e');return;}const button=document.querySelector('#modal-actions .btn-p');if(button){button.disabled=true;button.textContent='Guardando…';}try{if(serverOnline){const response=await fetch(`${serverUrl}/api/inventario/verify_qty`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId,codigo:code,cantidad:quantity})}),data=await response.json().catch(()=>({}));if(!response.ok||!data.ok)throw new Error(data.error||'No se pudo confirmar');countItems[code]=data.item;}else if(countItems[code])countItems[code]={...countItems[code],qty:quantity,requiere_verificacion:false,verificado_at:new Date().toISOString()};if(quantity===0)delete countItems[code];renderCountTable();updateStats();renderSearchContext();saveLocal();if(inventoryVerificationItems().length)openInventoryQuantityVerification();else{const next=inventoryVerificationContinuation;inventoryVerificationContinuation=null;closeModal();toast('Control final de cantidades completado','s');if(next)setTimeout(next,40);}}catch(error){toast(error.message||'No se pudo confirmar','e');if(button){button.disabled=false;button.textContent='Confirmar y continuar';}}}
@@ -2005,7 +2005,7 @@ async function generateReport() {
 }
 
 function exportAnalysisReport() {
-  if (!balanceData) { toast('Cargá el balance desde Dashboard', 'e'); return; }
+  if (!balanceData) { toast('Cargá el balance desde Resumen', 'e'); return; }
   if (!window.XLSX) { toast('El generador de Excel todavía se está cargando', 'e'); return; }
   refreshReport();
   const details = [['Código','Producto','Stock sistema','Conteo real','Diferencia','Estado']];
@@ -2411,7 +2411,7 @@ function showSuccessfulScan(product, code, matchType) {
   card.className = 'scanner-result success';
   document.getElementById('scanner-result-state').textContent = matchType === 'provisional' ? 'Código provisional reconocido' : 'Producto encontrado';
   document.getElementById('scanner-result-name').textContent = product.nombre;
-  document.getElementById('scanner-result-meta').textContent = `SKU ${product.codigo} · Barras ${code}`;
+  document.getElementById('scanner-result-meta').textContent = `Código ${product.codigo} · Barras ${code}`;
   document.getElementById('scanner-result-count').textContent = '+1 agregado al conteo';
   document.getElementById('unknown-scan-actions').style.display = 'none';
   if (window.innerWidth <= 700) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2479,7 +2479,7 @@ function openBarcodeAssignment() {
     <div class="assignment-confirm" style="margin-top:0">
       <dl style="margin-top:0"><dt>Código leído</dt><dd>${esc(currentUnknownBarcode)}</dd></dl>
     </div>
-    <label class="il" style="margin-top:14px">Buscar en el padrón por nombre o SKU</label>
+    <label class="il" style="margin-top:14px">Buscar en el padrón por nombre o código</label>
     <input class="input" id="assignment-search" type="search" inputmode="search" autocomplete="off"
       placeholder="Ej: bio cachorro mediano" oninput="searchBarcodeAssignmentProducts(this.value)">
     <div id="assignment-search-results" class="assign-search-results" style="display:none"></div>
@@ -2523,7 +2523,7 @@ function runBarcodeAssignmentProductSearch(value, container) {
   window._barcodeAssignmentResults = results.map(r => r.product || r);
   container.style.display = 'block';
   container.innerHTML = window._barcodeAssignmentResults.length
-    ? window._barcodeAssignmentResults.map((product, index) => `<button class="assign-result" type="button" onclick="selectBarcodeAssignmentProduct(${index})"><strong>${esc(product.nombre)}</strong><span>SKU ${esc(product.codigo)} · ${product.barras ? 'Barras actual ' + esc(product.barras) : 'Sin código de barras'}</span></button>`).join('')
+    ? window._barcodeAssignmentResults.map((product, index) => `<button class="assign-result" type="button" onclick="selectBarcodeAssignmentProduct(${index})"><strong>${esc(product.nombre)}</strong><span>Código ${esc(product.codigo)} · ${product.barras ? 'Barras actual ' + esc(product.barras) : 'Sin código de barras'}</span></button>`).join('')
     : '<div class="empty" style="padding:18px"><p>Sin coincidencias.</p></div>';
 }
 
@@ -2670,7 +2670,7 @@ function renderBarcodeAssignments() {
     const photo = item.photo_url || (item.photo_file ? `${serverUrl}/api/barcode_photo/${encodeURIComponent(item.photo_file)}` : '');
     const canDiscard = ['pending', 'conflict', 'product_missing'].includes(item.status);
     return `<article class="assignment-item">
-      <div class="assignment-main"><strong>${esc(item.barcode)}</strong><code>SKU ${esc(item.product_code)}</code></div>
+      <div class="assignment-main"><strong>${esc(item.barcode)}</strong><code>Código ${esc(item.product_code)}</code></div>
       <div class="assignment-product"><strong>${esc(item.product_name)}</strong><span>Anterior: ${esc(item.official_barcode || 'sin código')} · ${esc(item.user)} · ${esc(item.created_at?.replace('T',' ') || '')}</span></div>
       <div class="assignment-side">${photo ? `<a href="${photo}" target="_blank" aria-label="Abrir foto"><img class="assignment-photo" src="${photo}" alt="Comprobante"></a>` : ''}<span class="status-pill status-${esc(item.status)}">${BARCODE_STATUS_LABELS[item.status] || esc(item.status)}</span>${canDiscard ? `<button class="btn btn-s btn-sm" onclick="discardBarcodeAssignment('${escA(item.id)}')">Descartar</button>` : ''}</div>
     </article>`;

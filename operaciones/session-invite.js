@@ -74,7 +74,7 @@
       const accepted = await appConfirm({title:'Generar un acceso nuevo',icon:'▦',tone:'warning',confirmText:'Generar nuevo QR y enlace',message:'El QR, el enlace y los accesos invitados anteriores quedarán invalidados. Las cantidades ya registradas permanecerán guardadas.'});
       if (!accepted) return;
     }
-    state.busy = true; showLoading('Generando un acceso seguro…');
+    state.busy = true; showLoading('Creando invitación…');
     try {
       const data = await rpc('op_crear_invitacion_sesion',{p_modulo:context.module,p_sesion:context.sessionId});
       saveSecret(context,data.invite_id,data.token);
@@ -117,7 +117,7 @@
       <section class="session-invite-card"><div class="session-invite-session"><span class="session-invite-session-icon">${moduleIcon(context.module)}</span><div><strong>${html(moduleLabel(context.module))} · ${html(session.name||sessionNombre||'Sesión actual')}</strong><span>${html(session.route||session.location||'')}</span></div></div></section>
       <section class="session-invite-card">
         <div class="session-invite-status ${active?'':'paused'}"><b><span class="session-invite-dot"></span>${active?'Acceso disponible':'Acceso pausado'}</b><span>${guests.length} ${guests.length===1?'invitado':'invitados'}</span></div>
-        ${url?`<div class="session-invite-qr" id="session-invite-qr" aria-label="Código QR de acceso"></div><div class="session-invite-url"><input class="input" id="session-invite-url" value="${html(url)}" readonly aria-label="Enlace de acceso"><button class="btn btn-p btn-sm" type="button" onclick="copySessionInviteLink()">Copiar</button></div><div class="session-invite-actions"><button class="btn btn-p" type="button" onclick="shareSessionInviteLink()">Compartir enlace</button><button class="btn btn-s" type="button" onclick="toggleSessionInvitation()">${active?'Pausar acceso':'Reactivar acceso'}</button></div>`:`<div class="session-invite-warning mt2"><strong>Este acceso fue creado en otro dispositivo</strong>Por seguridad el enlace no se guarda en la base. Generá uno nuevo para mostrar su QR y enlace en esta computadora.</div><button class="btn btn-p btn-full mt2" type="button" onclick="regenerateSessionInvitation()">Generar nuevo acceso</button>`}
+        ${url?`<div class="session-invite-qr" id="session-invite-qr" aria-label="Código QR de acceso"></div><div class="session-invite-url"><input class="input" id="session-invite-url" value="${html(url)}" readonly aria-label="Enlace de acceso"><button class="btn btn-p btn-sm" type="button" onclick="copySessionInviteLink()">Copiar</button></div><div class="session-invite-actions"><button class="btn btn-p" type="button" onclick="shareSessionInviteLink()">Compartir enlace</button><button class="btn btn-s" type="button" onclick="toggleSessionInvitation()">${active?'Pausar acceso':'Reactivar acceso'}</button></div>`:`<div class="session-invite-warning mt2"><strong>Este acceso fue creado en otro dispositivo</strong>Abrilo en el dispositivo donde se generó o creá un acceso nuevo. Al reemplazarlo, los invitados deberán volver a ingresar con el nuevo QR o enlace.</div><button class="btn btn-p btn-full mt2" type="button" onclick="regenerateSessionInvitation()">Generar nuevo acceso</button>`}
         ${url?'<button class="btn btn-s btn-full mt2" type="button" onclick="regenerateSessionInvitation()">Regenerar QR y enlace</button>':''}
       </section>
       <div class="session-invite-help"><strong>Acceso limitado</strong>Los invitados solo pueden colaborar en esta sesión. No pueden cambiar de módulo, cerrar o borrar la sesión, modificar configuraciones ni descargar informes.</div>
@@ -127,7 +127,7 @@
 
   async function openPanel() {
     const layer=$('session-invite-layer'); if(!layer)return;
-    state.open=true; layer.classList.add('show'); layer.setAttribute('aria-hidden','false'); showLoading('Preparando acceso seguro…');
+    state.open=true; layer.classList.add('show'); layer.setAttribute('aria-hidden','false'); showLoading('Preparando invitación…');
     await refreshHost({force:true});
     if(state.host&&!state.host.invite_id)await createInvitation(false); else renderPanel();
   }

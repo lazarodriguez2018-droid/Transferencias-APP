@@ -107,7 +107,7 @@ async function main() {
   await assert.rejects(test.api.createSharedFile(blob, 'file.xls'), /crear el enlace/);
   assert(test.calls.some(call => call[0] === 'cleanup'));
   test.storage.upload = async () => ({error: new Error('Bucket not found')});
-  await assert.rejects(test.api.createSharedFile(blob, 'file.xls'), /no está habilitado/);
+  await assert.rejects(test.api.createSharedFile(blob, 'file.xls'), /no está disponible/);
   test.client.auth.getUser = async () => ({data: {user: null}});
   await assert.rejects(test.api.createSharedFile(blob, 'file.xls'), /sesión venció/);
 
@@ -141,9 +141,11 @@ async function main() {
   assert.equal(test.calls.filter(call => call[0] === 'upload').length, 2, 'A new name gets its own link');
   test.window.navigator.clipboard.writeText = async () => { throw new Error('denied'); };
   await button('share').click();
-  assert.match(field('status').textContent, /no permitió copiarlo/);
+  assert.match(field('status').textContent, /Tocá “Copiar enlace”/);
+  assert.doesNotMatch(field('status').textContent, /Enlace copiado/);
   await button('copy').click();
-  assert.match(field('status').textContent, /Seleccionamos el enlace/);
+  assert.match(field('status').textContent, /Copiá el enlace seleccionado/);
+  assert.doesNotMatch(field('status').textContent, /Enlace copiado/);
   input.value = '...';
   await button('download').click();
   assert.match(field('status').textContent, /Ingresá un nombre/);
