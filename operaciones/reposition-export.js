@@ -103,8 +103,8 @@
     const originalItems=new Map((repo.items||[])
       .filter(item=>Number(item.pedido_reposicion==null?item.pedido:item.pedido_reposicion)>0)
       .map(item=>[String(item.codigo||'').trim(),item]));
-    const touchedCodes=new Set((repo.log||[])
-      .filter(event=>['cantidad','invitado_cantidad','cantidad_verificada','no_encontrado','cerrado_incompleto','invitado_no_encontrado'].includes(String(event.accion||'')))
+    const quantityCodes=new Set((repo.log||[])
+      .filter(event=>['cantidad','invitado_cantidad','cantidad_verificada'].includes(String(event.accion||'')))
       .map(event=>String(event.codigo||'').trim()));
     const target={};
     const rowMap=new Map();
@@ -132,7 +132,7 @@
     for(const [sourceRow,newRow] of rowMap){
       const sku=String(source[XLSX.utils.encode_cell({r:sourceRow,c:columns.sku})]?.v??'').trim();
       const item=originalItems.get(sku);
-      const highlight=Boolean(item&&Number(item.preparado)>0);
+      const highlight=Boolean(item&&!item.no_encontrado&&Number(item.preparado)>0);
       if(highlight)highlightedRows.push(newRow+1);
       for(let column=range.s.c;column<=qtyDifferentColumn;column+=1){
         const sourceAddress=XLSX.utils.encode_cell({r:sourceRow,c:column});
@@ -148,8 +148,8 @@
           }else if(sourceRow>columns.rowIndex&&item){
             const requested=Math.max(0,Math.trunc(Number(item.pedido_reposicion==null?item.pedido:item.pedido_reposicion)||0));
             const actual=repositionPreparedQuantity(item);
-            const handled=Number(item.preparado)>0||item.no_encontrado||item.cerrado_incompleto||touchedCodes.has(sku);
-            if(handled&&actual!==requested){targetCell.t='n';targetCell.v=actual;targetCell.w=String(actual);targetCell.z='0';}
+            const quantityEntered=!item.no_encontrado&&(Number(item.preparado)>0||quantityCodes.has(sku));
+            if(quantityEntered&&actual!==requested){targetCell.t='n';targetCell.v=actual;targetCell.w=String(actual);targetCell.z='0';}
             else{targetCell.t='s';targetCell.v='';}
           }else{targetCell.t='s';targetCell.v='';}
         }else if(sourceRow>columns.rowIndex&&column===columns.calculation){

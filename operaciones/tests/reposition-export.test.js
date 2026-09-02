@@ -24,11 +24,15 @@ const repo = {
   nombre:'Prueba',origin:'PDE',destination:'MDO',created_at:'2026-08-21',updated_at:'2026-08-21',
   participantes:[{nombre:'Ana'}],
   items:[
-    {codigo:'00123',nombre:'Producto uno',descripcion_archivo:'Product one',pedido:12,pedido_reposicion:10,pedido_clientes:2,stock_origen:20,preparado:9,no_encontrado:true,motivo_codigo:'otro',motivo_label:'Otro',motivo_otro:'Caja sin identificar',comentario:'Revisar con depósito',updated_by:'Ana',updated_at:'2026-08-21'},
-    {codigo:'B2',nombre:'Producto dos',descripcion_archivo:'Product two',pedido:2,pedido_reposicion:2,pedido_clientes:0,stock_origen:4,preparado:2,updated_by:'Luis',updated_at:'2026-08-21'}
+    {codigo:'00123',nombre:'Producto uno',descripcion_archivo:'Product one',pedido:12,pedido_reposicion:10,pedido_clientes:2,stock_origen:20,preparado:9,motivo_codigo:'otro',motivo_label:'Otro',motivo_otro:'Caja sin identificar',comentario:'Revisar con depósito',updated_by:'Ana',updated_at:'2026-08-21'},
+    {codigo:'B2',nombre:'Producto dos',descripcion_archivo:'Product two',pedido:2,pedido_reposicion:2,pedido_clientes:0,stock_origen:4,preparado:2,updated_by:'Luis',updated_at:'2026-08-21'},
+    {codigo:'C3',nombre:'Producto no encontrado',descripcion_archivo:'Product missing',pedido:3,pedido_reposicion:3,pedido_clientes:0,stock_origen:8,preparado:0,no_encontrado:true,motivo_codigo:'stock_insuficiente',motivo_label:'Stock insuficiente',updated_by:'Ana',updated_at:'2026-08-21'}
   ],
   extras:[{codigo:'00123',nombre:'Producto uno',cantidad:3,nota:'Separado',updated_by:'Ana',updated_at:'2026-08-21'}],
-  log:[{ts:'2026-08-21',usuario:'Ana',accion:'cantidad',codigo:'00123',detalle:{despues:7}}]
+  log:[
+    {ts:'2026-08-21',usuario:'Ana',accion:'cantidad',codigo:'00123',detalle:{despues:9}},
+    {ts:'2026-08-21',usuario:'Ana',accion:'no_encontrado',codigo:'C3',detalle:{valor:true}}
+  ]
 };
 const missing = XLSX.read(exporter.buildMissing(repo,XLSX,engine),{type:'array'});
 assert.deepStrictEqual(missing.SheetNames,['Faltantes']);
@@ -47,24 +51,30 @@ const sourceSheet=XLSX.utils.aoa_to_sheet([
   ['sku','location','description','qty_replenishment','origin','day_to_replenish','stock_origin','Calculo stock'],
   ['00123','MDO','Zeta producto',10,'PDE','1:4:0:0',20,null],
   ['B2','MDO','Alfa producto',2,'PDE','1:4:0:0',4,null],
+  ['C3','MDO','Beta no encontrado',3,'PDE','1:4:0:0',8,null],
   ['EXCLUIDO','MDO','No cumple regla',5,'PDE','1:4:0:0',5,null]
 ]);
-sourceSheet.H2={t:'n',v:10,f:'+G2-D2'};sourceSheet.H3={t:'n',v:2,f:'+G3-D3'};sourceSheet.H4={t:'n',v:0,f:'+G4-D4'};
+sourceSheet.H2={t:'n',v:10,f:'+G2-D2'};sourceSheet.H3={t:'n',v:2,f:'+G3-D3'};sourceSheet.H4={t:'n',v:5,f:'+G4-D4'};sourceSheet.H5={t:'n',v:0,f:'+G5-D5'};
 sourceSheet['!cols']=[{wch:16},{wch:10},{wch:42},{wch:18},{wch:10},{wch:18},{wch:14},{wch:15}];
-sourceSheet['!autofilter']={ref:'A1:H4'};
+sourceSheet['!autofilter']={ref:'A1:H5'};
 XLSX.utils.book_append_sheet(sourceBook,sourceSheet,'Rep FR100');
 const sourceBytes=XLSX.write(sourceBook,{bookType:'biff8',type:'array',cellStyles:true});
-const processed=XLSX.read(exporter.buildProcessedSource(sourceBytes,XLSX,repo,engine,'xlsx'),{type:'array',cellStyles:true,cellFormula:true});
+const processedBytes=exporter.buildProcessedSource(sourceBytes,XLSX,repo,engine,'xlsx');
+const processed=XLSX.read(processedBytes,{type:'array',cellStyles:true,cellFormula:true});
 const processedSheet=processed.Sheets['Rep FR100'];
-assert.strictEqual(processedSheet['!ref'],'A1:I3','Solo deben quedar encabezado, productos que cumplieron la regla y la nueva columna');
+assert.strictEqual(processedSheet['!ref'],'A1:I4','Solo deben quedar encabezado, productos que cumplieron la regla y la nueva columna');
 assert.strictEqual(processedSheet.A2.v,'B2','Los productos deben ordenarse alfabéticamente por descripción');
-assert.strictEqual(processedSheet.A3.v,'00123');
+assert.strictEqual(processedSheet.A3.v,'C3');
+assert.strictEqual(processedSheet.A4.v,'00123');
 assert.strictEqual(processedSheet.H2.f,'+G2-D2','La fórmula debe conservarse y apuntar a la nueva fila');
 assert.strictEqual(processedSheet.H3.f,'+G3-D3','Las fórmulas deben reindexarse tras filtrar filas');
+assert.strictEqual(processedSheet.H4.f,'+G4-D4','Las fórmulas deben reindexarse tras ordenar todas las filas');
 assert.strictEqual(processedSheet.H2.v,2);
 assert.strictEqual(processedSheet.I1.v,'Qty_diferente','La nueva columna debe quedar visible en el reporte');
 assert.strictEqual(processedSheet.I2.v,'','Si se envió exactamente lo pedido, la diferencia debe quedar vacía');
-assert.strictEqual(processedSheet.I3.v,7,'La diferencia debe mostrar lo realmente enviado a reposición, sin mezclar pedidos de clientes');
+assert.strictEqual(processedSheet.I3.v,'','Un producto marcado como no encontrado debe quedar vacío en Qty_diferente');
+assert.strictEqual(processedSheet.I4.v,7,'La diferencia debe mostrar lo realmente enviado a reposición, sin mezclar pedidos de clientes');
+assert.ok(!processedBytes.highlightedRows.includes(3),'Un producto marcado como no encontrado no debe pintarse de amarillo');
 assert.strictEqual(processedSheet['!cols'][1].hidden,true,'La columna auxiliar location debe quedar agrupada y oculta');
 assert.strictEqual(processedSheet['!cols'][4].level,1,'Las columnas auxiliares deben conservarse dentro de un grupo');
 assert.strictEqual(processedSheet['!cols'][5].hidden,true,'day_to_replenish no debe eliminarse');
