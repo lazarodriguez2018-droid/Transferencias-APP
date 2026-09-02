@@ -15,6 +15,7 @@ const repoOriginalBytesCache = new Map();
 let repoScannerClosingPromise = Promise.resolve();
 let repoScannerGeneration = 0;
 let repoSupervisionMode = false;
+let repoListSection = 'reposition';
 
 const REPO_NOT_FOUND_REASONS = [
   {code:'stock_insuficiente', label:'Stock insuficiente'},
@@ -497,10 +498,15 @@ function connectRepositionSSE() {
 
 function showRepoTab(name, options = {}) {
   if (currentModule !== 'reposicion') return;
+  if (name === 'extras') {
+    repoListSection = 'extra';
+    name = 'lista';
+  }
   const page = document.getElementById(`repo-page-${name}`);
   const tab = document.getElementById(`repo-tab-${name}`);
   if (!page || !tab) return;
   if (options.force !== true && page.classList.contains('active') && tab.classList.contains('active')) {
+    if (name === 'lista') showRepoListSection(repoListSection,{scroll:false});
     if (sessionId) updateOperationsHistory(options.history || 'push','workspace',name);
     return;
   }
@@ -509,8 +515,11 @@ function showRepoTab(name, options = {}) {
   page.classList.add('active');
   tab.classList.add('active');
   window.scrollTo({top:0, behavior:'auto'});
-  if (name === 'lista') renderRepoList();
-  if (name === 'extras') renderRepoExtras();
+  if (name === 'lista') {
+    showRepoListSection(repoListSection,{scroll:false});
+    renderRepoList();
+    renderRepoExtras();
+  }
   if (name === 'resumen') renderRepoSummary();
   if (sessionId && currentModule === 'reposicion') updateOperationsHistory(options.history || 'push','workspace',name);
 }
@@ -863,27 +872,47 @@ function repoOpenItem(encodedCode) {
 
 function repoOpenFullList() {
   const search = document.getElementById('repo-list-search');
-  const filter = document.getElementById('repo-list-filter');
   if (search) search.value = '';
-  if (filter) filter.value = 'all';
+  repoListSection = 'reposition';
+  repoResetStatusFilters(false);
   showRepoTab('lista');
   renderRepoList();
+}
+
+function showRepoListSection(section, options = {}) {
+  repoListSection = section === 'extra' ? 'extra' : 'reposition';
+  ['reposition','extra'].forEach(name => {
+    const button = document.getElementById(`repo-list-section-${name}`);
+    const pane = document.getElementById(`repo-list-pane-${name}`);
+    const active = name === repoListSection;
+    if (button) { button.classList.toggle('active',active); button.setAttribute('aria-selected',active ? 'true' : 'false'); }
+    if (pane) pane.hidden = !active;
+  });
+  if (repoListSection === 'extra') renderRepoExtras(); else renderRepoList();
+  if (options.scroll !== false) window.scrollTo({top:0,behavior:'auto'});
+}
+
+function repoStatusFilterKey(status) {
+  if (status === 'pendiente') return 'pending';
+  if (status === 'parcial' || status === 'incompleto') return 'partial';
+  if (status === 'completo') return 'complete';
+  if (status === 'excedido') return 'over';
+  if (status === 'no_encontrado') return 'not_found';
+  return 'pending';
+}
+
+function repoResetStatusFilters(render = true) {
+  document.querySelectorAll('#repo-status-filters input[type="checkbox"]').forEach(input => { input.checked = true; });
+  if (render) renderRepoList();
 }
 
 function renderRepoList() {
   const container = document.getElementById('repo-items-list');
   if (!container || !repoState) return;
   const query = String(document.getElementById('repo-list-search')?.value || '').trim().toLowerCase();
-  const filter = document.getElementById('repo-list-filter')?.value || 'all';
-  let rows = repoState.items.filter(item => !query || `${item.codigo} ${item.nombre}`.toLowerCase().includes(query));
-  rows = rows.filter(item => {
-    const status = SucaneitorReposition.status(item);
-    if (filter === 'pending') return ['pendiente','parcial','incompleto'].includes(status);
-    if (filter === 'complete') return status === 'completo';
-    if (filter === 'over') return status === 'excedido';
-    if (filter === 'not_found') return status === 'no_encontrado';
-    return true;
-  });
+  const selectedStatuses = new Set([...document.querySelectorAll('#repo-status-filters input[type="checkbox"]:checked')].map(input => input.value));
+  let rows = repoState.items.filter(item => !query || `${item.codigo} ${item.nombre} ${item.barras || ''}`.toLowerCase().includes(query));
+  rows = rows.filter(item => selectedStatuses.has(repoStatusFilterKey(SucaneitorReposition.status(item))));
   const visibleRows = rows.slice(0,repoListRenderLimit);
   container.innerHTML = rows.length ? visibleRows.map(item => {
     const status = SucaneitorReposition.status(item);
@@ -892,7 +921,7 @@ function renderRepoList() {
     const reason = item.motivo_label || item.motivo || '';
     const source = Number(item.pedido_clientes) > 0 ? ` · Repo ${Number(item.pedido_reposicion)||0} · Clientes ${Number(item.pedido_clientes)||0}` : '';
     const actions=repoShouldAutoAssign()?`<div class="repo-row-actions"><button class="btn btn-s" onclick="repoChangeQty('${code}',-1,'lista')">−</button><input class="input repo-qty-input" type="number" min="0" inputmode="numeric" value="${item.preparado}" onchange="repoSetAbsolute('${code}',this.value,'lista')"><button class="btn btn-s" onclick="repoChangeQty('${code}',1,'lista')">+</button></div>`:`<strong>${item.preparado}/${item.pedido}</strong>`;
-    return `<article class="repo-row ${rowClass}"><div onclick="repoOpenItem('${code}')" style="cursor:pointer"><h3>${esc(item.nombre)}</h3><div class="repo-row-meta">SKU ${esc(item.codigo)} · Total físico ${item.pedido}${source} · Stock archivo ${item.stock_origen} · ${esc(status.replaceAll('_',' '))}${reason ? ` · ${esc(reason)}` : ''}${item.updated_by ? ` · Último cambio: ${esc(item.updated_by)}` : ''}</div></div>${actions}</article>`;
+    return `<article class="repo-row ${rowClass}"><div onclick="repoOpenItem('${code}')" style="cursor:pointer"><h3>${esc(item.nombre)}</h3><div class="repo-row-meta">SKU ${esc(item.codigo)}${item.barras ? ` · Barras ${esc(item.barras)}` : ''} · Cantidad solicitada ${Number(item.pedido)||0} · Cantidad juntada ${Number(item.preparado)||0}${source} · ${esc(status.replaceAll('_',' '))}${reason ? ` · ${esc(reason)}` : ''}${item.updated_by ? ` · Último cambio: ${esc(item.updated_by)}` : ''}</div></div>${actions}</article>`;
   }).join('') + (rows.length > visibleRows.length ? `<button class="btn btn-s btn-full" onclick="repoShowMoreItems()">Mostrar ${Math.min(200,rows.length-visibleRows.length)} más · quedan ${rows.length-visibleRows.length}</button>` : '') : '<div class="repo-empty">No hay productos para este filtro.</div>';
 }
 
@@ -998,12 +1027,25 @@ async function repoRemoveExtra(encodedCode) {
 function renderRepoExtras() {
   const container = document.getElementById('repo-extras-list');
   if (!container || !repoState) return;
-  const extras = repoState.extras.filter(item => Number(item.cantidad) > 0);
-  container.innerHTML = extras.length ? extras.map(item => {
+  const query = String(document.getElementById('repo-extra-list-search')?.value || '').trim().toLowerCase();
+  const customerItems = (repoState.items || []).filter(item => Number(item.pedido_clientes) > 0 && (!query || `${item.codigo} ${item.nombre} ${item.barras || ''}`.toLowerCase().includes(query)));
+  const extras = repoState.extras.filter(item => Number(item.cantidad) > 0 && (!query || `${item.codigo} ${item.nombre} ${item.barras || ''}`.toLowerCase().includes(query)));
+  const customerHtml = customerItems.map(item => {
+    const code = repoEncoded(item.codigo);
+    const orders = Array.isArray(item.pedidos_asignados) ? item.pedidos_asignados : [];
+    const customerNames = orders.map(order => order.cliente).filter(Boolean).join(', ');
+    return `<article class="repo-row"><div onclick="repoOpenItem('${code}')" style="cursor:pointer"><h3><span class="repo-origin-badge customer">Pedido de cliente</span>${esc(item.nombre)}</h3><div class="repo-row-meta">SKU ${esc(item.codigo)}${item.barras ? ` · Barras ${esc(item.barras)}` : ''} · Pedido por clientes ${Number(item.pedido_clientes)||0} · Total físico ${Number(item.pedido)||0} · Juntado ${Number(item.preparado)||0}${customerNames ? ` · ${esc(customerNames)}` : ''}</div></div><strong>${Number(item.preparado)||0}/${Number(item.pedido)||0}</strong></article>`;
+  }).join('');
+  const extrasHtml = extras.map(item => {
     const code = repoEncoded(item.codigo);
     const actions=repoCanEdit()?`<div class="repo-row-actions"><button class="btn btn-s" onclick="repoUpdateExtra('${code}',-1)">−</button><input class="input repo-qty-input" type="number" min="0" inputmode="numeric" value="${item.cantidad}" onchange="repoUpdateExtra('${code}',this.value,true)"><button class="btn btn-s" onclick="repoUpdateExtra('${code}',1)">+</button><button class="btn btn-d" onclick="repoRemoveExtra('${code}')">×</button></div>`:`<strong>${item.cantidad}</strong>`;
-    return `<article class="repo-row"><div><h3>${esc(item.nombre)}</h3><div class="repo-row-meta">SKU ${esc(item.codigo)} · Remito independiente</div></div>${actions}</article>`;
-  }).join('') : '<div class="repo-empty">Todavía no agregaste productos fuera de la reposición.</div>';
+    return `<article class="repo-row"><div><h3><span class="repo-origin-badge manual">Extra agregado</span>${esc(item.nombre)}</h3><div class="repo-row-meta">SKU ${esc(item.codigo)}${item.barras ? ` · Barras ${esc(item.barras)}` : ''} · Cantidad extra ${Number(item.cantidad)||0} · Remito independiente</div></div>${actions}</article>`;
+  }).join('');
+  container.innerHTML = customerHtml || extrasHtml ? customerHtml + extrasHtml : '<div class="repo-empty">No hay pedidos de clientes ni productos agregados aparte para este filtro.</div>';
+  const repositionCount = document.getElementById('repo-reposition-sub-count');
+  const extraCount = document.getElementById('repo-extra-sub-count');
+  if (repositionCount) repositionCount.textContent = String((repoState.items || []).length);
+  if (extraCount) extraCount.textContent = String((repoState.items || []).filter(item => Number(item.pedido_clientes) > 0).length + repoState.extras.filter(item => Number(item.cantidad) > 0).length);
 }
 
 function renderRepoSummary() {

@@ -46,7 +46,7 @@ assert.match(cloud,/itemsByRepo\.get\(row\.id\)\|\|\[\]\)\.map\(item=>repoItem\(
 assert.match(cloud,/typeof catalogByCode\?\.get === 'function'/,
   'El enriquecimiento debe tolerar llamadas sin un índice de padrón');
 assert.match(html,/cloud-api\.js\?v=repo-list-fix-v1/);
-assert.match(html,/reposition-app\.js\?v=supervision-mode-v1/);
+assert.match(html,/reposition-app\.js\?v=unified-list-v1/);
 assert.doesNotMatch(html,/repo-dispatch-card|Marcar todo como enviado|Confirmar envío/);
 assert.match(app,/No existen más productos para recoger/);
 assert.match(app,/Ver y modificar toda la lista/);
@@ -70,6 +70,22 @@ assert.match(html,/id="repo-assignment-mode-btn"/);
 assert.match(html,/id="repo-supervision-banner"/);
 assert.match(guest,/operate\('repo_claim'/,
   'Los invitados por QR deben conservar el reparto automático de productos');
+
+// Lista unificada con filtros combinables y origen visible.
+assert.doesNotMatch(html,/id="repo-tab-extras"/,
+  'Extras ya no debe ocupar una pestaña principal');
+assert.doesNotMatch(html,/id="repo-page-extras"/,
+  'Extras debe vivir dentro de Lista');
+assert.match(html,/id="repo-list-section-reposition"/);
+assert.match(html,/id="repo-list-section-extra"/);
+assert.match(html,/id="repo-status-filters"/);
+assert.match(html,/type="checkbox" value="pending"/);
+assert.match(app,/\$\{item\.codigo\} \$\{item\.nombre\} \$\{item\.barras \|\| ''\}/,
+  'La lista debe buscar por código, nombre y barras');
+assert.match(app,/Number\(item\.pedido_clientes\) > 0/,
+  'La subpestaña Extra debe incluir pedidos de clientes');
+assert.match(app,/repo-origin-badge customer/);
+assert.match(app,/repo-origin-badge manual/);
 
 // Simulación determinista del resultado esperado con muchos dispositivos.
 class Coordinator {

@@ -41,6 +41,12 @@ assert.match(guestJs,/repo_claim/,'El invitado debe poder recibir un producto de
 assert.match(guestJs,/inventory_delta/,'El invitado debe poder contar inventario');
 assert.match(guestJs,/receipt_set/,'El invitado debe poder controlar cantidades recibidas');
 assert.match(guestJs,/Producto fuera de la lista/,'Los extras deben registrarse de forma explícita');
+assert.doesNotMatch(guestJs,/Pendientes en la sesión/,'El invitado no debe ver la lista general de pendientes');
+assert.doesNotMatch(guestJs,/function renderRepoList\(/,'La vista QR no debe reconstruir la lista general de reposición');
+assert.match(guestHtml,/Buscar\/agregar producto/,'El acceso QR debe ofrecer el buscador explícito del padrón');
+assert.match(guestJs,/Pedido por esta reposición/,'Cada resultado debe identificar los productos solicitados');
+assert.match(guestJs,/No pedido · se agregará como extra/,'Cada resultado fuera de la reposición debe quedar identificado');
+assert.match(guestJs,/repo_extra_set/,'Un extra existente debe poder modificarse desde el buscador');
 assert.match(guestJs,/matchesBarcode/,'El escáner debe usar las variantes del código de barras central');
 assert.match(guestJs,/openGuestRepoScanner/,'La tarjeta de Reposición debe ofrecer un escáner de comprobación contextual');
 assert.match(guestJs,/scanMode==='verify'/,'El escáner debe rechazar un producto distinto al asignado');
@@ -68,6 +74,6 @@ assert.match(guestCss,/@media\(max-width:620px\)/,'La vista debe adaptarse a tel
 assert.match(guestCss,/@media\(max-width:370px\)/,'La vista debe contemplar teléfonos angostos');
 assert.match(guestCss,/body\.guest-overlay-open\{position:fixed/,'Los diálogos y la cámara deben inmovilizar el fondo en iPhone y Android');
 assert.match(guestCss,/\.guest-search-card\{position:relative;top:auto\}/,'El buscador móvil no debe saltar al variar su altura');
-assert.match(guestHtml,/invitado\.js\?v=reposition-control-v2/,'El navegador debe cargar la corrección sin conservar caché anterior');
+assert.match(guestHtml,/invitado\.js\?v=visitor-finder-v1/,'El navegador debe cargar la corrección sin conservar caché anterior');
 
 console.log('guest-access: OK');
