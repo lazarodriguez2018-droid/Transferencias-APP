@@ -68,9 +68,11 @@
       const qty=headers.findIndex(value=>['qty_replenishment','qty_replen','cantidad','cantidad_reposicion'].includes(value));
       const stock=headers.findIndex(value=>['stock_origin','stock_origen','stock'].includes(value));
       if(sku<0||qty<0||stock<0)continue;
+      let description=headers.findIndex(value=>['description','descripcion','nombre','producto'].includes(value));
+      if(description<0)description=sku;
       let calculation=headers.findIndex(value=>['calculo_stock','stock_restante','calculo'].includes(value));
       if(calculation<0)calculation=Math.max(sku,qty,stock)+1;
-      return {rowIndex,sku,qty,stock,calculation};
+      return {rowIndex,sku,description,qty,stock,calculation};
     }
     throw new Error('No se encontró el encabezado del archivo original');
   }
@@ -97,10 +99,19 @@
     const highlightedRows=[];
     for(let row=range.s.r;row<=columns.rowIndex;row+=1)rowMap.set(row,row);
     let targetRow=columns.rowIndex+1;
+    const sourceRows=[];
     for(let sourceRow=columns.rowIndex+1;sourceRow<=range.e.r;sourceRow+=1){
       const skuCell=source[XLSX.utils.encode_cell({r:sourceRow,c:columns.sku})];
       const sku=String(skuCell?.v??'').trim();
       if(!originalItems.has(sku))continue;
+      sourceRows.push(sourceRow);
+    }
+    sourceRows.sort((left,right)=>{
+      const leftValue=String(source[XLSX.utils.encode_cell({r:left,c:columns.description})]?.v??'');
+      const rightValue=String(source[XLSX.utils.encode_cell({r:right,c:columns.description})]?.v??'');
+      return leftValue.localeCompare(rightValue,'es',{sensitivity:'base',numeric:true})||left-right;
+    });
+    for(const sourceRow of sourceRows){
       rowMap.set(sourceRow,targetRow);
       targetRow+=1;
     }
@@ -114,9 +125,8 @@
       for(let column=range.s.c;column<=range.e.c;column+=1){
         const sourceAddress=XLSX.utils.encode_cell({r:sourceRow,c:column});
         const sourceCell=source[sourceAddress];
-        if(!sourceCell)continue;
         const targetAddress=XLSX.utils.encode_cell({r:newRow,c:column});
-        let targetCell=cloneCell(sourceCell);
+        let targetCell=cloneCell(sourceCell)||{t:'s',v:''};
         if(sourceRow>columns.rowIndex&&column===columns.calculation){
           const excelRow=newRow+1;
           const stockColumn=XLSX.utils.encode_col(columns.stock),qtyColumn=XLSX.utils.encode_col(columns.qty);
@@ -132,9 +142,10 @@
     target['!ref']=XLSX.utils.encode_range({s:range.s,e:{r:targetRow-1,c:range.e.c}});
     target['!autofilter']={ref:XLSX.utils.encode_range({s:{r:columns.rowIndex,c:range.s.c},e:{r:targetRow-1,c:range.e.c}})};
     target['!cols']=(source['!cols']||[]).map(column=>column?{...column}:column);
-    [1,4,5].filter(index=>index<=range.e.c).forEach(index=>{
+    [1,4,5,columns.stock].filter((index,position,list)=>index<=range.e.c&&list.indexOf(index)===position).forEach(index=>{
       target['!cols'][index]={...(target['!cols'][index]||{}),hidden:true,level:1,outlineLevel:1};
     });
+    target['!cols'][columns.calculation]={...(target['!cols'][columns.calculation]||{}),wch:Math.max(Number(target['!cols'][columns.calculation]?.wch)||0,16)};
     target['!rows']=[];
     for(const [sourceRow,newRow] of rowMap){
       if(source['!rows']?.[sourceRow])target['!rows'][newRow]={...source['!rows'][sourceRow]};
@@ -142,51 +153,64 @@
     workbook.Sheets[name]=target;
     const output=XLSX.write(workbook,{bookType:outputType,type:'array',cellStyles:true});
     output.highlightedRows=highlightedRows;
+    output.tableBounds={startRow:range.s.r+1,endRow:targetRow,startColumn:range.s.c,endColumn:range.e.c};
     return output;
   }
 
   async function applyProcessedSourcePresentation(buffer, JSZip) {
     if(!JSZip)throw new Error('No se pudo cargar el generador de formato Excel');
     const highlightedRows=Array.isArray(buffer?.highlightedRows)?buffer.highlightedRows:[];
-    if(!highlightedRows.length)return buffer;
+    const highlightedSet=new Set(highlightedRows);
+    const tableBounds=buffer?.tableBounds||null;
     const zip=await JSZip.loadAsync(buffer);
     const stylesFile=zip.file('xl/styles.xml'),sheetFile=zip.file('xl/worksheets/sheet1.xml');
     if(!stylesFile||!sheetFile)throw new Error('El archivo procesado no tiene la estructura esperada');
     let styles=await stylesFile.async('string'),sheet=await sheetFile.async('string');
     const baseStyles=new Set();
-    highlightedRows.forEach(rowNumber=>{
-      const rowMatch=sheet.match(new RegExp(`<row\\b[^>]*\\br="${rowNumber}"[^>]*>([\\s\\S]*?)<\\/row>`));
-      if(!rowMatch)return;
-      for(const match of rowMatch[1].matchAll(/<c\b([^>]*)>/g))baseStyles.add(Number(match[1].match(/\bs="(\d+)"/)?.[1]||0));
-    });
+    const rowStart=Number(tableBounds?.startRow)||1,rowEnd=Number(tableBounds?.endRow)||Number.MAX_SAFE_INTEGER;
+    for(const rowMatch of sheet.matchAll(/<row\b[^>]*\br="(\d+)"[^>]*>([\s\S]*?)<\/row>/g)){
+      const rowNumber=Number(rowMatch[1]);
+      if(rowNumber<rowStart||rowNumber>rowEnd)continue;
+      for(const match of rowMatch[2].matchAll(/<c\b([^>]*)>/g))baseStyles.add(Number(match[1].match(/\bs="(\d+)"/)?.[1]||0));
+    }
     const fillsMatch=styles.match(/<fills\b[^>]*count="(\d+)"[^>]*>([\s\S]*?)<\/fills>/);
+    const bordersMatch=styles.match(/<borders\b[^>]*count="(\d+)"[^>]*>([\s\S]*?)<\/borders>/);
     const xfsMatch=styles.match(/<cellXfs\b[^>]*count="(\d+)"[^>]*>([\s\S]*?)<\/cellXfs>/);
-    if(!fillsMatch||!xfsMatch)throw new Error('No se pudo preparar el resaltado del reporte');
+    if(!fillsMatch||!bordersMatch||!xfsMatch)throw new Error('No se pudo preparar el formato del reporte');
     const fillId=Number(fillsMatch[1]);
+    const borderId=Number(bordersMatch[1]);
     const yellowFill='<fill><patternFill patternType="solid"><fgColor rgb="FFFFFF00"/><bgColor indexed="64"/></patternFill></fill>';
-    styles=styles.replace(fillsMatch[0],fillsMatch[0].replace(`count="${fillsMatch[1]}"`,`count="${fillId+1}"`).replace('</fills>',`${yellowFill}</fills>`));
+    const tableBorder='<border><left style="thin"><color rgb="FFB7C1CE"/></left><right style="thin"><color rgb="FFB7C1CE"/></right><top style="thin"><color rgb="FFB7C1CE"/></top><bottom style="thin"><color rgb="FFB7C1CE"/></bottom><diagonal/></border>';
+    if(highlightedRows.length)styles=styles.replace(fillsMatch[0],fillsMatch[0].replace(`count="${fillsMatch[1]}"`,`count="${fillId+1}"`).replace('</fills>',`${yellowFill}</fills>`));
+    styles=styles.replace(bordersMatch[0],bordersMatch[0].replace(`count="${bordersMatch[1]}"`,`count="${borderId+1}"`).replace('</borders>',`${tableBorder}</borders>`));
     const xfNodes=xfsMatch[2].match(/<xf\b[^>]*(?:\/>|>[\s\S]*?<\/xf>)/g)||[];
     const styleMap=new Map();
     const additions=[];
     baseStyles.forEach(baseStyle=>{
-      let xf=xfNodes[baseStyle]||xfNodes[0]||'<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>';
-      xf=/\bfillId="\d+"/.test(xf)?xf.replace(/\bfillId="\d+"/,`fillId="${fillId}"`):xf.replace(/<xf\b/,`<xf fillId="${fillId}"`);
-      xf=/\bapplyFill="\d+"/.test(xf)?xf.replace(/\bapplyFill="\d+"/,'applyFill="1"'):xf.replace(/<xf\b/, '<xf applyFill="1"');
-      styleMap.set(baseStyle,Number(xfsMatch[1])+additions.length);
-      additions.push(xf);
+      [false,true].filter(highlight=>!highlight||highlightedRows.length).forEach(highlight=>{
+        let xf=xfNodes[baseStyle]||xfNodes[0]||'<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>';
+        xf=/\bborderId="\d+"/.test(xf)?xf.replace(/\bborderId="\d+"/,`borderId="${borderId}"`):xf.replace(/<xf\b/,`<xf borderId="${borderId}"`);
+        xf=/\bapplyBorder="\d+"/.test(xf)?xf.replace(/\bapplyBorder="\d+"/,'applyBorder="1"'):xf.replace(/<xf\b/, '<xf applyBorder="1"');
+        if(highlight){
+          xf=/\bfillId="\d+"/.test(xf)?xf.replace(/\bfillId="\d+"/,`fillId="${fillId}"`):xf.replace(/<xf\b/,`<xf fillId="${fillId}"`);
+          xf=/\bapplyFill="\d+"/.test(xf)?xf.replace(/\bapplyFill="\d+"/,'applyFill="1"'):xf.replace(/<xf\b/, '<xf applyFill="1"');
+        }
+        styleMap.set(`${baseStyle}:${highlight?'yellow':'normal'}`,Number(xfsMatch[1])+additions.length);
+        additions.push(xf);
+      });
     });
     styles=styles.replace(xfsMatch[0],xfsMatch[0].replace(`count="${xfsMatch[1]}"`,`count="${Number(xfsMatch[1])+additions.length}"`).replace('</cellXfs>',`${additions.join('')}</cellXfs>`));
-    highlightedRows.forEach(rowNumber=>{
-      const rowPattern=new RegExp(`(<row\\b[^>]*\\br="${rowNumber}"[^>]*>)([\\s\\S]*?)(<\\/row>)`,'g');
-      sheet=sheet.replace(rowPattern,(whole,open,cells,close)=>{
-        const styled=cells.replace(/<c\b([^>]*)>/g,(tag,attributes)=>{
-          const base=Number(attributes.match(/\bs="(\d+)"/)?.[1]||0),style=styleMap.get(base);
-          if(style==null)return tag;
-          const next=/\bs="\d+"/.test(attributes)?attributes.replace(/\bs="\d+"/,` s="${style}"`):`${attributes} s="${style}"`;
-          return `<c${next}>`;
-        });
-        return open+styled+close;
+    sheet=sheet.replace(/(<row\b[^>]*\br="(\d+)"[^>]*>)([\s\S]*?)(<\/row>)/g,(whole,open,rowValue,cells,close)=>{
+      const rowNumber=Number(rowValue);
+      if(rowNumber<rowStart||rowNumber>rowEnd)return whole;
+      const styleKind=highlightedSet.has(rowNumber)?'yellow':'normal';
+      const styled=cells.replace(/<c\b([^>]*)>/g,(tag,attributes)=>{
+        const base=Number(attributes.match(/\bs="(\d+)"/)?.[1]||0),style=styleMap.get(`${base}:${styleKind}`);
+        if(style==null)return tag;
+        const next=/\bs="\d+"/.test(attributes)?attributes.replace(/\bs="\d+"/,` s="${style}"`):`${attributes} s="${style}"`;
+        return `<c${next}>`;
       });
+      return open+styled+close;
     });
     zip.file('xl/styles.xml',styles);zip.file('xl/worksheets/sheet1.xml',sheet);
     return zip.generateAsync({type:'arraybuffer',compression:'DEFLATE',compressionOptions:{level:6}});
