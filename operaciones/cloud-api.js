@@ -613,6 +613,16 @@
       .on('postgres_changes',{event:'DELETE',schema:'public',table:'op_recepcion_participantes'},callback).subscribe();
     cloud.channels.push(channel); return channel;
   };
+  cloud.searchSessions = async function (moduleName,filters,page=0) {
+    await cloud.ready;
+    const {data,error}=await cloud.db.rpc('op_buscar_sesiones',{p_modulo:moduleName,p_filtros:filters,p_pagina:page,p_limite:24});
+    if(error)throw error;return data;
+  };
+  cloud.sessionProducts = async function (moduleName,sessionId,query,page=0) {
+    await cloud.ready;
+    const {data,error}=await cloud.db.rpc('op_consultar_productos_sesion',{p_modulo:moduleName,p_sesion:sessionId,p_busqueda:query,p_pagina:page});
+    if(error)throw error;return data;
+  };
   cloud.repositionOrders = async function (repoId) {
     const {data,error}=await cloud.db.rpc('op_reposicion_panel_pedidos',{p_reposicion:repoId});
     if(error)throw error; return data;

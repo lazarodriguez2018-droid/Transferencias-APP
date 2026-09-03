@@ -1,0 +1,35 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const source=fs.readFileSync(path.join(__dirname,'../operaciones/session-directory.js'),'utf8');
+const api=require('../operaciones/session-directory');
+assert.equal(api.normalize('Reposición MARÍA'),'reposicion maria');
+assert.equal(api.date('2026-09-02'),'02/09/2026');
+assert.match(api.validate({...api.blank(),date_from:'2026-09-03',date_to:'2026-09-02'}),/fecha inicial/);
+assert.match(api.validate({...api.blank(),stock_min:'10',stock_max:'0'}),/mínimo/);
+assert.equal(api.validate({...api.blank(),stock_min:'-5',stock_max:'0'}),'');
+assert.equal(api.hasProductFilter({...api.blank(),stock_min:'0'}),true);
+assert.equal(api.hasProductFilter(api.blank()),false);
+assert.deepEqual(api.sanitize({states:'bad',categories:['snacks',null],query:'x'.repeat(500)}).categories,['snacks']);
+assert.equal(api.sanitize({query:'x'.repeat(500)}).query.length,200);
+for(const file of ['session-directory.js','app.js','cloud-api.js'])new vm.Script(fs.readFileSync(path.join(__dirname,'../operaciones',file),'utf8'),{filename:file});
+const html=fs.readFileSync(path.join(__dirname,'../operaciones/index.html'),'utf8'),css=fs.readFileSync(path.join(__dirname,'../operaciones/session-directory.css'),'utf8');
+for(const id of ['session-search','session-filter-panel','session-active-filters','session-sort','session-pagination','directory-create-slot'])assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1,'Unique accessible control '+id);
+assert.match(html,/session-directory.js\?v=directory-v1/);assert.match(css,/max-width:1480px!important/);assert.match(css,/prefers-reduced-motion/);assert.match(css,/100dvh/);
+async function requests(){
+ const elements=new Map(),results=[],promises=[];
+ const element=()=>({innerHTML:'',textContent:'',hidden:false,disabled:false,setAttribute(){},removeAttribute(){}});
+ const window={document:{getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);}},sessionStorage:{setItem(){}},console:{warn(){}},matchMedia:()=>({matches:false})};
+ const instrumented=source.replace('root.SucanSessionDirectory=api;',`api.testSetup=config=>{options=config;facets={locals:[],users:[]};facetsAt=Date.now();key='test';};root.SucanSessionDirectory=api;`);
+ vm.runInNewContext(instrumented,{window,Date,setTimeout,clearTimeout});
+ const tested=window.SucanSessionDirectory;
+ tested.testSetup({module:'reposicion',cloud:{searchSessions:()=>new Promise((resolve,reject)=>promises.push({resolve,reject}))},onResults:rows=>results.push(rows)});
+ const a=tested.load(),b=tested.load();promises[1].resolve({total:0,sessions:[]});await b;
+ promises[0].reject(Error('stale request'));await a;
+ assert.equal(elements.get('session-directory-error').textContent,'','Stale errors cannot replace newer results');
+ assert.equal(results.length,1,'Out-of-order responses are ignored');
+ const c=tested.load();promises[2].reject(Error('offline'));await c;
+ assert.match(elements.get('session-directory-error').textContent,/conexión/);assert.match(elements.get('sesiones-items').innerHTML,/No se muestran resultados anteriores/);
+ const d=tested.load();promises[3].resolve({total:1,sessions:[{id:'one',nombre:'<script>alert(1)</script>',module:'reposicion',estado:'preparando',origin:'PDE',destination:'MDO',can_edit:true,summary:{products:0},participants:[]}]});await d;
+ assert.match(elements.get('sesiones-items').innerHTML,/&lt;script&gt;/);assert.doesNotMatch(elements.get('sesiones-items').innerHTML,/<script>/);
+ console.log('session-directory UI: OK — filters, validation, escaping, request races, error recovery and responsive contracts.');
+}
+requests().catch(error=>{console.error(error);process.exitCode=1;});

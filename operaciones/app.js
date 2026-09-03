@@ -415,7 +415,7 @@ function mostrarPantallaSesion(loadSessions = true) {
       ? `Mostrando solamente sesiones vinculadas a ${localName}${warehouse ? ` (${warehouse})` : ''}.`
       : 'Mostrando las sesiones disponibles para tu cuenta.';
   const locationFilter = document.getElementById('session-location-filter');
-  locationFilter.style.display = isSupervisor ? 'block' : 'none';
+  locationFilter.style.display = 'block';
   if (!isSupervisor) locationFilter.value = '';
   const createLocationWrap = document.getElementById('session-create-location-wrap');
   if (createLocationWrap) createLocationWrap.style.display = isSupervisor && !isRepo && !isReceipt ? 'block' : 'none';
@@ -424,6 +424,11 @@ function mostrarPantallaSesion(loadSessions = true) {
   document.getElementById('available-sessions-title').textContent = isRepo ? 'Reposiciones disponibles' : isReceipt ? 'Controles de remitos disponibles' : 'Inventarios disponibles';
   document.querySelector('#session-create-panel summary').lastChild.textContent = isRepo ? ' Crear una reposición nueva' : isReceipt ? ' Crear un control de remito' : ' Crear un inventario nuevo';
 
+  window.SucanSessionDirectory?.mount({module:currentModule,cloud:window.SucanCloud,
+    onResults:rows=>{availableSessions=rows.map(s=>({...s,summary:{...s.summary,productos:s.summary.products,unidades_preparadas:s.summary.quantity,unidades_pedidas:s.summary.expected}}));},
+    onOpen:s=>unirseASesion(s.id,s.nombre),
+    onDelete:s=>currentModule==='reposicion'?eliminarReposicionDisponible(encodeURIComponent(s.id)):eliminarRecepcionDisponible(encodeURIComponent(s.id))
+  });
   if (loadSessions) cargarSesionesDisponibles();
 }
 
@@ -485,6 +490,7 @@ function populateSessionLocationFilter(sessions) {
 }
 
 function renderAvailableSessions() {
+  if(window.SucanSessionDirectory?.active())return window.SucanSessionDirectory.refresh({silent:true});
   const items = document.getElementById('sesiones-items');
   const count = document.getElementById('session-results-count');
   if (!items || !count) return;
@@ -617,6 +623,7 @@ async function eliminarReposicionDisponible(encodedId) {
 }
 
 async function cargarSesionesDisponibles(options = {}) {
+  if(window.SucanSessionDirectory?.active())return window.SucanSessionDirectory.load({...options,refreshFacets:!options.silent});
   const silent = !!options.silent;
   const requestedModule = currentModule;
   if (sessionLoadInFlight && sessionLoadModule === requestedModule) return sessionLoadInFlight;

@@ -653,13 +653,17 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
 
 <!-- ===== PANTALLA DE SESIÓN ===== -->
 <div id="session-screen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:1000;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
-  <div style="width:100%;max-width:440px;max-height:100vh;overflow-y:auto;padding-bottom:20px">
-    <div style="text-align:center;margin-bottom:28px">
-      <img src="sucan_logo.png" alt="Sucaneitor" style="height:90px;width:auto;object-fit:contain;margin-bottom:8px">
-      <div style="font-size:24px;font-weight:700;color:var(--accent)">Sucaneitor <span id="session-module-name" style="color:var(--accent)">Inventario</span></div>
-      <div id="session-module-subtitle" style="font-size:13px;color:var(--muted);margin-top:4px">Contá la mercadería junto con tu equipo.</div>
-      <a class="btn btn-s btn-sm" href="/" style="margin-top:12px">← Volver al inicio</a>
-    </div>
+  <div class="session-directory-shell">
+    <header class="directory-page-head">
+      <img src="sucan_logo.png" alt="SUCAN">
+      <div><h1 id="session-module-name">Inventarios</h1><p id="session-module-subtitle">Buscá sesiones y retomá el trabajo de tu equipo.</p></div>
+      <a class="btn btn-s" href="/">← Volver al inicio</a>
+    </header>
+    <div class="directory-actions"><nav class="directory-module-nav" aria-label="Buscar sesiones por módulo">
+      <a href="/operaciones?module=reposicion" data-directory-module="reposicion">Reposiciones</a>
+      <a href="/operaciones?module=inventario" data-directory-module="inventario">Inventarios</a>
+      <a href="/operaciones?module=recepcion" data-directory-module="recepcion">Control de remitos</a>
+    </nav><div id="directory-create-slot"></div></div>
 
     <input type="hidden" id="input-usuario">
 
@@ -671,28 +675,29 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
       </div>
     </div>
 
-    <section class="card session-browser-card" aria-labelledby="available-sessions-title">
+    <section class="card session-browser-card" id="session-browser" aria-labelledby="available-sessions-title">
       <div class="session-browser-head">
         <div>
           <div class="card-title" id="available-sessions-title">Sesiones disponibles</div>
-          <div class="tm" id="session-results-count">Buscando sesiones activas…</div>
+          <div class="tm" id="session-results-count" role="status" aria-live="polite">Buscando sesiones…</div>
         </div>
         <button class="btn btn-s btn-sm" type="button" onclick="cargarSesionesDisponibles()" aria-label="Actualizar sesiones">↻ Actualizar</button>
       </div>
-      <div class="session-browser-tools">
-        <label class="session-search-box">
-          <span aria-hidden="true">⌕</span>
-          <input type="search" class="input" id="session-search" placeholder="Buscar por nombre, local, almacén o usuario"
-                 autocomplete="off" oninput="renderAvailableSessions()">
-        </label>
-        <select class="input session-location-filter" id="session-location-filter" aria-label="Filtrar por local"
-                onchange="renderAvailableSessions()" style="display:none">
-          <option value="">Toda la empresa</option>
-        </select>
+      <div class="directory-top-search">
+        <label><span>Buscar en las sesiones</span><input type="search" class="input" id="session-search" maxlength="200" placeholder="Nombre, remito, producto, código, barras o persona" autocomplete="off" oninput="renderAvailableSessions()"></label>
+        <button type="button" class="btn btn-s" id="session-search-clear" aria-label="Borrar texto de búsqueda" hidden>×</button>
       </div>
-      <div id="sesiones-lista">
-        <div id="sesiones-items" class="session-items" aria-live="polite">
-          <div class="session-empty">Cargando…</div>
+      <div class="directory-layout">
+        <details class="directory-filters" id="session-filter-panel" open>
+          <summary>Filtros<span id="session-filter-count"></span></summary>
+          <div id="session-filter-body"><label>Local<select id="session-location-filter" aria-label="Filtrar por local"><option value="">Todos mis locales</option></select></label></div>
+        </details>
+        <div class="directory-results" id="sesiones-lista">
+          <div class="directory-results-tools"><button class="btn btn-s" type="button" id="session-clear-filters" hidden>Limpiar filtros</button><label>Ordenar<select id="session-sort"><option value="updated">Actividad reciente</option><option value="created">Más nuevas</option><option value="oldest">Más antiguas</option><option value="name">Nombre A–Z</option></select></label></div>
+          <div class="directory-active-filters" id="session-active-filters" aria-label="Filtros activos"></div>
+          <p class="directory-error" id="session-directory-error" role="alert"></p>
+          <div id="sesiones-items" class="session-items"><div class="session-empty">Cargando…</div></div>
+          <nav class="directory-pagination" id="session-pagination" aria-label="Páginas de resultados" hidden><button type="button" id="session-previous">← Anterior</button><span id="session-page-label"></span><button type="button" id="session-next">Siguiente →</button></nav>
         </div>
       </div>
     </section>
@@ -1180,13 +1185,15 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
 <script src="cloud-config.js"></script>
 <link rel="stylesheet" href="/downloads.css?v=user-copy-v1">
 <script src="/downloads.js?v=user-copy-v1"></script>
-<script src="cloud-api.js?v=repo-orders-v1"></script>
+<script src="cloud-api.js?v=directory-v1"></script>
 <script src="search-engine.js?v=search-fast-v6"></script>
 <script src="reposition-engine.js?v=fillrate-es-v1"></script>
 <script src="reception-engine.js?v=receipt-collab-v1"></script>
 <script src="reposition-export.js?v=processed-report-v4"></script>
 <script src="/barcode-utils.js?v=barcode-catalog-v1"></script>
-<script src="app.js?v=user-copy-v1"></script>
+<link rel="stylesheet" href="session-directory.css?v=directory-v1">
+<script src="session-directory.js?v=directory-v1"></script>
+<script src="app.js?v=directory-v1"></script>
 <link rel="stylesheet" href="reposition-orders.css?v=repo-orders-v1"><script src="reposition-orders.js?v=repo-orders-v1"></script><script src="reposition-app.js?v=repo-orders-v1"></script>
 <script src="reception-app.js?v=user-copy-v1"></script>
 <script src="session-invite.js?v=user-copy-v1"></script>
