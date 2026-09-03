@@ -24,7 +24,7 @@
     if(!config.cloud?.searchSessions)return;
     const nextKey=`sucan.directory.v1.${config.cloud.user?.id||'user'}.${config.module}`;
     $('session-module-name').textContent={inventario:'Inventarios',reposicion:'Reposiciones',recepcion:'Control de remitos'}[config.module];
-    $('session-module-subtitle').textContent='Buscá sesiones, encontrá productos y retomá el trabajo de tu equipo.';
+    $('session-module-subtitle').hidden=true;
     if(key===nextKey&&options){$('session-search').value=filters.query;$('session-sort').value=filters.sort;renderFilters();renderChips();render();return;}
     sequence++;clearTimeout(timer);closeDialog();options=config;key=nextKey;rows=[];facets={};page=0;filters=blank();
     try{const saved=JSON.parse(root.sessionStorage.getItem(key)||'null');if(saved){filters=sanitize(saved.filters);page=Math.max(0,Number(saved.page)||0);}}catch(_){}

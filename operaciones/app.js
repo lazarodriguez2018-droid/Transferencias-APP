@@ -396,7 +396,7 @@ function mostrarPantallaSesion(loadSessions = true) {
   const isRepo = currentModule === 'reposicion';
   const isReceipt = currentModule === 'recepcion';
   document.getElementById('session-module-name').textContent = isRepo ? 'Reposición' : isReceipt ? 'Recepción' : 'Inventario';
-  document.getElementById('session-module-subtitle').textContent = isRepo ? 'Juntá la mercadería y prepará los remitos de envío.' : isReceipt ? 'Compará lo que llegó con las cantidades del remito.' : 'Contá la mercadería junto con tu equipo.';
+  document.getElementById('session-module-subtitle').hidden = true;
   document.getElementById('repo-file-fields').style.display = isRepo ? 'block' : 'none';
   document.getElementById('receipt-file-fields').style.display = isReceipt ? 'block' : 'none';
   document.getElementById('create-session-title').textContent = isRepo ? 'Crear reposición nueva' : isReceipt ? 'Crear control de remito' : 'Crear sesión nueva';
@@ -409,11 +409,7 @@ function mostrarPantallaSesion(loadSessions = true) {
   const isSupervisor = !!window.SucanCloud?.isSupervisor?.();
   document.getElementById('input-usuario').value = displayName;
   document.getElementById('session-user-context').textContent = displayName;
-  document.getElementById('session-scope-label').textContent = isSupervisor
-    ? 'Acceso administrativo: podés ver las sesiones de toda la empresa.'
-    : localName
-      ? `Mostrando solamente sesiones vinculadas a ${localName}${warehouse ? ` (${warehouse})` : ''}.`
-      : 'Mostrando las sesiones disponibles para tu cuenta.';
+  document.getElementById('session-scope-label').textContent = isSupervisor ? 'Supervisor' : 'Local';
   const locationFilter = document.getElementById('session-location-filter');
   locationFilter.style.display = 'block';
   if (!isSupervisor) locationFilter.value = '';

@@ -656,7 +656,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
   <div class="session-directory-shell">
     <header class="directory-page-head">
       <img src="sucan_logo.png" alt="SUCAN">
-      <div><h1 id="session-module-name">Inventarios</h1><p id="session-module-subtitle">Buscá sesiones y retomá el trabajo de tu equipo.</p></div>
+      <div><h1 id="session-module-name">Inventarios</h1><p id="session-module-subtitle" hidden></p></div>
       <div id="directory-create-slot"></div>
       <a class="btn btn-s" href="/">← Volver al inicio</a>
     </header>
@@ -764,6 +764,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
   <div class="tab active" onclick="showReceiptTab('control')" id="receipt-tab-control"><span class="tab-icon">⌕</span><span>Controlar</span></div>
   <div class="tab" onclick="showReceiptTab('lista')" id="receipt-tab-lista"><span class="tab-icon">☷</span><span>Lista</span><span class="tab-cnt" id="receipt-list-count">0</span></div>
   <div class="tab" onclick="showReceiptTab('extras')" id="receipt-tab-extras"><span class="tab-icon">＋</span><span>Extras</span></div>
+  <button type="button" class="tab" onclick="showReceiptTab('pedidos')" id="receipt-tab-pedidos"><span class="tab-icon" aria-hidden="true">▣</span><span class="receipt-tab-label">Pedidos esperados</span><span class="tab-cnt" id="receipt-orders-count">0</span></button>
   <div class="tab" onclick="showReceiptTab('resumen')" id="receipt-tab-resumen"><span class="tab-icon">▦</span><span>Resumen</span></div>
   <div class="tab" onclick="showReceiptTab('config')" id="receipt-tab-config"><span class="tab-icon">⚙</span><span>Config.</span></div>
 </div>
@@ -846,7 +847,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
     <div id="receipt-search-results" class="repo-search-results receipt-search-results"></div>
   </section>
   <div class="repo-workspace">
-    <section class="card repo-current receipt-current" id="receipt-current-card"><div class="repo-empty">Buscá un producto del remito para comenzar.</div></section>
+    <div><div id="receipt-order-notice" hidden></div><section class="card repo-current receipt-current" id="receipt-current-card"><div class="repo-empty">Buscá un producto del remito para comenzar.</div></section></div>
     <aside class="repo-tools">
       <section class="card repo-tool receipt-edit-only"><div class="card-title">Escáner opcional</div><button class="btn btn-p btn-full scan-main-button" onclick="openReceiptScanner('expected')">▣ Escanear código</button><div class="repo-inline" style="margin-top:8px"><input id="receipt-barcode-input" class="input barcode" inputmode="numeric" autocomplete="off" placeholder="Código de barras"><button class="btn btn-s" onclick="submitReceiptBarcode()">Buscar</button></div></section>
       <section class="card repo-tool"><div class="card-title">Avance del remito</div><div id="receipt-progress-copy" class="panel-copy">—</div><button class="btn btn-s btn-full mt2" onclick="showReceiptTab('lista')">Ver lista completa</button></section>
@@ -869,6 +870,13 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
   <div id="receipt-extras-list" class="repo-list"></div>
 </div>
 
+<div class="page receipt-page" id="receipt-page-pedidos">
+  <div class="page-heading"><div><h1>Pedidos esperados</h1><p id="receipt-orders-route"></p></div><button class="btn btn-s" onclick="refreshReceptionState(true)">↻ Actualizar</button></div>
+  <div class="receipt-order-filters"><label>Buscar pedido o producto<input id="receipt-order-search" class="input" type="search" placeholder="Cliente, pedido, nombre o código" oninput="renderReceiptOrders()"></label><label>Mostrar<select id="receipt-order-filter" class="input" onchange="renderReceiptOrders()"><option value="all">Todos los pedidos de este origen</option><option value="linked">En este remito</option><option value="pending">Pendientes de recibir</option><option value="notify">Clientes por avisar</option></select></label></div>
+  <p class="tm">Confirmá a qué pedido corresponde la mercadería recibida. Los pedidos aún no enviados o de otro remito no se completan con este control.</p>
+  <div id="receipt-expected-orders" class="receipt-orders-list"></div>
+</div>
+
 <!-- ===== RECEPCIÓN: RESUMEN ===== -->
 <div class="page receipt-page" id="receipt-page-resumen">
   <div class="page-heading"><div><span class="eyebrow">CIERRE DEL CONTROL</span><h1>Resumen de recepción</h1><p>Revisá los faltantes, los sobrantes y los productos pendientes antes de cerrar la recepción.</p></div></div>
@@ -878,7 +886,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
     <section class="card"><div class="panel-head"><div><div class="card-title">Informe final</div><h2>Remitos e informe de recepción</h2></div><div class="panel-icon">⇩</div></div><p class="panel-copy">Descargá por separado la mercadería del remito y los extras recibidos. El informe de control incluye las diferencias, los pedidos de clientes y el historial de cambios.</p><div class="repo-export-grid"><button class="btn btn-p" onclick="downloadReceiptTransfer('received')">Remito recibido (.xls)</button><button class="btn btn-s" onclick="downloadReceiptTransfer('extras')">Remito extras (.xls)</button><button class="btn btn-s" onclick="downloadReceptionReport()">Informe de control (.xlsx)</button><button class="btn btn-s" onclick="downloadReceptionOriginal()">Remito original</button></div></section>
   </div>
   <section class="card" id="receipt-orders-card"><div class="panel-head compact"><div><div class="card-title">Pedidos entre locales</div><h2>Productos destinados a clientes</h2></div></div><div id="receipt-orders-list" class="receipt-orders-list"></div></section>
-  <section class="card receipt-edit-only" id="receipt-close-card"><div class="panel-head"><div><div class="card-title">Finalizar</div><h2>Cerrar control del remito</h2></div><div class="panel-icon">✓</div></div><p class="panel-copy">Al cerrar, los pedidos vinculados quedarán completos o incompletos según las cantidades recibidas.</p><button class="btn btn-p" id="receipt-close-button" onclick="closeReceptionFlow()">Cerrar recepción</button></section>
+  <section class="card receipt-edit-only" id="receipt-close-card"><div class="panel-head"><div><div class="card-title">Finalizar</div><h2>Cerrar control del remito</h2></div><div class="panel-icon">✓</div></div><p class="panel-copy">Al cerrar se registrará la recepción de los pedidos con número de remito coincidente o vinculación confirmada. Las coincidencias por fecha y productos deben confirmarse desde Pedidos esperados.</p><button class="btn btn-p" id="receipt-close-button" onclick="closeReceptionFlow()">Cerrar recepción</button></section>
 </div>
 
 <!-- ===== RECEPCIÓN: CONFIG ===== -->
@@ -892,6 +900,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
   <div class="repo-camera-head"><strong id="receipt-camera-title">Escanear producto recibido</strong><button class="btn btn-s" onclick="closeReceiptScanner()">Cerrar</button></div>
   <div id="receipt-camera-reader" class="repo-camera-reader"></div>
   <div id="receipt-camera-help" class="repo-camera-help">Apuntá al código de barras. Cada lectura válida suma una unidad.</div>
+  <button type="button" class="btn btn-p" id="receipt-camera-orders" hidden onclick="closeReceiptScanner().then(()=>showReceiptTab('pedidos'))">Este producto tiene pedidos · Ver pedidos esperados</button>
 </div>
 
 <!-- ===== CONTEO ===== -->
@@ -1181,17 +1190,19 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
 <script src="cloud-config.js"></script>
 <link rel="stylesheet" href="/downloads.css?v=user-copy-v1">
 <script src="/downloads.js?v=user-copy-v1"></script>
-<script src="cloud-api.js?v=directory-v1"></script>
+<script src="cloud-api.js?v=expected-v1"></script>
 <script src="search-engine.js?v=search-fast-v6"></script>
 <script src="reposition-engine.js?v=fillrate-es-v1"></script>
 <script src="reception-engine.js?v=receipt-collab-v1"></script>
 <script src="reposition-export.js?v=processed-report-v4"></script>
 <script src="/barcode-utils.js?v=barcode-catalog-v1"></script>
 <link rel="stylesheet" href="session-directory.css?v=compact-v2">
-<script src="session-directory.js?v=compact-v2"></script>
-<script src="app.js?v=directory-v1"></script>
+<script src="session-directory.js?v=expected-v1"></script>
+<script src="app.js?v=expected-v1"></script>
 <link rel="stylesheet" href="reposition-orders.css?v=repo-orders-v1"><script src="reposition-orders.js?v=repo-orders-v1"></script><script src="reposition-app.js?v=repo-orders-v1"></script>
-<script src="reception-app.js?v=user-copy-v1"></script>
+<link rel="stylesheet" href="receipt-orders.css?v=expected-v1">
+<script src="receipt-orders.js?v=expected-v1"></script>
+<script src="reception-app.js?v=expected-v1"></script>
 <script src="session-invite.js?v=user-copy-v1"></script>
 </body>
 </html>

@@ -587,6 +587,8 @@ const initialView=pendingManageToken ? 'misPedidos' : validViews.includes(reques
   ? requestedView
   : requestedModule==='pedidos' ? 'misPedidos' : 'hub';
 await navigateTo(initialView,{history:'replace'});
+const requestedOrder=queryParams.get('pedido');
+if(requestedOrder&&/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(requestedOrder)) await openDetalle(requestedOrder);
 if(pendingManageToken) await resolvePublicManagementToken(pendingManageToken);
 setupRealtime();
 } finally {
@@ -1457,7 +1459,7 @@ renderList('list-historial', list, '📋','No hay historial');
 async function openDetalle(orderId){
 showSpinner();
 const {data:o}=await db.from('pedidos').select('*,pedido_productos(*)').eq('id',orderId).single();
-if(!o){ hideSpinner(); return; }
+if(!o){ hideSpinner(); notify('El pedido no está disponible para tu cuenta.','warning'); return; }
 const {data:historialRows}=await db.from('pedido_historial').select('estado,created_at,usuario_id,persona_nombre,perfiles(nombre,apellido,local_nombre)').eq('pedido_id',orderId).order('created_at',{ascending:true});
 const historialPorEstado={};
 (historialRows||[]).forEach(h=>{

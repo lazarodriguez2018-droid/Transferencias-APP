@@ -37,6 +37,6 @@ assert.doesNotMatch(repo, /Este producto está libre para los colaboradores/);
 for (const file of ['index.html', 'operaciones/index.html']) {
   assert.match(read(file), /downloads\.js\?v=user-copy-v1/);
 }
-assert.match(read('operaciones/invitado.html'), /invitado\.js\?v=repo-orders-v1/);
+assert.match(read('operaciones/invitado.html'), /invitado\.js\?v=expected-v1/);
 assert.match(operations, /session-invite\.js\?v=user-copy-v1/);
 console.log('user-copy: OK — actionable guidance, consistent labels, privacy and honest messages');

@@ -68,6 +68,6 @@ assert.match(inventory,/Confirmar \$\{quantity\}/,'El modal de inventario debe m
 assert.match(guest,/pending=Math\.max\(0,num\(item\?\.requested\)-current\)/,'El invitado debe calcular la cantidad pendiente');
 assert.match(guest,/saveRepoQuantity\(code,current\+value\)/,'El invitado debe sumar lo pendiente sin reemplazar el total acumulado');
 assert.match(operationsHtml,/reposition-app\.js\?v=repo-orders-v1/,'La sesión normal debe invalidar el JavaScript anterior');
-assert.match(guestHtml,/invitado\.js\?v=repo-orders-v1/,'La sesión QR debe invalidar el JavaScript anterior');
+assert.match(guestHtml,/invitado\.js\?v=expected-v1/,'La sesión QR debe invalidar el JavaScript anterior');
 
 console.log('quantity-control: OK');

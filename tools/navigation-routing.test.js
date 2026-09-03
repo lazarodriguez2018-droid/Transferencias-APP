@@ -23,7 +23,7 @@ assert.match(portalHtml, /href="\/operaciones\?module=recepcion"/);
 assert.match(operationsHtml, /href="\/"[^>]*>← Volver al inicio<\/a>/);
 assert.doesNotMatch(operationsHtml, /id="module-screen"|¿Qué vas a hacer\?|Usar sin servidor|URL del servidor|Modo Red Local/,
   'Operaciones no debe conservar el selector blanco ni opciones del servidor local');
-assert.match(operationsHtml, /src="app\.js\?v=directory-v1"/,
+assert.match(operationsHtml, /src="app\.js\?v=expected-v1"/,
   'El navegador debe solicitar la versión nueva y no reutilizar archivos antiguos');
 assert.match(portalHtml, /<h1>Inicio<\/h1>/,
   'El selector debe orientar al usuario para elegir su tarea');
@@ -47,8 +47,8 @@ assert.match(operationsHtml, /id="session-search"/);
 assert.match(operationsHtml, /id="session-location-filter"/);
 assert.match(operationsJs, /function normalizeSessionSearch[\s\S]*normalize\('NFD'\)/,
   'La búsqueda de sesiones debe ignorar tildes y mayúsculas');
-assert.match(operationsJs, /isSupervisor[\s\S]*Acceso administrativo: podés ver las sesiones de toda la empresa/,
-  'La interfaz debe distinguir el alcance administrativo');
+assert.match(operationsJs, /session-scope-label'\)\.textContent = isSupervisor \? 'Supervisor' : 'Local'/,
+  'La interfaz debe mostrar solamente el rol');
 assert.match(cloudConfig, /portalUrl:\s*'\/'/);
 assert.match(cloudConfig, /pedidosUrl:\s*'\/\?module=pedidos'/);
 assert.doesNotMatch(portalJs, /return_to|returnTo/,

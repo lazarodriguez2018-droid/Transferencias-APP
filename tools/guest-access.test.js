@@ -74,6 +74,6 @@ assert.match(guestCss,/@media\(max-width:620px\)/,'La vista debe adaptarse a tel
 assert.match(guestCss,/@media\(max-width:370px\)/,'La vista debe contemplar teléfonos angostos');
 assert.match(guestCss,/body\.guest-overlay-open\{position:fixed/,'Los diálogos y la cámara deben inmovilizar el fondo en iPhone y Android');
 assert.match(guestCss,/\.guest-search-card\{position:relative;top:auto\}/,'El buscador móvil no debe saltar al variar su altura');
-assert.match(guestHtml,/invitado\.js\?v=repo-orders-v1/,'El navegador debe cargar los textos actuales sin conservar caché anterior');
+assert.match(guestHtml,/invitado\.js\?v=expected-v1/,'El navegador debe cargar los textos actuales sin conservar caché anterior');
 
 console.log('guest-access: OK');

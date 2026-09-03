@@ -292,10 +292,13 @@
     const codes=[...new Set([...(items||[]),...(extras||[])].map(row=>clean(row.codigo)).filter(Boolean))];
     const products=await selectInBatches('productos','codigo,nombre,barras,marca','codigo',codes);
     const catalogByCode=new Map(products.map(product=>[clean(product.codigo),product]));
-    const orderIds=(links||[]).map(link=>link.pedido_id);
-    const orders=orderIds.length?await selectInBatches('pedidos','id,cliente,telefono,estado,remito,cliente_aviso_pendiente,cliente_avisado_at,created_at,pedido_productos(codigo,nombre,cantidad,cantidad_aceptada,cantidad_preparada,cantidad_recibida)','id',orderIds,'created_at'):[];
+    const {data:orderPanel,error:orderError}=await cloud.db.rpc('op_recepcion_panel_pedidos',{p_recepcion:receiptId});
+    if(orderError)throw orderError;
+    const orders=(orderPanel.orders||[]).filter(order=>order.linked);
     const linkByOrder=new Map((links||[]).map(link=>[link.pedido_id,link]));
     const snapshot={id:receipt.id,nombre:receipt.nombre,document_number:receipt.numero_remito,date:receipt.fecha_remito,origin:receipt.origen_local,destination:receipt.destino_local,estado:receipt.estado,original_filename:receipt.original_filename,original_file:receipt.original_path,import_meta:receipt.import_meta||{},observaciones_cierre:receipt.observaciones_cierre||'',created_at:receipt.created_at,updated_at:receipt.updated_at,closed_at:receipt.closed_at,can_edit:canEditReception(receipt),can_delete:canEditReception(receipt),viewer_client_id:cloud.clientId,items:(items||[]).map(row=>receiptItem(row,catalogByCode)),extras:(extras||[]).map(row=>({codigo:row.codigo,nombre:clean(catalogByCode.get(clean(row.codigo))?.nombre)||row.nombre,barras:clean(catalogByCode.get(clean(row.codigo))?.barras)||row.barras||'',cantidad:Number(row.cantidad||0),observacion:row.observacion||'',updated_by:row.updated_by_name||'',updated_at:row.updated_at})),participantes:(devices||[]).map(row=>({nombre:row.nombre,cliente_id:row.cliente_id,usuario_id:row.usuario_id,invitado_id:row.invitado_id,last_seen:row.last_seen,joined:asDate(row.last_seen)})),orders:orders.map(order=>({...order,coincidencia:linkByOrder.get(order.id)?.coincidencia||'ruta_sku'})),log:(events||[]).map(row=>({ts:row.created_at,usuario:row.usuario_nombre,accion:row.accion,codigo:row.codigo,detalle:row.detalle||{}}))};
+    snapshot.order_panel=orderPanel;
+    snapshot.can_delete=snapshot.can_delete&&!orderPanel.orders.some(order=>order.processed);
     snapshot.summary=receiptSummary(snapshot); return snapshot;
   }
   async function listReceptions() {
@@ -467,15 +470,16 @@
       }
       if(path==='/api/recepcion/update_qty' && method==='POST') {
         const {data:item,error}=await cloud.db.rpc('op_recepcion_cantidad_colaborativa',{p_recepcion:data.reception_id,p_codigo:data.codigo,p_delta:data.absolute==null?Number(data.delta||0):null,p_absoluta:data.absolute==null?null:Number(data.absolute),p_origen:data.source||'manual',p_usuario_nombre:cloud.displayName,p_cliente:cloud.clientId}); if(error)throw error;
-        const receipt=await receptionSnapshot(data.reception_id); return json({ok:true,item:receiptItem(item),summary:receipt.summary});
+        const receipt=await receptionSnapshot(data.reception_id); return json({ok:true,item:receiptItem(item),summary:receipt.summary,order_panel:receipt.order_panel});
       }
       if(path==='/api/recepcion/verify_qty' && method==='POST') {
         const {data:item,error}=await cloud.db.rpc('op_verificar_recepcion_cantidad',{p_recepcion:data.reception_id,p_codigo:data.codigo,p_cantidad:Number(data.cantidad),p_usuario_nombre:cloud.displayName});if(error)throw error;
-        return json({ok:true,item:receiptItem(item)});
+        const receipt=await receptionSnapshot(data.reception_id);
+        return json({ok:true,item:receiptItem(item),order_panel:receipt.order_panel});
       }
       if(path==='/api/recepcion/no_recibido' && method==='POST') {
         const {data:item,error}=await cloud.db.rpc('op_recepcion_no_recibido_colaborativo',{p_recepcion:data.reception_id,p_codigo:data.codigo,p_valor:!!data.value,p_observacion:clean(data.observation)||null,p_usuario_nombre:cloud.displayName,p_cliente:cloud.clientId}); if(error)throw error;
-        const receipt=await receptionSnapshot(data.reception_id); return json({ok:true,item:receiptItem(item),summary:receipt.summary});
+        const receipt=await receptionSnapshot(data.reception_id); return json({ok:true,item:receiptItem(item),summary:receipt.summary,order_panel:receipt.order_panel});
       }
       if(path==='/api/recepcion/extra' && method==='POST') {
         const {data:extra,error}=await cloud.db.rpc('op_recepcion_extra',{p_recepcion:data.reception_id,p_codigo:data.codigo,p_nombre:data.nombre||data.codigo,p_barras:data.barras||null,p_delta:data.absolute==null?Number(data.delta||0):null,p_absoluta:data.absolute==null?null:Number(data.absolute),p_observacion:data.observation||null,p_usuario_nombre:cloud.displayName}); if(error)throw error;
@@ -585,14 +589,15 @@
       .subscribe(status=>callback({kind:'status',status}));
     cloud.channels.push(channel); return channel;
   };
-  cloud.watchReception = function (receiptId, callback) {
+  cloud.watchReception = function (receiptId, callback, destination) {
     const channel=cloud.db.channel(`op-reception-${receiptId}`)
       .on('postgres_changes',{event:'*',schema:'public',table:'op_recepcion_items',filter:`recepcion_id=eq.${receiptId}`},payload=>callback({kind:'item',event:payload.eventType,row:payload.new||null,old:payload.old||null}))
       .on('postgres_changes',{event:'*',schema:'public',table:'op_recepcion_extras',filter:`recepcion_id=eq.${receiptId}`},payload=>callback({kind:'extra',event:payload.eventType,row:payload.new||null,old:payload.old||null}))
       .on('postgres_changes',{event:'*',schema:'public',table:'op_recepcion_participantes',filter:`recepcion_id=eq.${receiptId}`},payload=>callback({kind:'participant',event:payload.eventType,row:payload.new||null,old:payload.old||null}))
       .on('postgres_changes',{event:'*',schema:'public',table:'op_recepcion_dispositivos',filter:`recepcion_id=eq.${receiptId}`},payload=>callback({kind:'device',event:payload.eventType,row:payload.new||null,old:payload.old||null}))
-      .on('postgres_changes',{event:'*',schema:'public',table:'op_recepciones',filter:`id=eq.${receiptId}`},payload=>callback({kind:'reception',event:payload.eventType,row:payload.new||null,old:payload.old||null}))
-      .subscribe(status=>callback({kind:'status',status}));
+      .on('postgres_changes',{event:'*',schema:'public',table:'op_recepciones',filter:`id=eq.${receiptId}`},payload=>callback({kind:'reception',event:payload.eventType,row:payload.new||null,old:payload.old||null}));
+    if(destination)channel.on('postgres_changes',{event:'*',schema:'public',table:'pedidos',filter:`destino_local=eq.${destination}`},()=>callback({kind:'order'}));
+    channel.subscribe(status=>callback({kind:'status',status}));
     cloud.channels.push(channel); return channel;
   };
   cloud.watchCatalog = function (callback) {

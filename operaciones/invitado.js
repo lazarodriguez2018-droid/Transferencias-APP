@@ -7,6 +7,22 @@ const label=m=>m==='reposicion'?'Reposición':m==='recepcion'?'Control de remito
 const num=v=>Math.max(0,Number(v)||0);
 let guestSearchTimer=null;
 let guestOrdersController=null,guestOrdersTimer=null,guestOrdersCode='';
+let guestReceiptOrders=[],guestReceiptOrderCode='',guestReceiptOrderError=false;
+async function refreshGuestReceiptOrders(){
+  try{const data=await rpc('op_invitado_recepcion_pedidos',{p_acceso:app.access});guestReceiptOrders=data.orders||[];guestReceiptOrderError=false;}
+  catch(_){guestReceiptOrders=[];guestReceiptOrderError=true;}
+}
+function renderGuestReceiptOrders(){
+  const host=$('guest-receipt-orders'),ui=window.SucanReceiptOrders;if(!host||!ui)return;
+  host.hidden=false;if(app.selected)guestReceiptOrderCode=app.selected;
+  const matches=ui.matching(guestReceiptOrders,guestReceiptOrderCode);
+  host.innerHTML=`<button type="button" class="guest-secondary" onclick="guestShowReceiptOrders()">Pedidos esperados · ${guestReceiptOrders.length}</button>${guestReceiptOrderError?'<p>No se pudieron actualizar los pedidos. Volvé a abrir la lista para reintentar.</p>':''}${matches.length?`<p>Este producto figura en ${matches.length} pedido${matches.length===1?'':'s'}:</p>${matches.map(o=>`<button type="button" class="repo-order-link" data-receipt-order="${ui.html(o.id)}" onclick="guestShowReceiptOrders(this.dataset.receiptOrder)">Ver pedido #${ui.code(o.id)} · ${ui.html(ui.relations[o.relation])}</button>`).join('')}`:''}`;
+}
+window.guestShowReceiptOrders=async id=>{
+  await refreshGuestReceiptOrders();renderGuestReceiptOrders();const ui=window.SucanReceiptOrders;
+  const orders=id?guestReceiptOrders.filter(o=>o.id===id):guestReceiptOrders;
+  await modal({title:'Pedidos esperados',message:'Un usuario del local de destino confirma la recepción del pedido y contacta al cliente.',confirmText:'Entendido',cancelText:'Cerrar',body:orders.map(o=>`<section class="guest-list-card"><h3>Pedido #${ui.code(o.id)}</h3><p>${ui.html(ui.states[o.estado]||o.estado)} · ${ui.html(ui.relations[o.relation])}</p>${ui.lines(o).map(p=>`<p><strong>${ui.html(p.nombre)}</strong><br>Código ${ui.html(p.codigo)} · Recibido ${Number(p.cantidad_recibida||0)} / ${Number(p.cantidad_aceptada??p.cantidad)} · ${p.en_remito?'En este remito':'No figura en este remito'}</p>`).join('')}</section>`).join('')||'<p>No hay pedidos disponibles para mostrar.</p>'});
+};
 function startGuestOrders(){
   if(app.state?.session?.module!=='reposicion'||!window.SucanRepositionOrders)return;
   guestOrdersController?.destroy();clearInterval(guestOrdersTimer);
@@ -67,7 +83,7 @@ async function join(event){event.preventDefault();const name=clean($('guest-name
 
 function mergeRows(previous,next){const map=new Map((previous||[]).map(row=>[clean(row.code),row]));(next||[]).forEach(row=>map.set(clean(row.code),row));return[...map.values()];}
 function acceptState(data){if(data?.partial&&app.state){app.state={...app.state,...data,items:mergeRows(app.state.items,data.items),extras:mergeRows(app.state.extras,data.extras),contributions:mergeRows(app.state.contributions,data.contributions)};}else app.state=data;}
-async function loadState(failLoud=true){if(!app.access||app.polling)return false;app.polling=true;try{app.pollTicks+=1;const receiptRefresh=app.state?.session?.module==='recepcion'&&app.pollTicks%4===0,complete=!app.state||receiptRefresh;const data=await rpc('op_invitado_estado',{p_acceso:app.access,p_completo:complete,p_codigo:complete?null:(app.selected||null)});if(!data?.ok){if(failLoud)showError(data?.error);return false;}acceptState(data);renderWorkspace();$('guest-last-sync').textContent=new Date().toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'});return true;}catch(e){if(failLoud&&/paus|finaliz|válido|revoc/i.test(e.message||''))showError(e.message);else if(failLoud)toast('Reconectando…','error');return false;}finally{app.polling=false;}}
+async function loadState(failLoud=true){if(!app.access||app.polling)return false;app.polling=true;try{app.pollTicks+=1;const receiptRefresh=app.state?.session?.module==='recepcion'&&app.pollTicks%4===0,complete=!app.state||receiptRefresh;const data=await rpc('op_invitado_estado',{p_acceso:app.access,p_completo:complete,p_codigo:complete?null:(app.selected||null)});if(!data?.ok){if(failLoud)showError(data?.error);return false;}acceptState(data);if(app.state?.session?.module==='recepcion'&&complete)await refreshGuestReceiptOrders();renderWorkspace();$('guest-last-sync').textContent=new Date().toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'});return true;}catch(e){if(failLoud&&/paus|finaliz|válido|revoc/i.test(e.message||''))showError(e.message);else if(failLoud)toast('Reconectando…','error');return false;}finally{app.polling=false;}}
 function startWorkspace(){setHidden('guest-entry',true);setHidden('guest-workspace',false);const guest=app.state.guest||{},session=app.state.session||{};$('workspace-module').textContent=label(session.module);$('workspace-session').textContent=[session.name,session.route].filter(Boolean).join(' · ');$('workspace-name').textContent=guest.name||'Invitado';$('workspace-photo').src=validPhoto(app.photo)?app.photo:'sucan_logo.png';configureGuestFinder(session.module);finishBoot();clearInterval(app.poll);app.poll=setInterval(()=>loadState(true),1250);renderWorkspace();startGuestOrders();}
 
 function configureGuestFinder(moduleName){const repo=moduleName==='reposicion';setHidden('guest-finder-launch',!repo||app.finderOpen);setHidden('guest-search-card',repo&&!app.finderOpen);setHidden('guest-search-close',!repo);$('guest-search-eyebrow').textContent=repo?'BUSCAR O AGREGAR':'BUSCAR O ESCANEAR';$('guest-search-help').textContent=repo?'Buscá por nombre, código o barras. Verás si el producto está incluido en esta reposición o se agrega como extra.':moduleName==='recepcion'?'Buscá en el remito o agregá mercadería recibida fuera de él.':'Buscá por nombre, código o código de barras.';}
@@ -79,7 +95,7 @@ function stateItem(code){return(app.state?.items||[]).find(row=>clean(row.code)=
 function stateExtra(code){return(app.state?.extras||[]).find(row=>clean(row.code||row.codigo)===clean(code));}
 function ownContribution(code){return num((app.state?.contributions||[]).find(row=>clean(row.code)===clean(code))?.quantity);}
 function actionButton(text,onclick,kind='guest-secondary'){return`<button class="${kind}" type="button" onclick="${onclick}">${text}</button>`;}
-function renderWorkspace(){if(!app.state||$('guest-workspace').hidden)return;const moduleName=app.state.session?.module;if(moduleName==='inventario')renderInventory();else if(moduleName==='reposicion'){renderRepo();if(guestOrdersController&&app.selected!==guestOrdersCode)refreshGuestOrders();}else renderReceipt();}
+function renderWorkspace(){if(!app.state||$('guest-workspace').hidden)return;const moduleName=app.state.session?.module;if(moduleName==='inventario')renderInventory();else if(moduleName==='reposicion'){renderRepo();if(guestOrdersController&&app.selected!==guestOrdersCode)refreshGuestOrders();}else {renderReceipt();renderGuestReceiptOrders();}}
 
 function renderInventory(){
   let item=stateItem(app.selected),product=productFor(app.selected,item);if(!app.selected){const own=(app.state.contributions||[])[0];if(own){app.selected=own.code;item=stateItem(app.selected);product=productFor(app.selected,item);}}
