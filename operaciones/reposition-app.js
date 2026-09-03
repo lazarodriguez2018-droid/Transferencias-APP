@@ -6,7 +6,7 @@ let repoSearchResultsByTarget = {};
 let repoTemplateBytes = null;
 let repoListRenderLimit = 200;
 let repoUrgentTimer = null;
-const repoUrgentSnoozed = new Map();
+let repoOrdersController = null;
 let repoCatalogIndex = null;
 let repoCatalogIndexSource = null;
 let repoVerificationContinuation = null;
@@ -615,7 +615,7 @@ function renderRepoCurrent() {
   const customerOrderHtml = Number(item.pedido_clientes) > 0
     ? `<div class="repo-client-extra"><span>PEDIDO ENTRE LOCALES</span><strong>Extra pedido por ${esc(repoState.destination || 'el local destino')}</strong><small>Estas ${Number(item.pedido_clientes)} unidades fueron solicitadas por ${esc(repoState.destination || 'el destino')} a ${esc(repoState.origin || 'el origen')}.</small></div>`
     : '';
-  const sourceHtml = (Number(item.pedido_clientes) > 0 || Number(item.pedido_reposicion) > 0) ? `${customerOrderHtml}<div class="repo-order-coverage"><div><span>Reposición automática</span><strong>${Number(item.pedido_reposicion)||0}</strong></div><div><span>Pedido de ${esc(repoState.destination || 'destino')}</span><strong>${Number(item.pedido_clientes)||0}</strong></div><div><span>Total a juntar</span><strong>${Number(item.pedido)||0}</strong></div></div>${orders.length ? `<div class="repo-client-orders"><strong>Pedidos de clientes:</strong> ${orders.map(order=>`${esc(order.cliente || 'Sin nombre')} ×${Number(order.cantidad)||0}${order.urgente?' · URGENTE':''}`).join(' · ')}</div>` : ''}` : '';
+  const sourceHtml = (Number(item.pedido_clientes) > 0 || Number(item.pedido_reposicion) > 0) ? `<div class="repo-order-coverage"><div><span>Reposición automática</span><strong>${Number(item.pedido_reposicion)||0}</strong></div><div><span>Pedido de ${esc(repoState.destination || 'destino')}</span><strong>${Number(item.pedido_clientes)||0}</strong></div><div><span>Total a juntar</span><strong>${Number(item.pedido)||0}</strong></div></div>${orders.length ? `<div class="repo-client-orders"><strong>Pedidos de clientes:</strong> ${orders.map(order=>`${esc(order.cliente || 'Sin nombre')} ×${Number(order.cantidad)||0}${order.urgente?' · URGENTE':''}`).join(' · ')}</div>` : ''}` : '';
   const verificationHtml = item.requiere_verificacion ? `<div class="repo-status-banner warn" style="margin-top:10px"><strong>Control final pendiente</strong><br>Hay más de una unidad registrada. Antes del envío se pedirá confirmar la cantidad física.</div>` : '';
   const sourceDetails = sourceHtml ? `<details class="repo-context-details"><summary>Ver desglose de la solicitud</summary><div class="repo-context-details-body">${sourceHtml}</div></details>` : '';
   const controls = repoShouldAutoAssign() ? `
@@ -634,7 +634,7 @@ function renderRepoCurrent() {
     <div class="repo-product-codes"><div class="repo-product-code"><span>Código</span><strong>${esc(item.codigo)}</strong></div><div class="repo-product-code"><span>Código de barras</span><strong>${esc(item.barras || 'No informado')}</strong></div></div>
     ${item.descripcion_archivo && item.descripcion_archivo !== item.nombre ? `<div class="repo-source-name" style="margin-top:8px">Nombre en archivo: ${esc(item.descripcion_archivo)}</div>` : ''}
     <div class="repo-pick-target" role="status"><span>Cantidad a juntar ahora</span><strong>${pending}</strong><small>${pending === 1 ? 'unidad pendiente' : 'unidades pendientes'}</small></div>
-    <div class="repo-quantities"><div class="repo-quantity"><span>Solicitado</span><strong>${item.pedido}</strong></div><div class="repo-quantity"><span>Juntado</span><strong>${item.preparado}</strong></div><div class="repo-quantity pending"><span>Falta</span><strong>${pending}</strong></div></div>${sourceDetails}${reasonHtml}${verificationHtml}
+    <div class="repo-quantities"><div class="repo-quantity"><span>Solicitado</span><strong>${item.pedido}</strong></div><div class="repo-quantity"><span>Juntado</span><strong>${item.preparado}</strong></div><div class="repo-quantity pending"><span>Falta</span><strong>${pending}</strong></div></div>${customerOrderHtml}${repoOrderLinks(orders)}${sourceDetails}${reasonHtml}${verificationHtml}
     ${controls}`;
 }
 
@@ -739,7 +739,7 @@ async function repoUpdateQuantity(encodedCode, change, source) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo actualizar');
     const index = repoState.items.findIndex(row => String(row.codigo) === code);
-    repoState.items[index] = repoHydrateItemFromCatalog(data.item);
+    repoState.items[index] = repoHydrateItemFromCatalog(data.item); await repoOrdersController?.refresh().catch(()=>{});
     tactileFeedback(24);
     if (repoShouldAutoAssign() && Number(data.item.preparado) >= Number(data.item.pedido) && source !== 'lista') {
       await repoClaimNext({excludeCode:code,render:false,silent:true});
@@ -830,7 +830,7 @@ async function repoMark(encodedCode, field) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo guardar');
     const index = repoState.items.findIndex(row => String(row.codigo) === code);
-    repoState.items[index] = repoHydrateItemFromCatalog(data.item);
+    repoState.items[index] = repoHydrateItemFromCatalog(data.item); await repoOrdersController?.refresh().catch(()=>{});
     if (repoShouldAutoAssign()) await repoClaimNext({excludeCode:code,render:false,silent:true});
     renderRepositionAll();
   } catch (error) { toast(error.message, 'e'); }
@@ -1034,7 +1034,7 @@ function renderRepoExtras() {
     const code = repoEncoded(item.codigo);
     const orders = Array.isArray(item.pedidos_asignados) ? item.pedidos_asignados : [];
     const customerNames = orders.map(order => order.cliente).filter(Boolean).join(', ');
-    return `<article class="repo-row"><div onclick="repoOpenItem('${code}')" style="cursor:pointer"><h3><span class="repo-origin-badge customer">Pedido de cliente</span>${esc(item.nombre)}</h3><div class="repo-row-meta">Código ${esc(item.codigo)}${item.barras ? ` · Barras ${esc(item.barras)}` : ''} · Pedido por clientes ${Number(item.pedido_clientes)||0} · Total a juntar ${Number(item.pedido)||0} · Juntado ${Number(item.preparado)||0}${customerNames ? ` · ${esc(customerNames)}` : ''}</div></div><strong>${Number(item.preparado)||0}/${Number(item.pedido)||0}</strong></article>`;
+    return `<article class="repo-row"><div onclick="repoOpenItem('${code}')" style="cursor:pointer"><h3><span class="repo-origin-badge customer">Pedido de cliente</span>${esc(item.nombre)}</h3><div class="repo-row-meta">Código ${esc(item.codigo)}${item.barras ? ` · Barras ${esc(item.barras)}` : ''} · Pedido por clientes ${Number(item.pedido_clientes)||0} · Total a juntar ${Number(item.pedido)||0} · Juntado ${Number(item.preparado)||0}${customerNames ? ` · ${esc(customerNames)}` : ''}</div></div><div>${repoOrderLinks(orders)}<strong>${Number(item.preparado)||0}/${Number(item.pedido)||0}</strong></div></article>`;
   }).join('');
   const extrasHtml = extras.map(item => {
     const code = repoEncoded(item.codigo);
@@ -1349,40 +1349,35 @@ async function downloadRepoOriginal() {
 
 function startRepoUrgentWatcher() {
   stopRepoUrgentWatcher();
-  if (!window.SucanCloud || !repoState || !repoCanEdit()) return;
+  if (!window.SucanCloud || !repoState || !window.SucanRepositionOrders) return;
+  const repoId = sessionId;
+  repoOrdersController = window.SucanRepositionOrders.create({
+    context:{id:repoId,name:repoState.nombre,origin:repoState.origin,destination:repoState.destination},
+    hosts:['repo-orders-entry','repo-orders-list','repo-orders-summary'],
+    load:()=>window.SucanCloud.repositionOrders(repoId),
+    accept:(id,accept,quantities)=>window.SucanCloud.acceptRepositionOrder(repoId,id,accept,quantities),
+    ship:(id,shipping)=>window.SucanCloud.shipRepositionOrder(repoId,id,shipping),
+    onIntegrated:()=>sessionId===repoId?repoRefreshState():undefined,
+    notify:(message,type)=>toast(message,type==='error'?'e':'s')
+  });
   checkRepoUrgentOrders();
-  repoUrgentTimer = setInterval(checkRepoUrgentOrders, 20000);
+  repoUrgentTimer = setInterval(checkRepoUrgentOrders, 15000);
 }
 
 function stopRepoUrgentWatcher() {
   if (repoUrgentTimer) clearInterval(repoUrgentTimer);
   repoUrgentTimer = null;
+  repoOrdersController?.destroy();
+  repoOrdersController = null;
 }
 
 async function checkRepoUrgentOrders() {
-  if (!window.SucanCloud || !repoState || !repoCanEdit()) return;
-  try {
-    const orders = await window.SucanCloud.checkUrgentOrders(repoState);
-    for (const order of orders) {
-      if ((repoUrgentSnoozed.get(order.id) || 0) > Date.now()) continue;
-      if (!window.SucanCloud.isSupervisor()) {
-        repoUrgentSnoozed.set(order.id, Date.now() + 5 * 60 * 1000);
-        toast(`Pedido urgente pendiente de supervisor${order.cliente ? ': ' + order.cliente : ''}`,'w');
-        continue;
-      }
-      const products=(order.pedido_productos || []).map(item=>`${esc(item.nombre)} ×${Number(item.cantidad_aceptada == null ? item.cantidad : item.cantidad_aceptada) || 0}`).join('<br>');
-      const confirmed=await appConfirm({
-        title:'Pedido urgente recibido',subtitle:`${repoState.origin} → ${repoState.destination}`,
-        icon:'!',tone:'warning',confirmText:'Agregar a la reposición actual',
-        bodyHtml:`<div class="app-dialog-product"><strong>${esc(order.cliente || 'Cliente sin nombre')}</strong><span>${esc(order.telefono || 'Sin teléfono')}</span></div><p class="app-dialog-message">Este pedido fue aceptado después de iniciar la preparación.</p><div class="app-dialog-product">${products}</div>`
-      });
-      if (confirmed) {
-        repoState=repoHydrateStateFromCatalog(await window.SucanCloud.addUrgentOrder(sessionId,order.id));
-        renderRepositionAll();
-        toast('Pedido urgente agregado a la reposición actual','s');
-      } else repoUrgentSnoozed.set(order.id, Date.now() + 5 * 60 * 1000);
-    }
-  } catch (error) { console.warn('No se pudieron revisar pedidos urgentes',error); }
+  if (document.visibilityState !== 'hidden') await repoOrdersController?.refresh().catch(()=>{});
+}
+
+function repoOpenLinkedOrder(orderId) { repoOrdersController?.show(orderId); }
+function repoOrderLinks(orders) {
+  return (orders||[]).map(order=>`<button type="button" class="repo-order-link" data-order-id="${esc(order.pedido_id||'')}" onclick="repoOpenLinkedOrder(this.dataset.orderId)">Ver pedido #${window.SucanRepositionOrders?.code(order.pedido_id)||''} · ${esc(order.cliente||'Cliente')}</button>`).join('');
 }
 
 function repoVerificationItems() {

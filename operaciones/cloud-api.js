@@ -613,6 +613,23 @@
       .on('postgres_changes',{event:'DELETE',schema:'public',table:'op_recepcion_participantes'},callback).subscribe();
     cloud.channels.push(channel); return channel;
   };
+  cloud.repositionOrders = async function (repoId) {
+    const {data,error}=await cloud.db.rpc('op_reposicion_panel_pedidos',{p_reposicion:repoId});
+    if(error)throw error; return data;
+  };
+  cloud.acceptRepositionOrder = async function (repoId,orderId,accept,quantities) {
+    const {data,error}=await cloud.db.rpc('op_reposicion_aceptar_agregar_pedido',{
+      p_reposicion:repoId,p_pedido:orderId,p_aceptar:accept,p_cantidades:quantities
+    });
+    if(error)throw error; return data;
+  };
+  cloud.shipRepositionOrder = async function (repoId,orderId,shipping) {
+    const {data,error}=await cloud.db.rpc('op_reposicion_enviar_pedido',{
+      p_reposicion:repoId,p_pedido:orderId,p_transporte:shipping.transport,p_remito:shipping.receipt,
+      p_tracking:shipping.tracking,p_responsable:shipping.responsible
+    });
+    if(error)throw error;return data;
+  };
   cloud.checkUrgentOrders = async function (repo) {
     if(!repo?.started_at) return [];
     const {data,error}=await cloud.db.from('pedidos').select('id,cliente,telefono,urgente,updated_at,pedido_productos(*)')

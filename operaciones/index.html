@@ -772,7 +772,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
   <div class="page-heading"><div><span class="eyebrow">REPOSICIÓN COLABORATIVA</span><h1 id="repo-session-title">Preparar mercadería</h1><p><span id="repo-route-badge" class="repo-route">— → —</span></p></div><div class="heading-actions"><button class="btn btn-s repo-assignment-mode" id="repo-assignment-mode-btn" type="button" onclick="toggleRepoSupervisionMode()" aria-pressed="false">Solo supervisar</button><button class="btn btn-s repo-picking-only" onclick="repoSelectNext(true)">Siguiente →</button></div></div>
   <div class="repo-access-banner" id="repo-access-banner"><strong>Modo consulta</strong>Esta reposición pertenece al local de origen. Podés seguir su avance y descargar reportes, pero solamente el origen o un administrador puede modificar cantidades.</div>
   <div class="repo-supervision-banner" id="repo-supervision-banner"><div class="repo-supervision-icon" aria-hidden="true">◎</div><div><strong>Modo supervisión activo</strong><span>Podés seguir el avance sin reservar productos. Para juntar mercadería, elegí “Empezar a recoger”.</span></div><button class="btn btn-s" type="button" onclick="toggleRepoSupervisionMode()">Empezar a recoger</button></div>
-  <div id="repo-kpis-preparar" class="repo-kpis"></div>
+  <div id="repo-kpis-preparar" class="repo-kpis"></div><section id="repo-orders-entry" aria-label="Pedidos del recorrido"></section>
   <div class="repo-workspace">
     <section class="card repo-current" id="repo-current-card"><div class="repo-empty">Cargando el primer producto…</div></section>
     <aside class="repo-tools">
@@ -801,7 +801,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
     <div class="repo-status-filters" id="repo-status-filters"><span>Filtrar por estado (podés marcar varios)</span><label class="repo-status-check"><input type="checkbox" value="pending" checked onchange="renderRepoList()">Pendiente</label><label class="repo-status-check"><input type="checkbox" value="partial" checked onchange="renderRepoList()">Parcial</label><label class="repo-status-check"><input type="checkbox" value="complete" checked onchange="renderRepoList()">Completo</label><label class="repo-status-check"><input type="checkbox" value="over" checked onchange="renderRepoList()">Excedido</label><label class="repo-status-check"><input type="checkbox" value="not_found" checked onchange="renderRepoList()">No encontrado</label><button class="btn btn-s repo-list-reset" type="button" onclick="repoResetStatusFilters()">Mostrar todos</button></div>
     <div id="repo-items-list" class="repo-list"></div>
   </section>
-  <section class="repo-list-pane" id="repo-list-pane-extra" role="tabpanel" hidden>
+  <section class="repo-list-pane" id="repo-list-pane-extra" role="tabpanel" hidden><section id="repo-orders-list" aria-label="Pedidos del recorrido"></section>
     <section class="card repo-extra-add-card repo-edit-only"><div class="card-title">Buscar o agregar desde el padrón</div><div class="repo-extra-add-actions"><input id="repo-extra-search" class="input" type="search" autocomplete="off" placeholder="Nombre, código o barras" oninput="searchRepoProducts(this.value,'extra')"><button class="btn btn-p" type="button" onclick="openRepoScanner('extra')">▣ Escanear extra</button></div><div id="repo-extra-results" class="repo-search-results"></div></section>
     <div class="repo-list-toolbar"><input id="repo-extra-list-search" class="input" type="search" placeholder="Buscar en pedidos de clientes y extras" oninput="renderRepoExtras()"></div>
     <div id="repo-extras-list" class="repo-list"></div>
@@ -811,7 +811,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
 <!-- ===== REPOSICIÓN: RESUMEN ===== -->
 <div class="page repo-page" id="repo-page-resumen">
   <div class="page-heading"><div><span class="eyebrow">CIERRE Y ARCHIVOS</span><h1>Resumen de reposición</h1><p>Revisá las cantidades y los faltantes antes de descargar o compartir los archivos.</p></div></div>
-  <div id="repo-kpis-resumen" class="repo-kpis"></div>
+  <div id="repo-kpis-resumen" class="repo-kpis"></div><section id="repo-orders-summary" aria-label="Pedidos del recorrido"></section>
   <div class="dashboard-grid">
     <section class="card"><div class="panel-head"><div><div class="card-title">Estado del trabajo</div><h2 id="repo-summary-status">—</h2></div><div class="panel-icon">✓</div></div><div id="repo-summary-detail" class="panel-copy"></div><div id="repo-participants" class="repo-participants"></div></section>
     <section class="card"><div class="panel-head"><div><div class="card-title">Archivos finales</div><h2>Remitos y planillas</h2></div><div class="panel-icon">⇩</div></div><p class="panel-copy">Elegí el remito que necesitás o descargá todos los archivos juntos. Cada remito incluye las unidades juntadas que le corresponden.</p><div class="repo-export-grid"><button class="btn btn-s" onclick="downloadRepoExport('main')">Remito reposición (.xls)</button><button class="btn btn-s" onclick="downloadRepoExport('orders')">Remito pedidos (.xls)</button><button class="btn btn-s" onclick="downloadRepoExport('extras')">Remito extras (.xls)</button><button class="btn btn-s" onclick="downloadRepoExport('processed')">Planilla con cantidades y marcas</button><button class="btn btn-p" style="grid-column:1/-1" onclick="downloadRepoExport('package')">Descargar paquete completo (.zip)</button></div></section>
@@ -1180,14 +1180,14 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
 <script src="cloud-config.js"></script>
 <link rel="stylesheet" href="/downloads.css?v=user-copy-v1">
 <script src="/downloads.js?v=user-copy-v1"></script>
-<script src="cloud-api.js?v=user-copy-v1"></script>
+<script src="cloud-api.js?v=repo-orders-v1"></script>
 <script src="search-engine.js?v=search-fast-v6"></script>
 <script src="reposition-engine.js?v=fillrate-es-v1"></script>
 <script src="reception-engine.js?v=receipt-collab-v1"></script>
 <script src="reposition-export.js?v=processed-report-v4"></script>
 <script src="/barcode-utils.js?v=barcode-catalog-v1"></script>
 <script src="app.js?v=user-copy-v1"></script>
-<script src="reposition-app.js?v=user-copy-v1"></script>
+<link rel="stylesheet" href="reposition-orders.css?v=repo-orders-v1"><script src="reposition-orders.js?v=repo-orders-v1"></script><script src="reposition-app.js?v=repo-orders-v1"></script>
 <script src="reception-app.js?v=user-copy-v1"></script>
 <script src="session-invite.js?v=user-copy-v1"></script>
 </body>

@@ -40,7 +40,7 @@
       <div class="guest-sync-line"><span class="guest-live-dot"></span><b>Sincronización activa</b><span id="guest-last-sync">Ahora</span></div>
       <section class="guest-finder-launch" id="guest-finder-launch" hidden><button class="guest-primary guest-finder-button" type="button" onclick="openGuestProductFinder()"><span>⌕</span><span><strong>Buscar/agregar producto</strong><small>Buscá un producto para registrar o corregir su cantidad.</small></span></button></section>
       <section class="guest-search-card" id="guest-search-card"><div class="guest-search-head"><div><span class="guest-eyebrow" id="guest-search-eyebrow">BUSCAR O ESCANEAR</span><p id="guest-search-help">Buscá por nombre, código o código de barras.</p></div><div class="guest-search-actions"><button class="guest-scan-button" type="button" onclick="openGuestScanner()">▣ Escanear</button><button class="guest-search-close" id="guest-search-close" type="button" onclick="closeGuestProductFinder()" hidden aria-label="Cerrar búsqueda">×</button></div></div><div class="guest-search-box"><input id="guest-search" type="search" enterkeyhint="search" autocomplete="off" placeholder="Nombre, código o barras…"><button type="button" aria-label="Borrar búsqueda" onclick="clearGuestSearch()">×</button></div><div class="guest-search-results" id="guest-search-results" hidden></div></section>
-      <section id="guest-module-content"></section>
+      <section id="guest-orders-context" aria-label="Pedidos del producto" hidden></section><section id="guest-module-content"></section>
       <footer class="guest-locked-footer"><span>🔒</span><p><strong>Acceso limitado a esta sesión</strong>Para cambiar de tarea necesitás escanear la invitación correspondiente.</p></footer>
     </section>
   </main>
@@ -53,6 +53,6 @@
   <script src="cloud-config.js"></script>
   <script src="search-engine.js?v=search-fast-v6"></script>
   <script src="/barcode-utils.js?v=barcode-catalog-v1"></script>
-  <script src="invitado.js?v=user-copy-v1"></script>
+  <link rel="stylesheet" href="reposition-orders.css?v=repo-orders-v1"><script src="reposition-orders.js?v=repo-orders-v1"></script><script src="invitado.js?v=repo-orders-v1"></script>
 </body>
 </html>
