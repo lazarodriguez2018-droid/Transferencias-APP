@@ -25,12 +25,14 @@ assert.doesNotMatch(operationsHtml, /id="module-screen"|¿Qué vas a hacer\?|Usa
   'Operaciones no debe conservar el selector blanco ni opciones del servidor local');
 assert.match(operationsHtml, /src="app\.js\?v=directory-v1"/,
   'El navegador debe solicitar la versión nueva y no reutilizar archivos antiguos');
-assert.match(portalHtml, /<h1>Elegí qué tarea vas a realizar<\/h1>/,
+assert.match(portalHtml, /<h1>Inicio<\/h1>/,
   'El selector debe orientar al usuario para elegir su tarea');
 assert.doesNotMatch(portalHtml, /SUCANEITOR OPERACIONES|Administrar padrón de mercaderías|Los cuatro módulos comparten/,
   'El selector no debe conservar el texto ni el botón eliminados');
-assert.match(portalCss, /\.operations-grid\{display:grid;grid-template-columns:1fr/,
-  'Los módulos deben presentarse como una lista vertical');
+assert.match(portalCss, /#view-hub \.operations-grid\{grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/,
+  'En PC los módulos deben tener accesos compactos independientes');
+assert.doesNotMatch(operationsHtml, /data-directory-module|directory-module-nav/,
+  'El cambio de módulo debe hacerse desde Inicio');
 assert.match(operationsHtml, /\.mo\.app-dialog-layer\{z-index:10050!important/,
   'Las confirmaciones deben aparecer por encima del panel de invitaciones');
 assert.doesNotMatch(operationsJs, /module-screen|sc_server_url|input-server-url/,

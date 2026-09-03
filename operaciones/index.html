@@ -657,13 +657,9 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
     <header class="directory-page-head">
       <img src="sucan_logo.png" alt="SUCAN">
       <div><h1 id="session-module-name">Inventarios</h1><p id="session-module-subtitle">Buscá sesiones y retomá el trabajo de tu equipo.</p></div>
+      <div id="directory-create-slot"></div>
       <a class="btn btn-s" href="/">← Volver al inicio</a>
     </header>
-    <div class="directory-actions"><nav class="directory-module-nav" aria-label="Buscar sesiones por módulo">
-      <a href="/operaciones?module=reposicion" data-directory-module="reposicion">Reposiciones</a>
-      <a href="/operaciones?module=inventario" data-directory-module="inventario">Inventarios</a>
-      <a href="/operaciones?module=recepcion" data-directory-module="recepcion">Control de remitos</a>
-    </nav><div id="directory-create-slot"></div></div>
 
     <input type="hidden" id="input-usuario">
 
@@ -1191,8 +1187,8 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
 <script src="reception-engine.js?v=receipt-collab-v1"></script>
 <script src="reposition-export.js?v=processed-report-v4"></script>
 <script src="/barcode-utils.js?v=barcode-catalog-v1"></script>
-<link rel="stylesheet" href="session-directory.css?v=directory-v1">
-<script src="session-directory.js?v=directory-v1"></script>
+<link rel="stylesheet" href="session-directory.css?v=compact-v2">
+<script src="session-directory.js?v=compact-v2"></script>
 <script src="app.js?v=directory-v1"></script>
 <link rel="stylesheet" href="reposition-orders.css?v=repo-orders-v1"><script src="reposition-orders.js?v=repo-orders-v1"></script><script src="reposition-app.js?v=repo-orders-v1"></script>
 <script src="reception-app.js?v=user-copy-v1"></script>

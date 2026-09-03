@@ -18,7 +18,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="style.css?v=public-responsive-v4">
+<link rel="stylesheet" href="style.css?v=compact-hub-v1">
 <link rel="stylesheet" href="landing.css?v=company-only-v1">
 <style>
 .conv-list { display:flex; flex-direction:column; }
@@ -313,7 +313,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
     </div>
     <nav class="sidebar-nav">
       <div class="nav-section module-nav-section">
-        <button class="nav-item module-switch" id="nav-hub" type="button" data-nav="hub"><span class="icon">←</span> Cambiar de módulo</button>
+        <button class="nav-item module-switch" id="nav-hub" type="button" data-nav="hub"><span class="icon">←</span> Volver al inicio</button>
       </div>
       <div class="nav-section">
         <div class="nav-label">Pedidos</div>
@@ -412,14 +412,16 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
     <!-- SELECTOR DE MODULOS -->
     <div id="view-hub" style="display:none">
       <div class="operations-hero">
-        <h1>Elegí qué tarea vas a realizar</h1>
+        <h1>Inicio</h1>
+        <p>Elegí el módulo en el que querés trabajar.</p>
       </div>
       <div class="operations-grid">
-        <a class="operations-card inventory" href="/operaciones?module=inventario"><span class="operations-icon">✓</span><div><h2>Inventario</h2><p>Contá la mercadería y compará las cantidades con el stock del sistema.</p><strong>Entrar a Inventario →</strong></div></a>
-        <a class="operations-card replenishment" href="/operaciones?module=reposicion"><span class="operations-icon">⇄</span><div><h2>Reposición</h2><p>Prepará la mercadería para otros locales y generá los remitos de envío.</p><strong>Entrar a Reposición →</strong></div></a>
-        <a class="operations-card reception" href="/operaciones?module=recepcion"><span class="operations-icon">⌕</span><div><h2>Control de remitos</h2><p>Registrá lo que llegó y comparalo con el remito.</p><strong>Entrar a Recepción →</strong></div></a>
-        <button class="operations-card orders" type="button" onclick="navigateTo('misPedidos')"><span class="operations-icon">📦</span><div><h2>Pedidos entre locales</h2><p>Solicitá productos para tus clientes y seguí cada pedido hasta su llegada.</p><strong>Entrar a Pedidos →</strong></div></button>
+        <a class="operations-card inventory" href="/operaciones?module=inventario"><span class="operations-icon" aria-hidden="true">✓</span><div><h2>Inventario</h2><p>Contá productos y comparalos con el balance cargado.</p><strong>Abrir Inventario →</strong></div></a>
+        <a class="operations-card replenishment" href="/operaciones?module=reposicion"><span class="operations-icon" aria-hidden="true">⇄</span><div><h2>Reposición</h2><p>Juntá mercadería para otros locales y prepará el envío.</p><strong>Abrir Reposición →</strong></div></a>
+        <a class="operations-card reception" href="/operaciones?module=recepcion"><span class="operations-icon" aria-hidden="true">⌕</span><div><h2>Control de remitos</h2><p>Controlá lo recibido y registrá las diferencias del remito.</p><strong>Abrir Control de remitos →</strong></div></a>
+        <button class="operations-card orders" type="button" onclick="navigateTo('misPedidos')"><span class="operations-icon" aria-hidden="true">📦</span><div><h2>Pedidos entre locales</h2><p>Solicitá productos y seguí cada pedido hasta su llegada.</p><strong>Abrir Pedidos entre locales →</strong></div></button>
       </div>
+      <p class="operations-home-help">Para trabajar en otro módulo, volvé a Inicio.</p>
     </div>
 
     <!-- DASHBOARD (admin only) -->

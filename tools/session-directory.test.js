@@ -13,7 +13,11 @@ assert.equal(api.sanitize({query:'x'.repeat(500)}).query.length,200);
 for(const file of ['session-directory.js','app.js','cloud-api.js'])new vm.Script(fs.readFileSync(path.join(__dirname,'../operaciones',file),'utf8'),{filename:file});
 const html=fs.readFileSync(path.join(__dirname,'../operaciones/index.html'),'utf8'),css=fs.readFileSync(path.join(__dirname,'../operaciones/session-directory.css'),'utf8');
 for(const id of ['session-search','session-filter-panel','session-active-filters','session-sort','session-pagination','directory-create-slot'])assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1,'Unique accessible control '+id);
-assert.match(html,/session-directory.js\?v=directory-v1/);assert.match(css,/max-width:1480px!important/);assert.match(css,/prefers-reduced-motion/);assert.match(css,/100dvh/);
+assert.match(html,/session-directory.js\?v=compact-v2/);assert.match(css,/max-width:1760px!important/);assert.match(css,/prefers-reduced-motion/);assert.match(css,/100dvh/);
+assert.doesNotMatch(html,/directory-module-nav|data-directory-module/,'Modules remain independent and return to Home');
+assert.match(css,/@media\(min-width:1100px\)/,'PC uses dense session rows');
+assert.match(css,/min-height:32px/,'PC controls are compact');
+assert.match(css,/@media\(min-width:801px\) and \(pointer:coarse\)/,'Touch devices retain usable targets');
 async function requests(){
  const elements=new Map(),results=[],promises=[];
  const element=()=>({innerHTML:'',textContent:'',hidden:false,disabled:false,setAttribute(){},removeAttribute(){}});

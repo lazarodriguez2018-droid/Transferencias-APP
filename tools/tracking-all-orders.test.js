@@ -34,7 +34,7 @@ assert.doesNotMatch(index,/<div class="modal-close"/,'Los controles de cierre de
 assert.match(index,/class="modal-close"[^>]+aria-label="Cerrar"/,'Los botones de cierre deben tener nombre accesible');
 assert.match(index,/aria-label="Usar tema claro"/,'El selector visual debe explicar cada opción');
 assert.match(index,/app\.js\?v=user-copy-v1/,'La publicación debe invalidar el JavaScript anterior del navegador');
-assert.match(index,/style\.css\?v=public-responsive-v4/,'La publicación debe invalidar los estilos anteriores del navegador');
+assert.match(index,/style\.css\?v=compact-hub-v1/,'La publicación debe invalidar los estilos anteriores del navegador');
 assert.match(app,/setAttribute\('aria-pressed',String\(active\)\)/,'El tema seleccionado debe comunicarse a tecnologías de asistencia');
 assert.match(css,/\.btn:disabled/,'Los botones deshabilitados deben verse como tales');
 assert.match(css,/\.btn:focus-visible/,'Los botones deben mostrar foco de teclado');
