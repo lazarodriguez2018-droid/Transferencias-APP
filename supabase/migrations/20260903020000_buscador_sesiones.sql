@@ -93,7 +93,7 @@ begin
     from accesibles s where
       (coalesce(f->>'local','')='' or f->>'local' in(s.local_nombre,s.origen,s.destino))
       and (coalesce(f->>'origin','')='' or s.origen=f->>'origin') and (coalesce(f->>'destination','')='' or s.destino=f->>'destination')
-      and (coalesce(f->>'user','')='' or exists(select 1 from personas p where p.sesion_id=s.id and p.persona_id=f->>'user'))
+      and (coalesce(f->>'user','')='' or exists(select 1 from personas p where p.sesion_id=s.id and (p.persona_id=f->>'user' or (p.invitado and 'guest-name:'||trim(public.op_busqueda_normalizar(p.nombre))=f->>'user'))))
       and (coalesce(jsonb_array_length(f->'states'),0)=0 or s.estado in(select jsonb_array_elements_text(f->'states')))
       and (desde is null or case f->>'date_field' when 'updated' then (s.updated_at at time zone 'America/Montevideo')::date when 'document' then s.fecha_documento else (s.created_at at time zone 'America/Montevideo')::date end>=desde)
       and (hasta is null or case f->>'date_field' when 'updated' then (s.updated_at at time zone 'America/Montevideo')::date when 'document' then s.fecha_documento else (s.created_at at time zone 'America/Montevideo')::date end<=hasta)
@@ -130,7 +130,7 @@ begin
     )) from pagina_resultados s),'[]'::jsonb),
     'facets',case when coalesce((f->>'facets')::boolean,true) then jsonb_build_object(
       'locals',coalesce((select jsonb_agg(local order by local) from (select distinct unnest(array[local_nombre,origen,destino]) local from accesibles) l where local<>''),'[]'::jsonb),
-      'users',coalesce((select jsonb_agg(to_jsonb(p) order by p.nombre) from (select persona_id id,max(nombre) nombre,bool_or(invitado) guest from personas group by persona_id) p),'[]'::jsonb),
+      'users',coalesce((select jsonb_agg(to_jsonb(p) order by p.nombre) from (select case when invitado then 'guest-name:'||trim(public.op_busqueda_normalizar(nombre)) else persona_id end id,max(nombre) nombre,bool_or(invitado) guest from personas group by 1) p),'[]'::jsonb),
       'states',coalesce((select jsonb_agg(estado order by estado) from (select distinct estado from accesibles) e),'[]'::jsonb)) else null end
   ) into resultado;
   return resultado;

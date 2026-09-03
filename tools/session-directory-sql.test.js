@@ -16,6 +16,7 @@ async function main(){
  await q("insert into productos(codigo,nombre,barras,marca) values('A','Snack perro nuevo','008888','Marca Uno')");
  await q("insert into op_invitaciones_sesion(id,modulo,sesion_id,token_hash,created_by) values($1,'reposicion',$2,'NOT-A-TOKEN',$3)",[invitation,repo,origin]);
  await q("insert into op_invitados_sesion(id,invitacion_id,modulo,sesion_id,nombre,access_hash,dispositivo_id,cliente_id,revoked_at) values($1,$2,'reposicion',$3,'José invitado','PRIVATE-ACCESS','device-test-01','guest-test-01',now())",[guest,invitation,repo]);
+ await q("insert into op_invitados_sesion(id,invitacion_id,modulo,sesion_id,nombre,access_hash,dispositivo_id,cliente_id) values($1,$2,'reposicion',$3,'Jose invitado','PRIVATE-ACCESS-2','device-test-02','guest-test-02')",[uuid(),invitation,repo]);
  await q("insert into op_inventario_sesiones(id,nombre,local_nombre,created_by,estado) values($1,'Inventario histórico','Punta del Este',$2,'cerrada')",[inv,origin]);
  await q("insert into op_inventario_items(sesion_id,codigo,nombre,cantidad) values($1,'A','Snack perro',2),($1,'N','Producto sin balance',0)",[inv]);
  await q("insert into op_inventario_balances(sesion_id,balance) values($1,$2::jsonb)",[inv,JSON.stringify([{codigo:'A',nombre:'Snack perro',stockActual:5},{codigo:'B',nombre:'Arena sanitaria',stockActual:0},{codigo:'C',nombre:'Ración perro',stockActual:-1}])]);
@@ -35,6 +36,8 @@ async function main(){
  eq((await search('reposicion',{product:'Juguete',stock:'unknown'})).total,1,'Extras have unknown stock, not zero');
  eq((await search('reposicion',{product:'Juguete',stock:'zero'})).total,0);
  eq((await search('reposicion',{user:'guest:'+guest})).total,1,'Historical QR participation remains searchable after revocation');
+ eq((await search('reposicion',{user:'guest-name:jose invitado'})).total,1,'Guest filter finds all visits with the same normalized name');
+ eq(result.facets.users.filter(p=>p.id==='guest-name:jose invitado').length,1,'Duplicate guest visits have one unambiguous filter option');
  eq((await search('reposicion',{origin:'Maldonado'})).total,0,'Origin is directional');
  eq((await search('reposicion',{local:'Maldonado'})).total,1);
  eq((await search('reposicion',{date_from:'2020-01-01',date_to:'2020-01-01'})).total,1,'Uruguay timezone day boundaries');
