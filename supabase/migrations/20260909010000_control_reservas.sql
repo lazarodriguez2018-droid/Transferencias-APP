@@ -255,8 +255,8 @@ begin
       values(r.id,'estado_automatico',v_nuevo,p_autor,jsonb_build_object('estado_anterior',r.estado));
     if v_nuevo='listo' then
       insert into public.notificaciones(usuario_id,titulo,cuerpo)
-      select p.id,'Reserva lista: avisar al cliente','#'||r.codigo||' · '||coalesce(nullif(trim(r.cliente_nombre||' '||coalesce(r.cliente_apellido,'')),''),'Sin cliente')
-      from public.perfiles p where p.approved=true and p.local_nombre=r.local_nombre;
+      select p.id,'Reserva lista: avisar al cliente',r.local_nombre||' · #'||r.codigo||' · '||coalesce(nullif(trim(r.cliente_nombre||' '||coalesce(r.cliente_apellido,'')),''),'Sin cliente')
+      from public.perfiles p where p.approved=true;
     end if;
   else update public.op_reservas set updated_at=now() where id=r.id; end if;
 end $$;
@@ -275,8 +275,8 @@ begin
       select id,'vencimiento','vencido','Sistema',jsonb_build_object('vencimiento_at',vencimiento_at) from vencidas
   ), avisos as (
     insert into public.notificaciones(usuario_id,titulo,cuerpo)
-      select p.id,'Reserva con más de 48 horas','#'||v.codigo||' · '||coalesce(nullif(trim(v.cliente_nombre||' '||coalesce(v.cliente_apellido,'')),''),v.motivo_nombre)
-      from vencidas v join public.perfiles p on p.approved=true and p.local_nombre=v.local_nombre
+      select p.id,'Reserva vencida',v.local_nombre||' · #'||v.codigo||' · '||coalesce(nullif(trim(v.cliente_nombre||' '||coalesce(v.cliente_apellido,'')),''),v.motivo_nombre)
+      from vencidas v join public.perfiles p on p.approved=true
   ) select count(*) into total from vencidas;
   return total;
 end $$;

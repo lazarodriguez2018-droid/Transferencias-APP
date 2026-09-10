@@ -4,6 +4,7 @@ for(const table of ['op_reservas','op_reserva_items','op_reserva_motivos','op_re
 for(const fn of ['op_reserva_crear','op_reserva_listar','op_reserva_detalle','op_reserva_actualizar_item','op_reserva_pedidos_disponibles','op_reserva_vincular_pedido','op_reserva_cambiar_estado','op_reserva_finalizar','op_reserva_cancelar','op_reserva_corregir_cierre','op_reserva_excepcion','op_reserva_qr_detalle','op_reserva_invitado_entrar','op_recepcion_reservas_datos','op_recepcion_confirmar_reserva'])assert.match(sql,new RegExp(`function public\\.${fn}\\(`),`Falta ${fn}`);
 assert.match(sql,/make_interval\(hours=>v_horas\)/,'El vencimiento debe usar las horas configuradas');
 assert.match(sql,/estado_antes_vencido=estado,estado='vencido'/,'Debe conservar el estado al vencer');
+assert.match(sql,/select p\.id,'Reserva vencida'[\s\S]+from vencidas v join public\.perfiles p on p\.approved=true\s*\n/,'El vencimiento debe avisar a todos los empleados aprobados');
 assert.match(sql,/estado=restaurar,estado_antes_vencido=null,excepcion_hasta=p_hasta/,'La excepción debe restaurar el proceso');
 assert.match(sql,/insert into public\.pedidos[\s\S]+reserva_id/,'La reserva debe crear pedidos entre locales vinculados');
 assert.match(sql,/op_reserva_sync_pedido_estado/,'Pedidos y reposición deben sincronizar la reserva');
