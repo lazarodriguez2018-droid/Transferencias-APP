@@ -483,6 +483,9 @@ declare a jsonb; i public.op_reserva_items; nueva integer; estado_nuevo text; mo
 begin
   a:=public.op_reserva_actor(p_acceso); select * into i from public.op_reserva_items where id=p_item for update;
   if i.id is null or not public.op_reserva_puede_ver(i.reserva_id,a) then raise exception 'Producto no disponible'; end if;
+  if exists(select 1 from public.op_reservas r where r.id=i.reserva_id and r.estado in ('completado','cancelado')) then
+    raise exception 'La reserva está cerrada; usá Corregir cierre antes de modificar productos';
+  end if;
   nueva:=coalesce((p_datos->>'cantidad_local')::integer,i.cantidad_local);
   if nueva<0 or nueva+i.cantidad_entregada>i.cantidad then raise exception 'La cantidad en el local debe estar entre cero y lo que todavía falta entregar'; end if;
   motivo:=nullif(trim(coalesce(p_datos->>'motivo_correccion','')),'');
@@ -560,6 +563,7 @@ declare a jsonb; r public.op_reservas; orden_anterior integer; orden_nuevo integ
 begin
   a:=public.op_reserva_actor(p_acceso); select * into r from public.op_reservas where id=p_reserva for update;
   if r.id is null or not public.op_reserva_puede_ver(r.id,a) then raise exception 'Reserva no disponible'; end if;
+  if r.estado in ('completado','cancelado') then raise exception 'La reserva está cerrada; usá Corregir cierre'; end if;
   if p_estado not in ('buscando','en_transito','recibido','separando','listo','avisado') then raise exception 'Usá la acción específica para completar, cancelar o extender'; end if;
   orden_anterior:=array_position(array['buscando','en_transito','recibido','separando','listo','avisado'],r.estado);
   orden_nuevo:=array_position(array['buscando','en_transito','recibido','separando','listo','avisado'],p_estado);
@@ -595,6 +599,7 @@ declare a jsonb; r public.op_reservas; restaurar text;
 begin
   a:=public.op_reserva_actor(p_acceso); select * into r from public.op_reservas where id=p_reserva for update;
   if r.id is null or not public.op_reserva_puede_ver(r.id,a) then raise exception 'Reserva no disponible'; end if;
+  if r.estado in ('completado','cancelado') then raise exception 'La reserva está cerrada; usá Corregir cierre'; end if;
   if p_hasta<=now() or p_hasta>now()+interval '30 days' then raise exception 'La excepción debe vencer dentro de los próximos 30 días'; end if;
   if char_length(trim(coalesce(p_motivo,''))) not between 3 and 500 then raise exception 'Explicá el motivo de la excepción'; end if;
   restaurar:=case when r.estado='vencido' then coalesce(r.estado_antes_vencido,'separando') else r.estado end;
@@ -610,6 +615,7 @@ declare a jsonb; r public.op_reservas; x jsonb; i public.op_reserva_items; total
 begin
   a:=public.op_reserva_actor(p_acceso); select * into r from public.op_reservas where id=p_reserva for update;
   if r.id is null or not public.op_reserva_puede_ver(r.id,a) then raise exception 'Reserva no disponible'; end if;
+  if r.estado in ('completado','cancelado') then raise exception 'La reserva está cerrada; usá Corregir cierre'; end if;
   if p_tipo not in ('retiro_cliente','reparto','envio_otro_local','uso_interno','no_retirado','otro') then raise exception 'Elegí qué ocurrió finalmente'; end if;
   if p_tipo in ('no_retirado','otro') and char_length(trim(coalesce(p_comentario,'')))<3 then raise exception 'Explicá qué ocurrió finalmente'; end if;
   if jsonb_typeof(p_entregas)<>'array' then raise exception 'Confirmá las cantidades entregadas'; end if;
@@ -645,7 +651,7 @@ returns jsonb language plpgsql security definer set search_path=public,pg_temp a
 declare a jsonb; r public.op_reservas;
 begin
   a:=public.op_reserva_actor(p_acceso); select * into r from public.op_reservas where id=p_reserva for update;
-  if r.id is null or not public.op_reserva_puede_ver(r.id,a) or r.estado='completado' then raise exception 'Reserva no disponible'; end if;
+  if r.id is null or not public.op_reserva_puede_ver(r.id,a) or r.estado in ('completado','cancelado') then raise exception 'Reserva no disponible'; end if;
   if char_length(trim(coalesce(p_motivo,''))) not between 3 and 500 then raise exception 'Explicá por qué se cancela'; end if;
   update public.op_reservas set estado='cancelado',final_comentario=trim(p_motivo),completed_at=now(),updated_at=now() where id=r.id;
   insert into public.op_reserva_eventos(reserva_id,accion,estado,detalle,usuario_id,invitado_id,autor_nombre)
