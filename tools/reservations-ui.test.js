@@ -5,6 +5,8 @@ assert.match(page,/id="access-key"/,'El acceso rápido pide contraseña de empre
 assert.match(page,/id="access-name"/,'El acceso rápido registra al empleado');
 assert.match(page,/id="guide-button"/,'El módulo debe ofrecer instrucciones operativas sin salir del flujo');
 assert.match(page,/id="new-reason"/,'La creación pregunta el motivo');
+assert.match(page,/Pedido a otro local[\s\S]*Esperando proveedor[\s\S]*Ya estaba en local/,'La configuración explica los tres motivos operativos');
+assert.match(page,/id="new-interstore"[\s\S]*value="crear"[\s\S]*value="existente"[\s\S]*value="externo"/,'Pedido a otro local permite crear, vincular o gestionar por fuera');
 assert.match(page,/id="new-responsible"/,'La creación pide responsable');
 assert.match(page,/id="arrival-days-hint"/,'La fecha estimada debe mostrar los días habituales del local');
 assert.match(page,/id="customer-document"/,'Los datos opcionales incluyen documento');
@@ -16,7 +18,10 @@ assert.match(page,/id="print-calibration"/,'La configuración debe ofrecer la pr
 assert.match(page,/jsbarcode@3\.12\.3/,'La calibración usa un Code 128 real y una versión fijada');
 assert.match(js,/op_reserva_invitado_entrar/,'El acceso rápido usa una sesión limitada');
 assert.match(js,/responsable:responsible/,'La creación debe enviar el nombre del responsable sin provocar un error de variable');
-assert.match(js,/procedencia==='pedido_local'/,'El formulario pregunta el local de origen cuando corresponde');
+assert.match(js,/const coreReasons=\['Pedido a otro local','Esperando proveedor','Ya estaba en local'\]/,'La interfaz limita los motivos a los tres procesos acordados');
+assert.match(js,/op_reserva_pedidos_candidatos/,'La creación puede elegir un pedido existente sin duplicarlo');
+assert.match(js,/op_reserva_editar/,'La reserva completa se puede editar antes de entregas');
+assert.match(js,/op_reserva_eliminar/,'Una carga errónea se puede eliminar con confirmación');
 assert.match(js,/op_reserva_corregir_cierre/,'Los empleados deben poder corregir un cierre o una entrega errónea');
 assert.match(js,/Se restaurarán las cantidades que estaban separadas antes de cancelar/,'La corrección de cancelación debe explicar que restaura la mercadería');
 assert.match(js,/returned\?x\.dataset\.current:x\.dataset\.withLocal/,'No retirado no debe sumar la mercadería local como si hubiera sido entregada');
@@ -28,7 +33,7 @@ assert.match(js,/UBICACIÓN: \$\{html\(location\)\}/,'La etiqueta debe indicar e
 assert.match(js,/p_ubicacion:location\|\|null/,'La ubicación se guarda junto con la configuración del local');
 assert.match(js,/p_horas:48/,'La interfaz debe guardar siempre la política de 48 horas exactas');
 assert.match(js,/Días habituales de recepción en este local/,'Los días configurados deben orientar la fecha estimada sin imponerla');
-assert.match(js,/Cómo usar Control de reservas[\s\S]*Cerrar siempre[\s\S]*Corregir con trazabilidad/,'La guía debe cubrir el proceso completo y las correcciones auditadas');
+assert.match(js,/Cómo usar Control de reservas[\s\S]*Resolver el pedido entre locales[\s\S]*Editar o corregir[\s\S]*Cerrar siempre/,'La guía debe cubrir el proceso completo y las correcciones auditadas');
 assert.match(js,/actionCreated\(result,state\.current\.items\.some\(item=>item\.cantidad_local>0\)\)/,'La creación debe distinguir si ya hay mercadería física para etiquetar');
 assert.match(js,/function actionCreated\(result,hasLocalStock\)[\s\S]*Cuando cargues unidades en “En el local”/,'Si todavía no llegó mercadería, debe explicar cuándo se ofrecerá la etiqueta');
 assert.match(js,/const arrived=qty>item\.cantidad_local[\s\S]*if\(arrived\)actionMerchandiseArrived/,'Al registrar una llegada debe recordarse colocar la etiqueta');
@@ -38,7 +43,7 @@ assert.match(js,/async function printLabel\(\)[\s\S]*window\.open[\s\S]*await re
 assert.match(js,/async function renderPrintWindow\(r,url,win\)/,'La impresión debe reutilizar la ventana abierta por el gesto del empleado');
 assert.match(js,/function startRealtimeFallback\(error\)[\s\S]*setInterval\(refreshVisibleReservationData,15000\)/,'Si iOS bloquea WebSocket, las reservas deben seguir actualizándose por sondeo');
 assert.match(js,/channel\.subscribe\(status=>[\s\S]*startRealtimeFallback\(error\)/,'Un fallo al abrir Realtime no debe impedir entrar al módulo');
-assert.match(page,/reservas\.js\?v=2/,'La corrección de compatibilidad móvil debe invalidar la caché anterior');
+assert.match(page,/reservas\.js\?v=3/,'Las nuevas acciones deben invalidar la caché anterior');
 assert.match(js,/async function printCalibration\(\)[\s\S]*window\.open[\s\S]*await qrDataUrl/,'La calibración debe abrir su ventana antes de generar el QR');
 assert.match(js,/\/reserva#/,'La etiqueta abre una consulta de solo lectura');
 assert.match(receipt,/receiptReservationData/,'Recepción muestra reservas coincidentes');

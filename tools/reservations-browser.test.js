@@ -32,7 +32,11 @@ let reservation=null,items=[],comments=[],events=[];
 const context={
   actor:{name:'Empleado prueba',local:'PDE',warehouse:'01',supervisor:false,role:'usuario'},
   locals:[{id:'11111111-1111-4111-8111-111111111111',nombre:'PDE',almacen:'01'}],
-  reasons:[{id:'22222222-2222-4222-8222-222222222222',local_nombre:'PDE',nombre:'Retiro en tienda',activo:true,orden:10}],
+  reasons:[
+    {id:'11111111-2222-4222-8222-222222222222',local_nombre:'PDE',nombre:'Pedido a otro local',activo:true,orden:10},
+    {id:'22222222-2222-4222-8222-222222222222',local_nombre:'PDE',nombre:'Esperando proveedor',activo:true,orden:20},
+    {id:'33333333-2222-4222-8222-222222222222',local_nombre:'PDE',nombre:'Ya estaba en local',activo:true,orden:30}
+  ],
   config:{PDE:{horas_reserva:48,dias_recepcion:[1,3,5],ubicacion_reservas:'Estante de pruebas',printer_path:null,printer_profile:'star-bsc10-80-max'}}
 };
 function detail(){return {reservation:{...reservation},items:items.map(item=>({...item})),comments:comments.map(comment=>({...comment})),events:events.map(event=>({...event}))};}
@@ -54,15 +58,23 @@ const db={
       const history=!!args.p_filtros.history,closed=reservation&&['completado','cancelado'].includes(reservation.estado);
       return {data:reservation&&history===closed?[summary()]:[],error:null};
     }
-    if(name==='op_reserva_buscar_productos')return {data:[{codigo:'ALIM-001',nombre:'Alimento premium',marca:'SUCAN'}],error:null};
+    if(name==='op_reserva_buscar_productos')return {data:[{codigo:'010031110010408',nombre:'CORREA ZEE DOG - SELVA - XS',marca:'ZEE DOG'}],error:null};
     if(name==='op_reserva_buscar_clientes')return {data:[],error:null};
-    if(name==='op_reserva_crear'){
+    if(name==='op_reserva_crear_v2'){
       const input=args.p_datos,now=new Date().toISOString();
-      reservation={id:'44444444-4444-4444-8444-444444444444',codigo:'SUCAN001',local_nombre:'PDE',local_almacen:'01',motivo_id:input.motivo_id,motivo_nombre:'Retiro en tienda',motivo_comentario:input.motivo_comentario,responsable_nombre:input.responsable,cliente_nombre:input.cliente.nombre,cliente_apellido:input.cliente.apellido,cliente_telefono:input.cliente.telefono,cliente_direccion:input.cliente.direccion,cliente_documento:input.cliente.documento,referencia_externa:input.referencia_externa,estado:'buscando',created_at:now,updated_at:now,mercaderia_local_at:null,vencimiento_at:null,qr_token:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'};
+      const motive=context.reasons.find(reason=>reason.id===input.motivo_id);
+      reservation={id:'44444444-4444-4444-8444-444444444444',codigo:'SUCAN001',local_nombre:'PDE',local_almacen:'01',motivo_id:input.motivo_id,motivo_nombre:motive.nombre,motivo_comentario:input.motivo_comentario,responsable_nombre:input.responsable,cliente_id:input.cliente.id,cliente_nombre:input.cliente.nombre,cliente_apellido:input.cliente.apellido,cliente_telefono:input.cliente.telefono,cliente_direccion:input.cliente.direccion,cliente_documento:input.cliente.documento,referencia_externa:input.referencia_externa,remito_numero:input.remito_numero,fecha_estimada:input.fecha_estimada,pedido_local_gestion:input.pedido_local_gestion,pedido_local_origen:input.pedido_local_origen,estado:'buscando',created_at:now,updated_at:now,mercaderia_local_at:null,vencimiento_at:null,qr_token:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'};
       items=input.items.map((item,index)=>({id:'55555555-5555-4555-8555-55555555555'+index,reserva_id:reservation.id,codigo:item.codigo,nombre:item.nombre,cantidad:item.cantidad,cantidad_local:item.cantidad_local,cantidad_entregada:0,procedencia:item.procedencia,origen_local:item.origen_local,fecha_estimada:item.fecha_estimada,remito_numero:item.remito_numero,comentario:item.comentario,estado:item.cantidad_local?'separado':'pendiente',created_at:now}));
       comments=[];events=[{id:1,accion:'crear',estado:'buscando',detalle:{},autor_nombre:'Empleado prueba',created_at:now}];recalculate();
       return {data:{ok:true,id:reservation.id,code:reservation.codigo,state:reservation.estado,qr_token:reservation.qr_token},error:null};
     }
+    if(name==='op_reserva_editar'){
+      const input=args.p_datos,motive=context.reasons.find(reason=>reason.id===input.motivo_id),now=new Date().toISOString();
+      Object.assign(reservation,{motivo_id:input.motivo_id,motivo_nombre:motive.nombre,motivo_comentario:input.motivo_comentario,responsable_nombre:input.responsable,cliente_id:input.cliente.id,cliente_nombre:input.cliente.nombre,cliente_apellido:input.cliente.apellido,cliente_telefono:input.cliente.telefono,cliente_direccion:input.cliente.direccion,cliente_documento:input.cliente.documento,referencia_externa:input.referencia_externa,remito_numero:input.remito_numero,fecha_estimada:input.fecha_estimada,pedido_local_gestion:input.pedido_local_gestion,pedido_local_origen:input.pedido_local_origen,estado:'buscando',updated_at:now});
+      items=input.items.map((item,index)=>({id:item.id||'55555555-5555-4555-8555-55555555555'+index,reserva_id:reservation.id,codigo:item.codigo,nombre:item.nombre,cantidad:item.cantidad,cantidad_local:item.cantidad_local,cantidad_entregada:0,procedencia:item.procedencia,origen_local:item.origen_local,fecha_estimada:item.fecha_estimada,remito_numero:item.remito_numero,comentario:item.comentario,estado:item.cantidad_local?'separado':'pendiente',created_at:now}));
+      recalculate();events.unshift({id:events.length+1,accion:'editar',estado:reservation.estado,detalle:{},autor_nombre:'Empleado prueba',created_at:now});return {data:detail(),error:null};
+    }
+    if(name==='op_reserva_eliminar'){const result={ok:true,id:reservation.id,code:reservation.codigo};reservation=null;items=[];comments=[];events=[];return {data:result,error:null};}
     if(name==='op_reserva_detalle')return {data:detail(),error:null};
     if(name==='op_reserva_actualizar_item'){
       const item=items.find(row=>row.id===args.p_item),before=item.cantidad_local;
@@ -84,7 +96,7 @@ const db={
       for(const delivery of args.p_entregas){const item=items.find(row=>row.id===delivery.id),returned=item.cantidad_entregada-delivery.cantidad;item.cantidad_entregada=delivery.cantidad;item.cantidad_local=Math.min(item.cantidad-delivery.cantidad,item.cantidad_local+returned);item.estado=item.cantidad_local+item.cantidad_entregada>=item.cantidad?'separado':'recibido';}
       reservation.final_tipo=null;reservation.final_comentario=null;reservation.completed_at=null;recalculate();events.unshift({id:events.length+1,accion:'corregir_cierre',estado:reservation.estado,detalle:{},autor_nombre:'Empleado prueba',created_at:new Date().toISOString()});return {data:detail(),error:null};
     }
-    if(name==='op_reserva_pedidos_disponibles')return {data:[],error:null};
+    if(name==='op_reserva_pedidos_disponibles'||name==='op_reserva_pedidos_candidatos')return {data:[],error:null};
     return {data:{ok:true},error:null};
   },
   channel:()=>{const channel={on:()=>channel,subscribe:()=>{throw new DOMException('The operation is insecure.','SecurityError');}};return channel;},
@@ -123,6 +135,9 @@ window.supabase={createClient:()=>db};
     await page.waitForFunction(count=>window.__reservationRpcCalls.filter(call=>call.name==='op_reserva_listar').length>count,initialCalls);
 
     await page.locator('button[data-view="new"]').click();
+    await page.locator('#new-reason').selectOption('11111111-2222-4222-8222-222222222222');
+    assert.equal(await page.locator('#new-interstore').isVisible(),true,'Pedido a otro local debe preguntar si se crea, vincula o gestiona por fuera');
+    assert.match(await page.locator('#new-interstore').innerText(),/crear el pedido ahora[\s\S]*ya está creado[\s\S]*gestionó por fuera/,'El flujo debe ofrecer las tres formas sin duplicar pedidos');
     await page.locator('#new-reason').selectOption('22222222-2222-4222-8222-222222222222');
     await page.locator('#customer-name').fill('Ana');
     await page.locator('#customer-surname').fill('Suárez');
@@ -130,13 +145,11 @@ window.supabase={createClient:()=>db};
     await page.locator('#customer-address').fill('Calle de prueba 123');
     await page.locator('#new-reference').fill('WEB-1001');
     await page.locator('#new-reason-comment').fill('Retira mañana por la tarde');
-    await page.locator('#custom-product-button').click();
-    await page.locator('#custom-code').fill('ALIM-001');
-    await page.locator('#custom-name').fill('Alimento premium');
-    await page.locator('#custom-form button[type="submit"]').click();
+    await page.locator('#product-search').fill('CORREA ZEE');
+    await page.waitForSelector('#product-results [data-product-index="0"]');
+    await page.locator('#product-results [data-product-index="0"]').click();
     const quantity=page.locator('[data-item-field="cantidad"]');
     await quantity.fill('2');await quantity.press('Tab');
-    await page.locator('[data-item-field="procedencia"]').selectOption('proveedor');
     const localQuantity=page.locator('[data-item-field="cantidad_local"]');
     await localQuantity.fill('0');await localQuantity.press('Tab');
     await page.locator('[data-item-field="comentario"]').fill('Llega con el próximo proveedor');
@@ -145,11 +158,22 @@ window.supabase={createClient:()=>db};
     try{await page.waitForSelector('#action-modal:not([hidden])',{timeout:10000});}
     catch(error){const state=await page.evaluate(()=>({formError:document.querySelector('#new-error')?.textContent,view:document.querySelector('#view-new')?.className,clicks:window.__createClicks,submits:window.__createSubmits,button:{disabled:document.querySelector('#create-button')?.disabled,type:document.querySelector('#create-button')?.type,visible:!!document.querySelector('#create-button')?.getClientRects().length},valid:document.querySelector('#reservation-form')?.checkValidity(),invalid:[...document.querySelectorAll('#reservation-form :invalid')].map(element=>({id:element.id,value:element.value})),calls:window.__reservationRpcCalls.map(call=>call.name)}));throw new Error(`La creación no abrió su confirmación: ${JSON.stringify({state,browserErrors})}`,{cause:error});}
     assert.match(await page.locator('#action-content').innerText(),/SUCAN001[\s\S]*espera de mercadería/,'La creación sin mercadería debe explicar el siguiente paso');
-    const createPayload=await page.evaluate(()=>window.__reservationRpcCalls.find(call=>call.name==='op_reserva_crear').args.p_datos);
+    const createPayload=await page.evaluate(()=>window.__reservationRpcCalls.find(call=>call.name==='op_reserva_crear_v2').args.p_datos);
     assert.equal(createPayload.cliente.telefono,'099 123 456','El teléfono debe enviarse en la reserva');
     assert.equal(createPayload.items[0].procedencia,'proveedor','La procedencia elegida debe conservarse');
     assert.equal(createPayload.items[0].cantidad_local,0,'No debe marcarse mercadería que todavía no llegó');
     await page.getByRole('button',{name:'Entendido'}).click();
+
+    await page.locator('[data-detail-action="edit"]').click();
+    await page.waitForFunction(()=>document.querySelector('#form-title')?.textContent.includes('Editar reserva'));
+    await page.locator('#new-responsible').fill('Empleado corregido');
+    await page.locator('#customer-address').fill('Calle corregida 456');
+    await page.locator('#new-reference').fill('WEB-1001-EDITADO');
+    await page.locator('#create-button').click();
+    await page.waitForSelector('#detail-modal:not([hidden])');
+    assert.match(await page.locator('#detail-content').innerText(),/Empleado corregido[\s\S]*Calle corregida 456[\s\S]*WEB-1001-EDITADO/,'La edición debe reflejar los datos corregidos');
+    const editPayload=await page.evaluate(()=>window.__reservationRpcCalls.find(call=>call.name==='op_reserva_editar').args.p_datos);
+    assert.equal(editPayload.items[0].codigo,'010031110010408','La edición debe conservar el producto real seleccionado');
 
     const detailLocal=page.locator('.item-local');
     await detailLocal.fill('1');
@@ -185,15 +209,18 @@ window.supabase={createClient:()=>db};
 
     await page.locator('#history-list [data-reservation-id]').click();
     await page.locator('[data-detail-action="correct-close"]').click();
-    await page.locator('.corrected-delivery').fill('1');
+    await page.locator('.corrected-delivery').fill('0');
     await page.locator('#correct-close-reason').fill('Se marcó una unidad de más por error');
     await page.locator('#correct-close-form button[type="submit"]').click();
     await page.waitForFunction(()=>document.querySelector('#action-modal')?.hidden);
-    assert.match(await page.locator('#detail-content').innerText(),/Entrega parcial[\s\S]*2 \/ 1/,'La corrección debe reabrir el seguimiento con la cantidad entregada correcta');
-    await page.locator('[data-close-modal]').click();
-    await page.locator('button[data-view="active"]').click();
-    await page.waitForSelector('#active-list [data-reservation-id]');
-    const requiredCalls=['op_reserva_crear','op_reserva_actualizar_item','op_reserva_comentar','op_reserva_cambiar_estado','op_reserva_finalizar','op_reserva_corregir_cierre'];
+    assert.match(await page.locator('#detail-content').innerText(),/Lista para entregar[\s\S]*2 \/ 0/,'La corrección debe reabrir el seguimiento sin entregas antes de eliminarlo');
+    await page.locator('[data-detail-action="delete"]').click();
+    await page.locator('#delete-code').fill('SUCAN001');
+    await page.locator('#delete-reason').fill('Reserva creada para prueba integral');
+    await page.locator('#delete-form button[type="submit"]').click();
+    await page.waitForFunction(()=>document.querySelector('#active-list')?.textContent.includes('No hay reservas'));
+    assert.equal(await page.locator('#detail-modal').isHidden(),true,'La reserva eliminada debe desaparecer del detalle');
+    const requiredCalls=['op_reserva_crear_v2','op_reserva_editar','op_reserva_actualizar_item','op_reserva_comentar','op_reserva_cambiar_estado','op_reserva_finalizar','op_reserva_corregir_cierre','op_reserva_eliminar'];
     const called=await page.evaluate(()=>window.__reservationRpcCalls.map(call=>call.name));
     for(const name of requiredCalls)assert(called.includes(name),`El recorrido de usuario debe ejecutar ${name}`);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true,'La vista móvil no debe desbordarse horizontalmente');

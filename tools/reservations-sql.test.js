@@ -1,5 +1,5 @@
 const fs=require('fs'),assert=require('assert');
-const sql=fs.readFileSync('supabase/migrations/20260909010000_control_reservas.sql','utf8');
+const sql=fs.readFileSync('supabase/migrations/20260909010000_control_reservas.sql','utf8'),changes=fs.readFileSync('supabase/migrations/20260910010000_reservas_edicion_eliminacion.sql','utf8');
 for(const table of ['op_reservas','op_reserva_items','op_reserva_motivos','op_reserva_comentarios','op_reserva_eventos','op_reserva_enlaces','op_reserva_invitados','op_recepcion_reservas'])assert.match(sql,new RegExp(`create table if not exists public\\.${table}\\b`),`Falta ${table}`);
 for(const fn of ['op_reserva_crear','op_reserva_listar','op_reserva_detalle','op_reserva_actualizar_item','op_reserva_pedidos_disponibles','op_reserva_vincular_pedido','op_reserva_cambiar_estado','op_reserva_finalizar','op_reserva_cancelar','op_reserva_corregir_cierre','op_reserva_excepcion','op_reserva_qr_detalle','op_reserva_invitado_entrar','op_recepcion_reservas_datos','op_recepcion_confirmar_reserva','op_agenda_guardar_cliente'])assert.match(sql,new RegExp(`function public\\.${fn}\\(`),`Falta ${fn}`);
 assert.match(sql,/make_interval\(hours=>v_horas\)/,'El vencimiento debe usar las horas configuradas');
@@ -27,4 +27,11 @@ assert.match(sql,/alter table public\.op_reservas enable row level security/,'Re
 assert.match(sql,/grant execute on function public\.op_reserva_qr_detalle\(text\) to anon,authenticated/,'El QR de solo lectura debe ser público');
 assert.doesNotMatch(sql,/grant (?:all|select|insert|update|delete)[^;]+op_reservas[^;]+to anon/i,'Anónimos no deben acceder directamente a las tablas');
 assert.match(sql,/char_length\(trim\(coalesce\(p_motivo,''\)\)\) not between 3 and 500/,'Cancelar o exceptuar requiere motivo');
+assert.match(changes,/\('Pedido a otro local',10\)[\s\S]*\('Esperando proveedor',20\)[\s\S]*\('Ya estaba en local',30\)/,'Los tres motivos operativos se configuran para todos los locales');
+assert.match(changes,/pedido_local_gestion in \('crear','existente','externo'\)/,'La forma de gestionar un pedido entre locales queda registrada');
+for(const fn of ['op_reserva_crear_v2','op_reserva_pedidos_candidatos','op_reserva_editar','op_reserva_eliminar'])assert.match(changes,new RegExp(`function public\\.${fn}\\(`),`Falta ${fn}`);
+assert.match(changes,/generado_desde_reserva and estado='pendiente'/,'Solo se eliminan pedidos generados por Reservas que todavía no avanzaron');
+assert.match(changes,/create table if not exists public\.op_reserva_eliminaciones/,'Las eliminaciones conservan una copia de auditoría');
+assert.match(changes,/cantidad_entregada>0[\s\S]*no se puede eliminar/,'Una reserva con entregas no se puede borrar');
+assert.match(changes,/gestion='existente'[\s\S]*op_reserva_vincular_pedido/,'Un pedido ya creado se vincula en vez de duplicarse');
 console.log('reservations sql contract ok');
