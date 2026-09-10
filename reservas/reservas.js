@@ -4,7 +4,7 @@
   const db=window.supabase.createClient(cfg.supabaseUrl,cfg.supabaseKey);
   const E=window.ReservaEngine;
   const $=id=>document.getElementById(id);
-  const state={access:null,linkToken:null,context:null,actor:null,locals:[],reasons:[],configs:{},newItems:[],current:null,qrTokens:new Map(),view:'active',timer:null};
+  const state={access:null,linkToken:null,context:null,actor:null,locals:[],reasons:[],configs:{},newItems:[],current:null,qrTokens:new Map(),view:'active',timer:null,channel:null,realtimeTimer:null,realtimeMode:'idle'};
   const uuid=/^[0-9a-f]{8}-[0-9a-f-]{27}$/i;
   function html(v){return String(v==null?'':v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
   function js(v){return String(v||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/[\r\n]/g,' ');}
@@ -117,7 +117,7 @@
     const local=$('new-local').value,responsible=clean($('new-responsible').value,80),reason=$('new-reason').value;
     if(!local||!reason||responsible.length<2||!state.newItems.length){$('new-error').textContent='Completá local, motivo, responsable y al menos un producto.';return;}
     const invalid=state.newItems.find(i=>i.cantidad<1||i.cantidad_local>i.cantidad||(i.procedencia==='pedido_local'&&!i.origen_local));if(invalid){$('new-error').textContent='Revisá cantidades y el local de origen de cada pedido entre locales.';return;}
-    const payload={local,motivo_id:reason,motivo_comentario:clean($('new-reason-comment').value),responsable,referencia_externa:clean($('new-reference').value,120),fecha_estimada:$('new-estimate').value||null,remito_numero:clean($('new-receipt').value,100),cliente:{id:$('customer-id').value||null,nombre:clean($('customer-name').value,120),apellido:clean($('customer-surname').value,120),telefono:clean($('customer-phone').value,40),direccion:clean($('customer-address').value,240),documento:clean($('customer-document').value,50)},items:state.newItems};
+    const payload={local,motivo_id:reason,motivo_comentario:clean($('new-reason-comment').value),responsable:responsible,referencia_externa:clean($('new-reference').value,120),fecha_estimada:$('new-estimate').value||null,remito_numero:clean($('new-receipt').value,100),cliente:{id:$('customer-id').value||null,nombre:clean($('customer-name').value,120),apellido:clean($('customer-surname').value,120),telefono:clean($('customer-phone').value,40),direccion:clean($('customer-address').value,240),documento:clean($('customer-document').value,50)},items:state.newItems};
     setBusy(button,true,'Creando reserva…');try{const result=await rpc('op_reserva_crear',withAccess({p_datos:payload}));state.qrTokens.set(result.id,result.qr_token);resetForm();showView('active');await openDetail(result.id);actionCreated(result,state.current.items.some(item=>item.cantidad_local>0));}catch(error){$('new-error').textContent=error.message||'No se pudo crear la reserva.';}finally{setBusy(button,false);}
   }
 
@@ -177,7 +177,36 @@
 
   function customProduct(){openAction(`<form class="action-form" id="custom-form"><h2>Agregar producto manualmente</h2><p>Usalo solamente si el producto no aparece en el padrón.</p><label class="field"><span>Código *</span><input class="input" id="custom-code" maxlength="80" required></label><label class="field"><span>Nombre *</span><input class="input" id="custom-name" maxlength="240" required></label><button class="button primary" type="submit">Agregar producto</button></form>`);$('custom-form').onsubmit=e=>{e.preventDefault();const codigo=clean($('custom-code').value,80),nombre=clean($('custom-name').value,240);if(!codigo||!nombre)return toast('Código y nombre son obligatorios.','error');closeAction();addProduct({codigo,nombre});};}
 
-  function bindRealtime(){if(state.channel)return;state.channel=db.channel(`reservas-${state.actor.local}-${Date.now()}`).on('postgres_changes',{event:'*',schema:'public',table:'op_reservas'},()=>{if(['active','history'].includes(state.view))loadList(state.view);}).on('postgres_changes',{event:'INSERT',schema:'public',table:'op_reserva_comentarios'},payload=>{if(state.current?.reservation?.id===payload.new.reserva_id)openDetail(payload.new.reserva_id);}).subscribe();}
+  function refreshVisibleReservationData(){
+    if(document.visibilityState==='hidden'||!state.actor)return;
+    if(state.current?.reservation?.id&&!$('detail-modal').hidden)return openDetail(state.current.reservation.id);
+    if(['active','history'].includes(state.view))return loadList(state.view);
+  }
+  function startRealtimeFallback(error){
+    if(error)console.warn('[Reservas] Realtime no disponible; se usará actualización periódica.',error);
+    state.channel=null;state.realtimeMode='polling';
+    if(!state.realtimeTimer)state.realtimeTimer=setInterval(refreshVisibleReservationData,15000);
+  }
+  function bindRealtime(){
+    if(state.channel||state.realtimeTimer)return;
+    let channel;
+    try{
+      channel=db.channel(`reservas-${state.actor.local}-${Date.now()}`)
+        .on('postgres_changes',{event:'*',schema:'public',table:'op_reservas'},()=>{if(['active','history'].includes(state.view))loadList(state.view);})
+        .on('postgres_changes',{event:'INSERT',schema:'public',table:'op_reserva_comentarios'},payload=>{if(state.current?.reservation?.id===payload.new.reserva_id)openDetail(payload.new.reserva_id);});
+      state.channel=channel;
+      channel.subscribe(status=>{
+        if(status==='SUBSCRIBED'){state.realtimeMode='realtime';return;}
+        if(!['CHANNEL_ERROR','TIMED_OUT','CLOSED'].includes(status))return;
+        if(state.channel===channel)state.channel=null;
+        try{Promise.resolve(db.removeChannel(channel)).catch(()=>{});}catch(_error){}
+        startRealtimeFallback();
+      });
+    }catch(error){
+      try{if(channel)Promise.resolve(db.removeChannel(channel)).catch(()=>{});}catch(_error){}
+      startRealtimeFallback(error);
+    }
+  }
   function debounce(fn,delay=260){let t;return(...args)=>{clearTimeout(t);t=setTimeout(()=>fn(...args),delay);};}
 
   $('access-form').addEventListener('submit',enterQuick);$('reservation-form').addEventListener('submit',createReservation);$('new-local').addEventListener('change',()=>{renderReasonOptions();renderArrivalHint();renderNewItems();});
@@ -199,6 +228,7 @@
   });
   $('new-items').addEventListener('change',event=>{if(event.target.matches('[data-item-field]'))syncItemField(event.target);});
   $('detail-modal').addEventListener('click',e=>{if(e.target===$('detail-modal'))closeDetail();});$('action-modal').addEventListener('click',e=>{if(e.target===$('action-modal'))closeAction();});
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&state.realtimeMode==='polling')refreshVisibleReservationData();});
   addEventListener('keydown',e=>{if(e.key==='Escape'){if(!$('action-modal').hidden)closeAction();else if(!$('detail-modal').hidden)closeDetail();}});
   init().catch(error=>{$('boot').hidden=true;$('access-missing').hidden=false;fail(error,'init');});
 })();
