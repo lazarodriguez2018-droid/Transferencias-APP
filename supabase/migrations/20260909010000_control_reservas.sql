@@ -10,6 +10,7 @@ create extension if not exists unaccent with schema extensions;
 alter table public.clientes_agenda add column if not exists apellido text;
 alter table public.clientes_agenda add column if not exists documento text;
 alter table public.clientes_agenda add column if not exists email text;
+alter table public.clientes_agenda alter column nombre drop not null;
 
 create table if not exists public.op_reserva_config_local (
   local_nombre text primary key,
@@ -370,16 +371,18 @@ begin
   if nullif(p_datos#>>'{cliente,id}','') is not null then
     select * into c from public.clientes_agenda where id=(p_datos#>>'{cliente,id}')::uuid;
     v_cliente:=c.id;
-  elsif nullif(trim(coalesce(p_datos#>>'{cliente,nombre}','')),'') is not null then
+  elsif nullif(trim(concat_ws('',p_datos#>>'{cliente,nombre}',p_datos#>>'{cliente,apellido}',p_datos#>>'{cliente,telefono}',
+    p_datos#>>'{cliente,direccion}',p_datos#>>'{cliente,documento}',p_datos#>>'{cliente,email}')),'') is not null then
     if v_phone<>'' then select * into c from public.clientes_agenda where regexp_replace(coalesce(telefono,''),'\D','','g')=v_phone order by updated_at desc limit 1; end if;
     if c.id is null then
       insert into public.clientes_agenda(nombre,apellido,telefono,direccion,documento,email)
-      values(left(trim(p_datos#>>'{cliente,nombre}'),120),nullif(left(trim(coalesce(p_datos#>>'{cliente,apellido}','')),120),''),
+      values(nullif(left(trim(coalesce(p_datos#>>'{cliente,nombre}','')),120),''),nullif(left(trim(coalesce(p_datos#>>'{cliente,apellido}','')),120),''),
         nullif(left(trim(coalesce(p_datos#>>'{cliente,telefono}','')),40),''),nullif(left(trim(coalesce(p_datos#>>'{cliente,direccion}','')),240),''),
         nullif(left(trim(coalesce(p_datos#>>'{cliente,documento}','')),50),''),nullif(left(trim(coalesce(p_datos#>>'{cliente,email}','')),160),'')) returning * into c;
     else
       update public.clientes_agenda set
         nombre=coalesce(nullif(trim(p_datos#>>'{cliente,nombre}'),''),nombre),apellido=coalesce(nullif(trim(p_datos#>>'{cliente,apellido}'),''),apellido),
+        telefono=coalesce(nullif(trim(p_datos#>>'{cliente,telefono}'),''),telefono),
         direccion=coalesce(nullif(trim(p_datos#>>'{cliente,direccion}'),''),direccion),documento=coalesce(nullif(trim(p_datos#>>'{cliente,documento}'),''),documento),
         email=coalesce(nullif(trim(p_datos#>>'{cliente,email}'),''),email),updated_at=now() where id=c.id returning * into c;
     end if;

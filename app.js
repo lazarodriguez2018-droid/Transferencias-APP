@@ -2264,8 +2264,8 @@ const apellido=el('cliente-agenda-apellido').value.trim();
 const telefono=el('cliente-agenda-telefono').value.trim();
 const direccion=el('cliente-agenda-direccion').value.trim();
 const documento=el('cliente-agenda-documento').value.trim();
-if(!nombre||!telefono) return notify('Completá nombre y teléfono','error');
-const payload={nombre,apellido:apellido||null,telefono,direccion:direccion||null,documento:documento||null};
+if(!nombre&&!apellido&&!telefono&&!direccion&&!documento) return notify('Completá al menos un dato del cliente','error');
+const payload={nombre:nombre||null,apellido:apellido||null,telefono:telefono||null,direccion:direccion||null,documento:documento||null};
 const req=id
 ?db.from('clientes_agenda').update(payload).eq('id',id).select().single()
 :db.from('clientes_agenda').insert(payload).select().single();

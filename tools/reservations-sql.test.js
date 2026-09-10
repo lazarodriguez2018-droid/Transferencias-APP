@@ -13,6 +13,7 @@ assert.match(sql,/cantidad_local \+ cantidad_entregada <= cantidad/,'Una entrega
 assert.match(sql,/set qr_token=v_token,qr_token_hash=/,'El QR impreso debe quedar asociado de forma estable a la reserva');
 assert.match(sql,/token:=r\.qr_token;[\s\S]*if token is null then/,'Reimprimir no debe invalidar etiquetas anteriores');
 assert.match(sql,/function public\.op_reserva_corregir_cierre[\s\S]*cantidad_local=least\(cantidad-nueva,cantidad_local\+devueltas\)/,'Deshacer una entrega debe devolver las unidades al seguimiento local');
+assert.match(sql,/clientes_agenda alter column nombre drop not null/,'Los datos del cliente deben seguir siendo opcionales también en la agenda');
 assert.match(sql,/alter table public\.op_reservas enable row level security/,'Reservas debe usar RLS');
 assert.match(sql,/grant execute on function public\.op_reserva_qr_detalle\(text\) to anon,authenticated/,'El QR de solo lectura debe ser público');
 assert.doesNotMatch(sql,/grant (?:all|select|insert|update|delete)[^;]+op_reservas[^;]+to anon/i,'Anónimos no deben acceder directamente a las tablas');
