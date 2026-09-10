@@ -8,6 +8,7 @@ try{({chromium}=require('playwright'));}
 catch(_error){console.log('reservations browser skipped (playwright unavailable)');process.exit(0);}
 
 const root=path.resolve(__dirname,'..');
+const externalBase=String(process.env.RESERVATIONS_BASE_URL||'').replace(/\/$/,'');
 const browserExecutable=[process.env.PLAYWRIGHT_EXECUTABLE_PATH,
   'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
   'C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
@@ -93,7 +94,7 @@ window.supabase={createClient:()=>db};
 `;
 
 (async()=>{
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  if(!externalBase)await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const browser=await chromium.launch({headless:true,...(browserExecutable?{executablePath:browserExecutable}:{})});
   const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
   const warnings=[],browserErrors=[];
@@ -104,8 +105,8 @@ window.supabase={createClient:()=>db};
   await page.route('**/npm/jsbarcode@3.12.3/**',route=>route.fulfill({contentType:'application/javascript',body:'window.JsBarcode=function(){};'}));
   await page.route('https://fonts.googleapis.com/**',route=>route.fulfill({contentType:'text/css',body:''}));
   try{
-    const address=server.address();
-    await page.goto(`http://127.0.0.1:${address.port}/reservas/`,{waitUntil:'domcontentloaded'});
+    const address=server.address(),target=externalBase?`${externalBase}/reservas/`:`http://127.0.0.1:${address.port}/reservas/`;
+    await page.goto(target,{waitUntil:'domcontentloaded'});
     try{await page.waitForSelector('#app:not([hidden])',{timeout:10000});}
     catch(error){
       const state=await page.evaluate(()=>({title:document.title,bootHidden:document.querySelector('#boot')?.hidden,appHidden:document.querySelector('#app')?.hidden,missingHidden:document.querySelector('#access-missing')?.hidden,toast:document.querySelector('#toast')?.textContent}));
@@ -199,6 +200,6 @@ window.supabase={createClient:()=>db};
     console.log('reservations browser user journey and websocket fallback ok');
   }finally{
     await browser.close();
-    await new Promise(resolve=>server.close(resolve));
+    if(server.listening)await new Promise(resolve=>server.close(resolve));
   }
 })().catch(error=>{console.error(error);process.exitCode=1;});
