@@ -10,7 +10,7 @@
   <link rel="icon" type="image/svg+xml" href="/logo.svg?v=2">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="/reservas/reservas.css?v=1">
+  <link rel="stylesheet" href="/reservas/reservas.css?v=2">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -63,30 +63,31 @@
       </section>
 
       <section class="view" id="view-new">
-        <div class="page-head"><div><span class="eyebrow">NUEVO SEGUIMIENTO</span><h1>Crear reserva</h1><p>Las preguntas cambian según la procedencia de cada producto.</p></div></div>
+        <div class="page-head"><div><span class="eyebrow">NUEVO SEGUIMIENTO</span><h1 id="form-title">Crear reserva</h1><p id="form-subtitle">Elegí de dónde saldrá la mercadería y registrá todo antes de separarla.</p></div></div>
         <form class="builder" id="reservation-form">
-          <article class="panel step-panel"><div class="step-number">1</div><div class="panel-head"><h2>Motivo y responsable</h2><p>Por qué se separa o se espera esta mercadería.</p></div>
+          <article class="panel step-panel"><div class="step-number">1</div><div class="panel-head"><h2>Origen y responsable</h2><p>El motivo indica de dónde sale la mercadería. El remito se registra después como documento interno.</p></div>
             <div class="form-grid"><label class="field"><span>Local</span><select class="input" id="new-local" required></select></label><label class="field"><span>Motivo</span><select class="input" id="new-reason" required></select></label><label class="field"><span>Responsable *</span><input class="input" id="new-responsible" maxlength="80" required></label><label class="field"><span>Referencia externa (opcional)</span><input class="input" id="new-reference" maxlength="120" placeholder="Pedido web, ticket, CX…"></label><label class="field full"><span>Comentario sobre el motivo</span><textarea class="input" id="new-reason-comment" maxlength="1000" placeholder="Información necesaria para entender el caso"></textarea></label></div>
+            <fieldset class="interstore-flow" id="new-interstore" hidden><legend>¿Querés agregar un pedido entre locales?</legend><div class="choice-grid"><label class="choice-card"><input type="radio" name="new-order-mode" value="crear" checked><span><strong>Sí, crear el pedido ahora</strong><small>Aparecerá también en Pedidos entre Locales y quedará vinculado.</small></span></label><label class="choice-card"><input type="radio" name="new-order-mode" value="existente"><span><strong>No, ya está creado</strong><small>Elegí el pedido existente para no duplicarlo.</small></span></label><label class="choice-card"><input type="radio" name="new-order-mode" value="externo"><span><strong>No, se gestionó por fuera</strong><small>WhatsApp o llamada: Reservas llevará igualmente todo el seguimiento.</small></span></label></div><label class="field"><span>Local que entrega la mercadería *</span><select class="input" id="new-origin-local"></select></label><div class="existing-order-picker" id="existing-order-picker" hidden><label class="field"><span>Buscar pedido existente</span><input class="input" id="existing-order-search" type="search" placeholder="Origen, cliente, código o producto…"></label><div class="order-link-results" id="existing-order-results"></div></div></fieldset>
           </article>
           <article class="panel step-panel"><div class="step-number">2</div><div class="panel-head"><h2>Cliente o destinatario</h2><p>Todos los datos son opcionales. El teléfono permite reutilizar la agenda.</p></div>
             <div class="customer-search"><input class="input" id="customer-search" type="search" placeholder="Buscar cliente por nombre o teléfono…"><div class="floating-results" id="customer-results" hidden></div></div>
             <input type="hidden" id="customer-id">
             <div class="form-grid"><label class="field"><span>Nombre</span><input class="input" id="customer-name" maxlength="120"></label><label class="field"><span>Apellido</span><input class="input" id="customer-surname" maxlength="120"></label><label class="field"><span>Teléfono</span><input class="input" id="customer-phone" maxlength="40" type="tel"></label><label class="field"><span>Documento</span><input class="input" id="customer-document" maxlength="50"></label><label class="field full"><span>Dirección</span><input class="input" id="customer-address" maxlength="240"></label></div>
           </article>
-          <article class="panel step-panel"><div class="step-number">3</div><div class="panel-head"><h2>Productos</h2><p>Indicá cuáles ya están en el local y de dónde vendrá lo que falta.</p></div>
+          <article class="panel step-panel"><div class="step-number">3</div><div class="panel-head"><h2>Productos</h2><p>El motivo elegido se aplica a todos los productos de esta reserva.</p></div>
             <div class="product-search"><div class="search-row"><input class="input" id="product-search" type="search" placeholder="Buscar por nombre o código…"><button class="button secondary" id="custom-product-button" type="button">Agregar manualmente</button></div><div class="floating-results" id="product-results" hidden></div></div>
             <div class="items" id="new-items"><div class="empty">Buscá un producto para comenzar.</div></div>
           </article>
-          <article class="panel step-panel"><div class="step-number">4</div><div class="panel-head"><h2>Fechas y documento</h2><p>Completalos únicamente cuando ya los conozcas.</p></div><p class="arrival-hint" id="arrival-days-hint"></p><div class="form-grid"><label class="field"><span>Fecha estimada de llegada</span><input class="input" id="new-estimate" type="date"></label><label class="field"><span>Número de remito</span><input class="input" id="new-receipt" maxlength="100"></label></div></article>
-          <p class="form-error" id="new-error"></p><div class="form-actions"><button class="button secondary" type="button" data-view-button="active">Cancelar</button><button class="button primary" id="create-button" type="submit">Crear y generar QR</button></div>
+          <article class="panel step-panel"><div class="step-number">4</div><div class="panel-head"><h2>Fecha y remito interno</h2><p>El remito es el documento del ERP usado para mover mercadería; no es un motivo de reserva.</p></div><p class="arrival-hint" id="arrival-days-hint"></p><div class="form-grid"><label class="field"><span>Fecha estimada de llegada</span><input class="input" id="new-estimate" type="date"></label><label class="field"><span>Número de remito interno (opcional)</span><input class="input" id="new-receipt" maxlength="100"></label></div></article>
+          <p class="form-error" id="new-error"></p><div class="form-actions"><button class="button secondary" type="button" data-cancel-form>Cancelar</button><button class="button primary" id="create-button" type="submit">Crear y generar QR</button></div>
         </form>
       </section>
 
       <section class="view" id="view-settings">
-        <div class="page-head"><div><span class="eyebrow">POR LOCAL</span><h1>Configuración</h1><p>Motivos, plazo, días habituales de recepción, impresora y enlace rápido.</p></div></div>
+        <div class="page-head"><div><span class="eyebrow">POR LOCAL</span><h1>Configuración</h1><p>Plazo, días habituales de recepción, impresora y enlace rápido.</p></div></div>
         <label class="field settings-local"><span>Configurar local</span><select class="input" id="settings-local"></select></label>
         <div class="settings-grid">
-          <article class="panel"><div class="panel-head"><h2>Motivos</h2><p>Cada local mantiene su propia lista.</p></div><div id="reasons-list" class="settings-list"></div><div class="inline-form"><input class="input" id="reason-name" maxlength="80" placeholder="Nuevo motivo"><button class="button primary" id="add-reason" type="button">Agregar</button></div></article>
+          <article class="panel"><div class="panel-head"><h2>Motivos operativos</h2><p>Son iguales para todos los locales para evitar clasificaciones ambiguas.</p></div><div class="settings-list"><div class="setting-row"><span>Pedido a otro local</span></div><div class="setting-row"><span>Esperando proveedor</span></div><div class="setting-row"><span>Ya estaba en local</span></div></div></article>
           <article class="panel"><div class="panel-head"><h2>Plazo e impresión</h2><p>La alerta se activa a las 48 horas exactas desde que la mercadería está en el local. La BSC10 usa papel térmico continuo de 80 mm y un área imprimible de 72 mm.</p></div><label class="field"><span>Lugar donde se guardan las reservas</span><input class="input" id="settings-location" maxlength="160" placeholder="Ej: Estantería junto al depósito"></label><label class="field"><span>Ruta de impresora</span><input class="input mono" id="settings-printer" placeholder="\\DESKTOP-A09RVUK\Star BSC10"></label><p class="printer-note">En la ventana de impresión elegí esta impresora, escala 100 %, sin márgenes y sin “Ajustar a página”.</p><div class="settings-actions"><button class="button primary" id="save-settings" type="button">Guardar configuración</button><button class="button secondary" id="print-calibration" type="button">Imprimir prueba BSC10</button></div><fieldset class="days"><legend>Días habituales de recepción</legend><label><input type="checkbox" value="1"> Lun</label><label><input type="checkbox" value="2"> Mar</label><label><input type="checkbox" value="3"> Mié</label><label><input type="checkbox" value="4"> Jue</label><label><input type="checkbox" value="5"> Vie</label><label><input type="checkbox" value="6"> Sáb</label><label><input type="checkbox" value="0"> Dom</label></fieldset></article>
           <article class="panel wide"><div class="panel-head"><h2>Enlace rápido del local</h2><p>Los empleados sin cuenta ingresan con la contraseña de empresa y dejan registrado su nombre.</p></div><div id="quick-link-panel" class="quick-link-panel"></div></article>
         </div>
@@ -102,6 +103,6 @@
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.12.3/dist/JsBarcode.all.min.js"></script>
   <script src="/operaciones/cloud-config.js"></script>
   <script src="/reservas/reserva-engine.js?v=1"></script>
-  <script src="/reservas/reservas.js?v=2"></script>
+  <script src="/reservas/reservas.js?v=3"></script>
 </body>
 </html>
