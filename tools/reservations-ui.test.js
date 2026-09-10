@@ -15,6 +15,7 @@ assert.doesNotMatch(page,/id="settings-hours"/,'El plazo exacto de 48 horas no d
 assert.match(page,/id="print-calibration"/,'La configuración debe ofrecer la prueba física de la BSC10');
 assert.match(page,/jsbarcode@3\.12\.3/,'La calibración usa un Code 128 real y una versión fijada');
 assert.match(js,/op_reserva_invitado_entrar/,'El acceso rápido usa una sesión limitada');
+assert.match(js,/responsable:responsible/,'La creación debe enviar el nombre del responsable sin provocar un error de variable');
 assert.match(js,/procedencia==='pedido_local'/,'El formulario pregunta el local de origen cuando corresponde');
 assert.match(js,/op_reserva_corregir_cierre/,'Los empleados deben poder corregir un cierre o una entrega errónea');
 assert.match(js,/Se restaurarán las cantidades que estaban separadas antes de cancelar/,'La corrección de cancelación debe explicar que restaura la mercadería');
