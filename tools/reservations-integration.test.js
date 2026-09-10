@@ -73,7 +73,7 @@ async function main(){
   const publicQr=await scalar('select op_reserva_qr_detalle($1)',[local.qr_token]);
   check(publicQr.ok,true,'Public QR is read-only and resolvable');
   check(publicQr.reservation.items.length,1,'QR contains every product');
-  await fails(()=>detail(local.id),/acceso rápido|disponible/);
+  await fails(()=>detail(local.id),/permission denied|Iniciá sesión|disponible/);
   await login('other');await fails(()=>detail(local.id),/acceso/);
 
   await login();data=await detail(local.id);const localItem=data.items.find(i=>i.codigo==='LOCAL-1');
@@ -161,13 +161,21 @@ async function main(){
   check(locatedQr.reservation.location,'Estantería de reservas','Public internal QR shows where the shop keeps reservations');
   await login('supervisor');const localId=await scalar("select id from locales where nombre='Maldonado'");
   const link=await scalar('select op_reserva_crear_enlace($1)',[localId]);truth(link.token,'Supervisor can generate the local quick link');
-  await login(null,'anon');const guest=await scalar("select op_reserva_invitado_entrar($1,'Empleado sin cuenta','device-reservation-test')",[link.token]);
-  const guestReservation=await create({local:'Maldonado',motivo_id:await motive('Ya estaba en local'),responsable:'Empleado sin cuenta',items:[{codigo:'GUEST-1',nombre:'Producto rápido',cantidad:1,cantidad_local:1,procedencia:'local'}]},guest.access);
-  await admin();truth(await scalar('select invitado_id is not null from op_reservas where id=$1',[guestReservation.id]),'Quick-link actions retain guest identity');
+  await admin();const linkId=await scalar("select id from op_reserva_enlaces where token_hash=encode(digest($1,'sha256'),'hex')",[link.token]);
+  await login(null,'anon');const linkContext=await scalar('select op_reserva_contexto($1)',[link.token]);
+  check(linkContext.actor.role,'creador','The local link opens directly with a creation-only role');
+  check(linkContext.actor.local,'Maldonado','The local link is fixed to its configured shop');
+  await fails(()=>scalar("select op_reserva_invitado_entrar($1,'Empleado sin cuenta','device-reservation-test')",[link.token]),/permission denied/);
+  const guestReservation=await create({local:'Maldonado',responsable:'Empleado sin cuenta',items:[{codigo:'GUEST-1',nombre:'Producto rápido',cantidad:1,cantidad_local:1,procedencia:'local'}]},link.token);
+  await admin();check(await scalar('select created_via_link_id from op_reservas where id=$1',[guestReservation.id]),linkId,'Quick-link creation retains the originating local link');
   check(await scalar('select created_by is null from op_reservas where id=$1',[guestReservation.id]),true,'Quick-link creation does not impersonate an account');
-  const guestOrder=await create({local:'Maldonado',motivo_id:await motive('Pedido a otro local'),pedido_local_gestion:'crear',pedido_local_origen:'Punta del Este',responsable:'Empleado sin cuenta',items:[{codigo:'GUEST-MOVE',nombre:'Pedido rápido entre locales',cantidad:1,cantidad_local:0,procedencia:'pedido_local',origen_local:'Punta del Este'}]},guest.access);
-  await admin();check(await scalar('select count(*)::int from pedidos where reserva_id=$1',[guestOrder.id]),1,'An employee using the quick link can create the linked inter-store order');
-  const otherMotive=await motive('Ya estaba en local','Punta del Este');await fails(()=>create({local:'Punta del Este',motivo_id:otherMotive,responsable:'Empleado sin cuenta',items:[{codigo:'OTHER-SHOP',nombre:'Fuera de local',cantidad:1,cantidad_local:1,procedencia:'local'}]},guest.access),/ese local/);
+  check(await scalar('select created_by_name from op_reservas where id=$1',[guestReservation.id]),'Empleado sin cuenta','The responsible person is retained as the creation author');
+  const guestOrder=await create({local:'Maldonado',responsable:'Empleado sin cuenta',items:[{codigo:'GUEST-MOVE',nombre:'Pedido rápido entre locales',cantidad:1,cantidad_local:0,procedencia:'pedido_local',origen_local:'Punta del Este',pedido_local_gestion:'crear'}]},link.token);
+  await admin();check(await scalar('select count(*)::int from pedidos where reserva_id=$1',[guestOrder.id]),1,'An employee using the creation link can create the linked inter-store order');
+  const otherMotive=await motive('Ya estaba en local','Punta del Este');await login(null,'anon');await fails(()=>create({local:'Punta del Este',motivo_id:otherMotive,responsable:'Empleado sin cuenta',items:[{codigo:'OTHER-SHOP',nombre:'Fuera de local',cantidad:1,cantidad_local:1,procedencia:'local'}]},link.token),/ese local/);
+  await fails(()=>detail(guestReservation.id,link.token),/permission denied|Iniciá sesión/);
+  await fails(()=>scalar("select op_reserva_listar('{}'::jsonb,$1)",[link.token]),/permission denied|Iniciá sesión/);
+  await fails(()=>scalar('select op_reserva_editar($1,$2::jsonb,$3)',[guestReservation.id,JSON.stringify({local:'Maldonado',responsable:'Intento',items:[]}),link.token]),/permission denied|Iniciá sesión/);
 
   console.log(`reservations integration: ${checks} assertions passed`);await db.close();
 }

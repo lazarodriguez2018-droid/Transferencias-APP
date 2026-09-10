@@ -16,30 +16,14 @@
 <body>
   <div class="boot" id="boot"><img src="/logo.svg?v=2" alt=""><span class="spinner"></span><p>Cargando reservas…</p></div>
 
-  <section class="access" id="access-screen" hidden>
-    <article class="access-card">
-      <a class="brand" href="/"><img src="/logo.svg?v=2" alt="Sucaneitor"><div><strong>Sucaneitor</strong><span>Reservas de mercadería</span></div></a>
-      <span class="eyebrow">ACCESO DEL LOCAL · <b id="access-local">LOCAL</b></span>
-      <h1>Ingresá para gestionar las reservas del local</h1>
-      <p>Registrá, ubicá y entregá la mercadería reservada desde un único lugar.</p>
-      <form id="access-form">
-        <label class="field"><span>Contraseña de la empresa</span><input class="input" id="access-key" type="password" autocomplete="current-password" required></label>
-        <label class="field"><span>Tu nombre y apellido</span><input class="input" id="access-name" maxlength="80" autocomplete="name" required placeholder="Ej: Martina Pérez"></label>
-        <p class="form-error" id="access-error"></p>
-        <button class="button primary full" type="submit">Ingresar</button>
-      </form>
-      <a class="button secondary full" href="/">Iniciar sesión con mi cuenta</a>
-    </article>
-  </section>
-
   <section class="access" id="access-missing" hidden>
-    <article class="access-card compact"><img class="missing-logo" src="/logo.svg?v=2" alt="Sucaneitor"><h1>Acceso al local no disponible</h1><p>Abrí el enlace asignado a tu local o iniciá sesión con tu cuenta.</p><a class="button primary full" href="/">Iniciar sesión</a></article>
+    <article class="access-card compact"><img class="missing-logo" src="/logo.svg?v=2" alt="Sucaneitor"><h1>Enlace no disponible</h1><p>Abrí el enlace de creación asignado a tu local. Para consultar o modificar reservas, iniciá sesión.</p><a class="button primary full" href="/">Iniciar sesión</a></article>
   </section>
 
   <div class="app" id="app" hidden>
     <header class="topbar">
       <a class="brand" href="/"><img src="/logo.svg?v=2" alt="Sucaneitor"><div><strong>Reservas de mercadería</strong><span id="current-local">—</span></div></a>
-      <div class="top-actions"><span class="actor" id="actor-name"></span><button class="button secondary small" id="guide-button" type="button">Ayuda</button><button class="button secondary small" id="refresh-button" type="button">↻ Actualizar</button><a class="button secondary small" href="/">Módulos</a></div>
+      <div class="top-actions"><span class="actor" id="actor-name"></span><button class="button secondary small" id="guide-button" type="button">Ayuda</button><button class="button secondary small" id="refresh-button" type="button">↻ Actualizar</button><a class="button secondary small" id="manage-link" href="/">Módulos</a></div>
     </header>
     <nav class="tabs" aria-label="Secciones">
       <button class="tab active" data-view="active" type="button">Activas <b id="active-count">0</b></button>
@@ -88,7 +72,7 @@
           <article class="panel"><div class="panel-head"><h2>Opciones de origen</h2><p>Estas opciones están disponibles para cada producto de una reserva.</p></div><div class="settings-list"><div class="setting-row"><span>Pedido a otro local</span></div><div class="setting-row"><span>Esperando proveedor</span></div><div class="setting-row"><span>Disponible en el local</span></div></div></article>
           <article class="panel"><div class="panel-head"><h2>Plazo e impresión</h2><p>Las reservas vencen 48 horas después de separar la primera unidad. Las etiquetas se imprimen en papel térmico de 80 mm.</p></div><label class="field"><span>Ubicación de la mercadería reservada</span><input class="input" id="settings-location" maxlength="160" placeholder="Ej: Estantería junto al depósito"></label><label class="field"><span>Ruta de impresora</span><input class="input mono" id="settings-printer" placeholder="\\DESKTOP-A09RVUK\Star BSC10"></label><p class="printer-note">En Chrome seleccioná papel “80 mm × 200 mm”, escala 100 %, sin márgenes y sin “Ajustar a página”.</p><div class="settings-actions"><button class="button primary" id="save-settings" type="button">Guardar configuración</button><button class="button secondary" id="print-calibration" type="button">Imprimir prueba BSC10</button></div></article>
           <article class="panel wide"><div class="panel-head"><h2>Días de recepción</h2><p>Definí los días en que el local suele recibir mercadería de cada proveedor o de otro local. Esta información se muestra como ayuda al cargar la fecha estimada.</p></div><div class="schedule-form"><input type="hidden" id="schedule-id"><label class="field"><span>Origen</span><select class="input" id="schedule-type"><option value="proveedor">Proveedor</option><option value="local">Otro local</option></select></label><label class="field" id="schedule-provider-field"><span>Proveedor</span><input class="input" id="schedule-provider" maxlength="120" placeholder="Ej: Distribuidora X"></label><label class="field" id="schedule-local-field" hidden><span>Local que envía</span><select class="input" id="schedule-origin-local"></select></label><fieldset class="days schedule-days"><legend>Días habituales de recepción</legend><label><input type="checkbox" value="1"> Lun</label><label><input type="checkbox" value="2"> Mar</label><label><input type="checkbox" value="3"> Mié</label><label><input type="checkbox" value="4"> Jue</label><label><input type="checkbox" value="5"> Vie</label><label><input type="checkbox" value="6"> Sáb</label><label><input type="checkbox" value="0"> Dom</label></fieldset><div class="settings-actions"><button class="button primary" id="save-schedule" type="button">Agregar calendario</button><button class="button secondary" id="cancel-schedule-edit" type="button" hidden>Cancelar edición</button></div></div><div class="schedule-list" id="schedule-list"></div></article>
-          <article class="panel wide"><div class="panel-head"><h2>Acceso rápido del local</h2><p>Generá un enlace para que el equipo del local ingrese con la contraseña de la empresa y registre su nombre.</p></div><div id="quick-link-panel" class="quick-link-panel"></div></article>
+          <article class="panel wide"><div class="panel-head"><h2>Enlace para crear reservas</h2><p>Generá un enlace por local para crear reservas sin iniciar sesión. El enlace no permite consultar, modificar ni controlar reservas existentes.</p></div><div id="quick-link-panel" class="quick-link-panel"></div></article>
         </div>
       </section>
     </main>
@@ -102,6 +86,6 @@
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.12.3/dist/JsBarcode.all.min.js"></script>
   <script src="/operaciones/cloud-config.js"></script>
   <script src="/reservas/reserva-engine.js?v=2"></script>
-  <script src="/reservas/reservas.js?v=8"></script>
+  <script src="/reservas/reservas.js?v=9"></script>
 </body>
 </html>

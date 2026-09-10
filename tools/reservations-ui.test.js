@@ -1,8 +1,9 @@
 const fs=require('fs'),assert=require('assert');
 const page=fs.readFileSync('reservas/index.html','utf8'),js=fs.readFileSync('reservas/reservas.js','utf8'),css=fs.readFileSync('reservas/reservas.css','utf8'),lookupPage=fs.readFileSync('reserva.html','utf8'),lookup=fs.readFileSync('reservas/consulta.js','utf8'),root=fs.readFileSync('index.html','utf8'),rootJs=fs.readFileSync('app.js','utf8'),receipt=fs.readFileSync('operaciones/receipt-orders.js','utf8');
 assert.match(root,/href="\/reservas"[\s\S]+Control de reservas/,'El inicio debe mostrar el módulo');
-assert.match(page,/id="access-key"/,'El acceso rápido pide contraseña de empresa');
-assert.match(page,/id="access-name"/,'El acceso rápido registra al empleado');
+assert.doesNotMatch(page,/id="access-key"|Contraseña de la empresa/,'El enlace de creación no debe pedir contraseña');
+assert.doesNotMatch(page,/id="access-name"|access-form/,'El enlace debe abrir directamente el formulario');
+assert.match(page,/Enlace para crear reservas[\s\S]*sin iniciar sesión[\s\S]*no permite consultar, modificar ni controlar/,'La configuración debe explicar el alcance de solo creación');
 assert.match(page,/id="guide-button"/,'El módulo debe ofrecer instrucciones operativas sin salir del flujo');
 assert.doesNotMatch(page,/id="new-reason"/,'La creación no debe imponer un único motivo general');
 assert.match(page,/Pedido a otro local[\s\S]*Esperando proveedor[\s\S]*Disponible en el local/,'La configuración explica los tres orígenes operativos');
@@ -16,7 +17,10 @@ assert.match(page,/id="settings-location"/,'El lugar fijo de las reservas debe p
 assert.doesNotMatch(page,/id="settings-hours"/,'El plazo exacto de 48 horas no debe ser editable');
 assert.match(page,/id="print-calibration"/,'La configuración debe ofrecer la prueba física de la BSC10');
 assert.match(page,/jsbarcode@3\.12\.3/,'La calibración usa un Code 128 real y una versión fijada');
-assert.match(js,/op_reserva_invitado_entrar/,'El acceso rápido usa una sesión limitada');
+assert.doesNotMatch(js,/op_reserva_invitado_entrar|company-access/,'El enlace de creación no debe iniciar una sesión temporal ni pedir la clave empresarial');
+assert.match(js,/if\(state\.linkToken\)\{state\.publicCreate=true;state\.access=state\.linkToken;return openApp\(\);\}/,'El token del local debe abrir directamente la creación');
+assert.match(js,/if\(state\.publicCreate&&view!=='new'\)view='new'/,'El enlace no puede navegar a vistas de gestión');
+assert.match(js,/state\.publicCreate\?'':state\.actor\?\.name/,'El responsable se completa dentro de la reserva y no antes de abrir el formulario');
 assert.match(js,/responsable:responsible/,'La creación debe enviar el nombre del responsable sin provocar un error de variable');
 assert.match(js,/const sourceLabels=\{local:'Disponible en el local',proveedor:'Esperando proveedor',pedido_local:'Pedido a otro local'\}/,'La interfaz ofrece los tres orígenes en cada producto');
 assert.match(page,/class="tab admin-only"[\s\S]*data-view="settings"[\s\S]*hidden>Configuración/,'La pestaña de configuración comienza oculta');
@@ -39,7 +43,8 @@ assert.match(js,/UBICACIÓN: \$\{html\(location\)\}/,'La etiqueta debe indicar e
 assert.match(js,/p_ubicacion:location\|\|null/,'La ubicación se guarda junto con la configuración del local');
 assert.match(js,/p_horas:48/,'La interfaz debe guardar siempre la política de 48 horas exactas');
 assert.match(js,/Días habituales de recepción desde \$\{origin\}[\s\S]*fecha estimada puede modificarse/,'Los calendarios por origen deben orientar sin imponer la fecha estimada');
-assert.match(js,/Ayuda de reservas[\s\S]*Asignar el origen[\s\S]*Dividir una cantidad[\s\S]*Registrar lo separado[\s\S]*Completar el proceso/,'La ayuda debe describir el trabajo diario con lenguaje operativo');
+assert.match(js,/Ayuda de reservas[\s\S]*Asignar el origen[\s\S]*Dividir una cantidad[\s\S]*Registrar lo separado/,'La ayuda debe describir la creación con lenguaje operativo');
+assert.match(js,/state\.publicCreate\?'':'<div class="guide-step"><strong>Completar el proceso/,'El seguimiento se explica únicamente dentro de la aplicación autenticada');
 assert.doesNotMatch(js,/El remito es[\s\S]*no un motivo|WhatsApp o llamada/,'La ayuda no debe reproducir aclaraciones del proceso de desarrollo');
 assert.match(js,/actionCreated\(result,state\.current\.items\.some\(item=>item\.cantidad_local>0\)\)/,'La creación debe distinguir si ya hay mercadería física para etiquetar');
 assert.match(js,/function actionCreated\(result,hasLocalStock\)[\s\S]*etiqueta ya se puede imprimir[\s\S]*Continuar sin imprimir/,'La creación debe ofrecer la etiqueta aunque todavía falte mercadería');
@@ -59,7 +64,7 @@ assert.match(js,/function startRealtimeFallback\(error\)[\s\S]*setInterval\(refr
 assert.match(js,/hadContent=listEl\.dataset\.loaded==='true'[\s\S]*signature!==state\.listSignatures\[kind\]/,'La actualización periódica debe conservar las tarjetas y evitar reemplazos sin cambios');
 assert.match(js,/openDetail\(state\.current\.reservation\.id,\{silent:true\}\)/,'El detalle abierto debe refrescarse sin mostrar una pantalla de carga');
 assert.match(js,/channel\.subscribe\(status=>[\s\S]*startRealtimeFallback\(error\)/,'Un fallo al abrir Realtime no debe impedir entrar al módulo');
-assert.match(page,/reserva-engine\.js\?v=2[\s\S]*reservas\.js\?v=8/,'Los permisos y textos deben invalidar la caché anterior');
+assert.match(page,/reserva-engine\.js\?v=2[\s\S]*reservas\.js\?v=9/,'El modo de solo creación debe invalidar la caché anterior');
 assert.match(lookupPage,/reserva-engine\.js\?v=2[\s\S]*consulta\.js\?v=3/,'La consulta QR debe invalidar su caché anterior');
 assert.match(lookup,/const itemOrigin=i=>[\s\S]*proveedor_nombre[\s\S]*origen_local[\s\S]*pedido_local_gestion/,'El QR público explica el origen específico de cada producto');
 assert.match(js,/async function printCalibration\(\)[\s\S]*window\.open[\s\S]*await qrDataUrl/,'La calibración debe abrir su ventana antes de generar el QR');

@@ -1,5 +1,5 @@
 const fs=require('fs'),assert=require('assert');
-const sql=fs.readFileSync('supabase/migrations/20260909010000_control_reservas.sql','utf8'),changes=fs.readFileSync('supabase/migrations/20260910010000_reservas_edicion_eliminacion.sql','utf8'),unaccentFix=fs.readFileSync('supabase/migrations/20260910020000_reservas_unaccent_listado.sql','utf8'),itemOrigins=fs.readFileSync('supabase/migrations/20260910030000_reservas_origen_por_producto.sql','utf8');
+const sql=fs.readFileSync('supabase/migrations/20260909010000_control_reservas.sql','utf8'),changes=fs.readFileSync('supabase/migrations/20260910010000_reservas_edicion_eliminacion.sql','utf8'),unaccentFix=fs.readFileSync('supabase/migrations/20260910020000_reservas_unaccent_listado.sql','utf8'),itemOrigins=fs.readFileSync('supabase/migrations/20260910030000_reservas_origen_por_producto.sql','utf8'),createOnly=fs.readFileSync('supabase/migrations/20260910040000_reservas_enlace_solo_creacion.sql','utf8');
 for(const table of ['op_reservas','op_reserva_items','op_reserva_motivos','op_reserva_comentarios','op_reserva_eventos','op_reserva_enlaces','op_reserva_invitados','op_recepcion_reservas'])assert.match(sql,new RegExp(`create table if not exists public\\.${table}\\b`),`Falta ${table}`);
 for(const fn of ['op_reserva_crear','op_reserva_listar','op_reserva_detalle','op_reserva_actualizar_item','op_reserva_pedidos_disponibles','op_reserva_vincular_pedido','op_reserva_cambiar_estado','op_reserva_finalizar','op_reserva_cancelar','op_reserva_corregir_cierre','op_reserva_excepcion','op_reserva_qr_detalle','op_reserva_invitado_entrar','op_recepcion_reservas_datos','op_recepcion_confirmar_reserva','op_agenda_guardar_cliente'])assert.match(sql,new RegExp(`function public\\.${fn}\\(`),`Falta ${fn}`);
 assert.match(sql,/make_interval\(hours=>v_horas\)/,'El vencimiento debe usar las horas configuradas');
@@ -42,4 +42,10 @@ assert.match(itemOrigins,/'reception_schedules',recepciones/,'El contexto expone
 assert.match(itemOrigins,/count\(distinct x->>'procedencia'\)>1 then 'Origen mixto'/,'El encabezado se deriva de los orígenes de las líneas');
 assert.match(itemOrigins,/pedido_local_gestion='crear'[\s\S]*insert into public\.pedidos/,'Solo las líneas configuradas para crear generan pedidos entre locales');
 assert.match(itemOrigins,/pedido_local_gestion'='existente'[\s\S]*pedido_existente_id/,'Cada línea puede vincular su propio pedido existente');
+assert.match(createOnly,/function public\.op_reserva_actor_creacion\(p_enlace text/,'El enlace debe resolverse con un actor limitado a creación');
+assert.match(createOnly,/if auth\.uid\(\) is null then raise exception 'Iniciá sesión para consultar o gestionar reservas'/,'La gestión debe requerir una cuenta aprobada');
+assert.match(createOnly,/created_via_link_id uuid references public\.op_reserva_enlaces/,'Cada creación pública debe conservar el enlace local que la originó');
+assert.match(createOnly,/revoke execute on function public\.op_reserva_listar\(jsonb,text\) from anon/,'Anónimos no pueden listar reservas aunque tengan el enlace');
+assert.match(createOnly,/revoke execute on function public\.op_reserva_editar\(uuid,jsonb,text\) from anon/,'Anónimos no pueden editar reservas');
+assert.match(createOnly,/grant execute on function public\.op_reserva_crear_v2\(jsonb,text\) to anon,authenticated/,'El enlace conserva permiso únicamente para crear');
 console.log('reservations sql contract ok');
