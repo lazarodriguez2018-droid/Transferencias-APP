@@ -35,6 +35,9 @@ assert.match(js,/function actionPrintPrompt[\s\S]*Imprimir etiqueta ahora/,'Cuan
 assert.match(js,/data-print-created[\s\S]*return printLabel\(\)/,'La acción posterior a la creación debe iniciar la impresión');
 assert.match(js,/async function printLabel\(\)[\s\S]*window\.open[\s\S]*await renderPrintWindow\(r,url,win\)/,'La etiqueta debe reservar su ventana antes de esperar la generación del QR');
 assert.match(js,/async function renderPrintWindow\(r,url,win\)/,'La impresión debe reutilizar la ventana abierta por el gesto del empleado');
+assert.match(js,/function startRealtimeFallback\(error\)[\s\S]*setInterval\(refreshVisibleReservationData,15000\)/,'Si iOS bloquea WebSocket, las reservas deben seguir actualizándose por sondeo');
+assert.match(js,/channel\.subscribe\(status=>[\s\S]*startRealtimeFallback\(error\)/,'Un fallo al abrir Realtime no debe impedir entrar al módulo');
+assert.match(page,/reservas\.js\?v=2/,'La corrección de compatibilidad móvil debe invalidar la caché anterior');
 assert.match(js,/async function printCalibration\(\)[\s\S]*window\.open[\s\S]*await qrDataUrl/,'La calibración debe abrir su ventana antes de generar el QR');
 assert.match(js,/\/reserva#/,'La etiqueta abre una consulta de solo lectura');
 assert.match(receipt,/receiptReservationData/,'Recepción muestra reservas coincidentes');
