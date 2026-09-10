@@ -16,7 +16,7 @@ Los módulos comparten autenticación, locales y un único padrón en Supabase.
 
 El plazo comienza cuando existe mercadería físicamente en el local. Un trabajo automático revisa vencimientos cada minuto, marca la reserva al superar 48 horas exactas —incluidos fines de semana— y avisa a todos los empleados aprobados. Las entregas parciales, correcciones, excepciones y cierres conservan trazabilidad.
 
-La impresión usa el flujo del navegador porque una web no puede escribir directamente en una cola RAW de Windows. En la BSC10 se debe elegir papel continuo de 80 mm, área imprimible de 72 mm, 203 dpi, escala 100 %, sin márgenes ni ajuste de página. La ruta compartida queda registrada por local como referencia. Antes de usar etiquetas reales, un supervisor debe ejecutar **Imprimir prueba BSC10** y comprobar el rectángulo de 576 × 800 puntos, las marcas cada 10 mm, el QR, el Code 128 y los textos. La BSC10 no detecta separaciones ni marcas negras; para etiquetas troqueladas debe usarse una impresora con sensor de gap.
+La impresión usa el flujo del navegador porque una web no puede escribir directamente en una cola RAW de Windows. Para la etiqueta de reserva, en la BSC10 se debe elegir papel `80 mm × 200 mm`, orientación horizontal, 203 dpi, escala 100 %, sin márgenes ni ajuste de página; el diseño ocupa los 200 × 80 mm con un QR grande. La ruta compartida queda registrada por local como referencia. Antes de usar etiquetas reales, un supervisor debe ejecutar **Imprimir prueba BSC10** y comprobar el rectángulo de 576 × 800 puntos, las marcas cada 10 mm, el QR, el Code 128 y los textos. La BSC10 no detecta separaciones ni marcas negras; para etiquetas troqueladas debe usarse una impresora con sensor de gap.
 
 ## Integración de reposiciones y pedidos
 

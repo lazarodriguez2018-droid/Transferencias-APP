@@ -26,7 +26,7 @@ assert.match(js,/op_reserva_corregir_cierre/,'Los empleados deben poder corregir
 assert.match(js,/Se restaurarán las cantidades que estaban separadas antes de cancelar/,'La corrección de cancelación debe explicar que restaura la mercadería');
 assert.match(js,/returned\?x\.dataset\.current:x\.dataset\.withLocal/,'No retirado no debe sumar la mercadería local como si hubiera sido entregada');
 assert.match(js,/volverán a exhibición\. No se modifica stock/,'La interfaz debe explicar el efecto de no retirado');
-assert.match(js,/@page\{size:80mm 56mm;margin:0\}/,'La etiqueta usa el perfil de 80 mm');
+assert.match(js,/@page\{size:200mm 80mm;margin:0\}[\s\S]*width:200mm;height:80mm[\s\S]*grid-template-columns:66mm/,'La etiqueta ocupa en horizontal todo el papel de 200 por 80 mm');
 assert.match(js,/@page\{size:80mm 116mm;margin:0\}[\s\S]*width:72mm;height:100\.1mm/,'La plantilla de calibración respeta 576 por 800 puntos a 203 dpi');
 assert.match(js,/ESCALA 100 % · SIN MÁRGENES · SIN AJUSTAR/,'La prueba incluye las instrucciones críticas del controlador');
 assert.match(js,/UBICACIÓN: \$\{html\(location\)\}/,'La etiqueta debe indicar el lugar configurado para encontrar la mercadería');
@@ -38,12 +38,17 @@ assert.match(js,/actionCreated\(result,state\.current\.items\.some\(item=>item\.
 assert.match(js,/function actionCreated\(result,hasLocalStock\)[\s\S]*Cuando cargues unidades en “En el local”/,'Si todavía no llegó mercadería, debe explicar cuándo se ofrecerá la etiqueta');
 assert.match(js,/const arrived=qty>item\.cantidad_local[\s\S]*if\(arrived\)actionMerchandiseArrived/,'Al registrar una llegada debe recordarse colocar la etiqueta');
 assert.match(js,/function actionPrintPrompt[\s\S]*Imprimir etiqueta ahora/,'Cuando hay mercadería física debe ofrecerse la impresión inmediata');
+assert.match(js,/function nextStep\(r,items\)[\s\S]*data-next-step/,'Cada estado debe mostrar una única acción siguiente y comprensible');
+for(const label of ['Confirmar envío · Pasar a En tránsito','Registrar llegada y separación','Confirmar que el cliente fue avisado','Registrar entrega o cierre'])assert.ok(js.includes(label),`Falta la acción guiada: ${label}`);
+assert.match(js,/function actionRegisterArrival\(\)[\s\S]*No cuentes mercadería que siga en góndola o depósito general[\s\S]*estado avanzará automáticamente/,'La llegada guiada debe evitar separar mercadería solo de palabra');
 assert.match(js,/data-print-created[\s\S]*return printLabel\(\)/,'La acción posterior a la creación debe iniciar la impresión');
 assert.match(js,/async function printLabel\(\)[\s\S]*window\.open[\s\S]*await renderPrintWindow\(r,url,win\)/,'La etiqueta debe reservar su ventana antes de esperar la generación del QR');
 assert.match(js,/async function renderPrintWindow\(r,url,win\)/,'La impresión debe reutilizar la ventana abierta por el gesto del empleado');
 assert.match(js,/function startRealtimeFallback\(error\)[\s\S]*setInterval\(refreshVisibleReservationData,15000\)/,'Si iOS bloquea WebSocket, las reservas deben seguir actualizándose por sondeo');
+assert.match(js,/hadContent=listEl\.dataset\.loaded==='true'[\s\S]*signature!==state\.listSignatures\[kind\]/,'La actualización periódica debe conservar las tarjetas y evitar reemplazos sin cambios');
+assert.match(js,/openDetail\(state\.current\.reservation\.id,\{silent:true\}\)/,'El detalle abierto debe refrescarse sin mostrar una pantalla de carga');
 assert.match(js,/channel\.subscribe\(status=>[\s\S]*startRealtimeFallback\(error\)/,'Un fallo al abrir Realtime no debe impedir entrar al módulo');
-assert.match(page,/reservas\.js\?v=3/,'Las nuevas acciones deben invalidar la caché anterior');
+assert.match(page,/reservas\.css\?v=3[\s\S]*reservas\.js\?v=4/,'El nuevo flujo y la etiqueta deben invalidar la caché anterior');
 assert.match(js,/async function printCalibration\(\)[\s\S]*window\.open[\s\S]*await qrDataUrl/,'La calibración debe abrir su ventana antes de generar el QR');
 assert.match(js,/\/reserva#/,'La etiqueta abre una consulta de solo lectura');
 assert.match(receipt,/receiptReservationData/,'Recepción muestra reservas coincidentes');

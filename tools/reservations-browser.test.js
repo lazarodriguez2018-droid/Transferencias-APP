@@ -55,6 +55,7 @@ const db={
     window.__reservationRpcCalls.push({name,args});
     if(name==='op_reserva_contexto')return {data:context,error:null};
     if(name==='op_reserva_listar'){
+      if(window.__holdNextReservationList){window.__holdNextReservationList=false;await new Promise(resolve=>setTimeout(resolve,350));}
       const history=!!args.p_filtros.history,closed=reservation&&['completado','cancelado'].includes(reservation.estado);
       return {data:reservation&&history===closed?[summary()]:[],error:null};
     }
@@ -113,7 +114,7 @@ window.supabase={createClient:()=>db};
   page.on('console',message=>{if(message.type()==='warning')warnings.push(message.text());if(message.type()==='error')browserErrors.push(message.text());});
   page.on('pageerror',error=>browserErrors.push(error.message));
   await page.route('**/npm/@supabase/supabase-js@2**',route=>route.fulfill({contentType:'application/javascript',body:supabaseStub}));
-  await page.route('**/npm/qrcodejs@1.0.0/**',route=>route.fulfill({contentType:'application/javascript',body:'window.QRCode=function(){};QRCode.CorrectLevel={M:0};'}));
+  await page.route('**/npm/qrcodejs@1.0.0/**',route=>route.fulfill({contentType:'application/javascript',body:`window.QRCode=function(box,options){const canvas=document.createElement('canvas');canvas.width=options.width;canvas.height=options.height;const context=canvas.getContext('2d');context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);context.fillStyle='#000';for(let y=0;y<21;y++)for(let x=0;x<21;x++)if((x*y+x+y)%3===0)context.fillRect(x*canvas.width/21,y*canvas.height/21,canvas.width/21+1,canvas.height/21+1);box.appendChild(canvas);};QRCode.CorrectLevel={M:0};`}));
   await page.route('**/npm/jsbarcode@3.12.3/**',route=>route.fulfill({contentType:'application/javascript',body:'window.JsBarcode=function(){};'}));
   await page.route('https://fonts.googleapis.com/**',route=>route.fulfill({contentType:'text/css',body:''}));
   try{
@@ -164,6 +165,15 @@ window.supabase={createClient:()=>db};
     assert.equal(createPayload.items[0].cantidad_local,0,'No debe marcarse mercadería que todavía no llegó');
     await page.getByRole('button',{name:'Entendido'}).click();
 
+    await page.locator('[data-close-modal]').click();
+    await page.evaluate(()=>{window.__holdNextReservationList=true;});
+    await page.locator('#refresh-button').click();
+    assert.equal(await page.locator('#active-list [data-reservation-id]').isVisible(),true,'Una actualización lenta debe conservar visible la tarjeta existente');
+    assert.doesNotMatch(await page.locator('#active-list').innerText(),/Actualizando reservas/,'La lista no debe desaparecer mientras sincroniza');
+    await page.waitForFunction(()=>!document.querySelector('#active-list')?.matches('[aria-busy="true"]'));
+    await page.locator('#active-list [data-reservation-id]').click();
+
+    await page.locator('.more-actions summary').click();
     await page.locator('[data-detail-action="edit"]').click();
     await page.waitForFunction(()=>document.querySelector('#form-title')?.textContent.includes('Editar reserva'));
     await page.locator('#new-responsible').fill('Empleado corregido');
@@ -175,20 +185,32 @@ window.supabase={createClient:()=>db};
     const editPayload=await page.evaluate(()=>window.__reservationRpcCalls.find(call=>call.name==='op_reserva_editar').args.p_datos);
     assert.equal(editPayload.items[0].codigo,'010031110010408','La edición debe conservar el producto real seleccionado');
 
-    const detailLocal=page.locator('.item-local');
-    await detailLocal.fill('1');
-    await page.locator('[data-save-item]').click();
+    assert.match(await page.locator('.next-step').innerText(),/Registrar la mercadería cuando llegue[\s\S]*Registrar llegada y separación/,'El detalle debe explicar el siguiente paso');
+    await page.locator('[data-next-step="receive"]').click();
+    await page.locator('.next-local-qty').fill('1');
+    await page.locator('#arrival-form button[type="submit"]').click();
     await page.waitForSelector('#action-modal:not([hidden])');
     assert.match(await page.locator('#action-content').innerText(),/Mercadería registrada[\s\S]*Imprimí la etiqueta/,'Al registrar la llegada debe recordarse la etiqueta');
-    await page.getByRole('button',{name:'Ya tiene etiqueta'}).click();
+    await page.evaluate(()=>{const nativeOpen=window.open.bind(window);window.open=(...args)=>{const popup=nativeOpen(...args);popup.print=()=>{};popup.close=()=>{};return popup;};});
+    const popupPromise=page.waitForEvent('popup');
+    await page.getByRole('button',{name:'Imprimir etiqueta ahora'}).click();
+    const popup=await popupPromise;await popup.waitForSelector('.label');
+    const labelLayout=await popup.evaluate(()=>{const label=document.querySelector('.label').getBoundingClientRect(),qr=document.querySelector('.qr').getBoundingClientRect(),style=document.querySelector('style').textContent;return {label:{width:label.width,height:label.height},qr:{width:qr.width,height:qr.height},style};});
+    assert.match(labelLayout.style,/@page\{size:200mm 80mm;margin:0\}/,'La impresión debe declarar la hoja horizontal de Chrome');
+    assert(labelLayout.label.width>740&&labelLayout.label.height>295,'La etiqueta debe ocupar los 200 por 80 mm completos');
+    assert(labelLayout.qr.width>240&&labelLayout.qr.height>240,'El QR debe aprovechar casi toda la altura del rollo');
+    if(process.env.RESERVATIONS_LABEL_SCREENSHOT){await popup.setViewportSize({width:1000,height:400});await popup.screenshot({path:process.env.RESERVATIONS_LABEL_SCREENSHOT,clip:{x:0,y:0,width:labelLayout.label.width,height:labelLayout.label.height}});}
+    await popup.close();
     await page.locator('#detail-comment').fill('Cliente avisado por teléfono');
     await page.locator('[data-add-comment]').click();
     await page.waitForFunction(()=>document.querySelector('#comments-list')?.textContent.includes('Cliente avisado por teléfono'));
 
+    await page.locator('.more-actions summary').click();
     await page.locator('[data-detail-action="progress"]').click();
     await page.locator('#progress-state').selectOption('separando');
     await page.locator('#progress-form button[type="submit"]').click();
     await page.waitForFunction(()=>document.querySelector('#detail-content')?.textContent.includes('Separando'));
+    await page.locator('.more-actions summary').click();
     await page.locator('[data-detail-action="finish"]').click();
     await page.locator('#finish-type').selectOption('retiro_cliente');
     await page.locator('#finish-form button[type="submit"]').click();
@@ -199,7 +221,7 @@ window.supabase={createClient:()=>db};
     await page.locator('[data-save-item]').click();
     await page.waitForSelector('#action-modal:not([hidden])');
     await page.getByRole('button',{name:'Ya tiene etiqueta'}).click();
-    await page.locator('[data-detail-action="finish"]').click();
+    await page.locator('[data-next-step="finish"]').click();
     await page.locator('#finish-form button[type="submit"]').click();
     await page.waitForFunction(()=>document.querySelector('#detail-content')?.textContent.includes('Completada'));
     await page.locator('[data-close-modal]').click();
@@ -208,12 +230,14 @@ window.supabase={createClient:()=>db};
     assert.match(await page.locator('#history-list').innerText(),/COMPLETADA[\s\S]*Ana Suárez/,'La reserva cerrada debe quedar en el historial');
 
     await page.locator('#history-list [data-reservation-id]').click();
+    await page.locator('.more-actions summary').click();
     await page.locator('[data-detail-action="correct-close"]').click();
     await page.locator('.corrected-delivery').fill('0');
     await page.locator('#correct-close-reason').fill('Se marcó una unidad de más por error');
     await page.locator('#correct-close-form button[type="submit"]').click();
     await page.waitForFunction(()=>document.querySelector('#action-modal')?.hidden);
     assert.match(await page.locator('#detail-content').innerText(),/Lista para entregar[\s\S]*2 \/ 0/,'La corrección debe reabrir el seguimiento sin entregas antes de eliminarlo');
+    await page.locator('.more-actions summary').click();
     await page.locator('[data-detail-action="delete"]').click();
     await page.locator('#delete-code').fill('SUCAN001');
     await page.locator('#delete-reason').fill('Reserva creada para prueba integral');

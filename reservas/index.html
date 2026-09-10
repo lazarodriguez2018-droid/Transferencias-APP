@@ -10,7 +10,7 @@
   <link rel="icon" type="image/svg+xml" href="/logo.svg?v=2">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="/reservas/reservas.css?v=2">
+  <link rel="stylesheet" href="/reservas/reservas.css?v=3">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -88,7 +88,7 @@
         <label class="field settings-local"><span>Configurar local</span><select class="input" id="settings-local"></select></label>
         <div class="settings-grid">
           <article class="panel"><div class="panel-head"><h2>Motivos operativos</h2><p>Son iguales para todos los locales para evitar clasificaciones ambiguas.</p></div><div class="settings-list"><div class="setting-row"><span>Pedido a otro local</span></div><div class="setting-row"><span>Esperando proveedor</span></div><div class="setting-row"><span>Ya estaba en local</span></div></div></article>
-          <article class="panel"><div class="panel-head"><h2>Plazo e impresión</h2><p>La alerta se activa a las 48 horas exactas desde que la mercadería está en el local. La BSC10 usa papel térmico continuo de 80 mm y un área imprimible de 72 mm.</p></div><label class="field"><span>Lugar donde se guardan las reservas</span><input class="input" id="settings-location" maxlength="160" placeholder="Ej: Estantería junto al depósito"></label><label class="field"><span>Ruta de impresora</span><input class="input mono" id="settings-printer" placeholder="\\DESKTOP-A09RVUK\Star BSC10"></label><p class="printer-note">En la ventana de impresión elegí esta impresora, escala 100 %, sin márgenes y sin “Ajustar a página”.</p><div class="settings-actions"><button class="button primary" id="save-settings" type="button">Guardar configuración</button><button class="button secondary" id="print-calibration" type="button">Imprimir prueba BSC10</button></div><fieldset class="days"><legend>Días habituales de recepción</legend><label><input type="checkbox" value="1"> Lun</label><label><input type="checkbox" value="2"> Mar</label><label><input type="checkbox" value="3"> Mié</label><label><input type="checkbox" value="4"> Jue</label><label><input type="checkbox" value="5"> Vie</label><label><input type="checkbox" value="6"> Sáb</label><label><input type="checkbox" value="0"> Dom</label></fieldset></article>
+          <article class="panel"><div class="panel-head"><h2>Plazo e impresión</h2><p>La alerta se activa a las 48 horas exactas desde que la mercadería está en el local. La etiqueta usa el rollo térmico de 80 mm en formato horizontal de 200 × 80 mm.</p></div><label class="field"><span>Lugar donde se guardan las reservas</span><input class="input" id="settings-location" maxlength="160" placeholder="Ej: Estantería junto al depósito"></label><label class="field"><span>Ruta de impresora</span><input class="input mono" id="settings-printer" placeholder="\\DESKTOP-A09RVUK\Star BSC10"></label><p class="printer-note">En Chrome elegí papel “80 mm × 200 mm”, orientación horizontal, escala 100 %, sin márgenes y sin “Ajustar a página”.</p><div class="settings-actions"><button class="button primary" id="save-settings" type="button">Guardar configuración</button><button class="button secondary" id="print-calibration" type="button">Imprimir prueba BSC10</button></div><fieldset class="days"><legend>Días habituales de recepción</legend><label><input type="checkbox" value="1"> Lun</label><label><input type="checkbox" value="2"> Mar</label><label><input type="checkbox" value="3"> Mié</label><label><input type="checkbox" value="4"> Jue</label><label><input type="checkbox" value="5"> Vie</label><label><input type="checkbox" value="6"> Sáb</label><label><input type="checkbox" value="0"> Dom</label></fieldset></article>
           <article class="panel wide"><div class="panel-head"><h2>Enlace rápido del local</h2><p>Los empleados sin cuenta ingresan con la contraseña de empresa y dejan registrado su nombre.</p></div><div id="quick-link-panel" class="quick-link-panel"></div></article>
         </div>
       </section>
@@ -103,6 +103,6 @@
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.12.3/dist/JsBarcode.all.min.js"></script>
   <script src="/operaciones/cloud-config.js"></script>
   <script src="/reservas/reserva-engine.js?v=1"></script>
-  <script src="/reservas/reservas.js?v=3"></script>
+  <script src="/reservas/reservas.js?v=4"></script>
 </body>
 </html>
