@@ -2,6 +2,7 @@
 .receipt-order-filters label{display:grid;gap:5px;font-size:13px;color:var(--muted)}
 .receipt-order-filters .input{width:100%;min-width:0;font-size:14px;min-height:40px}
 #receipt-expected-orders{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px}
+.receipt-section-title{grid-column:1/-1;padding:8px 2px 0;color:var(--muted);font-size:11px;font-weight:800;letter-spacing:.65px;text-transform:uppercase}.reservation-expected{border-color:color-mix(in srgb,#ec4899 35%,var(--border))}
 #receipt-expected-orders .receipt-order{display:block;min-width:0;padding:16px;font-size:14px;overflow-wrap:anywhere}
 .receipt-order-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
 .receipt-order-head h2{font-size:17px;margin:0 0 5px}

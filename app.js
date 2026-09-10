@@ -580,6 +580,10 @@ appState.localesCache     = locs||[];
 appState.transportesCache = trans||[];
 const queryParams=new URLSearchParams(location.search);
 const requestedModule=queryParams.get('module');
+if(requestedModule==='reservas'){
+location.replace('/reservas');
+return;
+}
 const requestedView=queryParams.get('view');
 const pendingManageToken=publicManagementTokenFromHash();
 const validViews=['hub','dashboard','misPedidos','paraEnviar','historial','misConsultas','chats','agenda','perfil','usuarios','sugerencias','config'];
@@ -2202,23 +2206,25 @@ const q=(el('agenda-search')?.value||'').trim();
 let query=db.from('clientes_agenda').select('*').order('created_at',{ascending:false}).limit(400);
 if(q){
 const qEsc=q.replace(/,/g,' ');
-query=query.or('nombre.ilike.%'+qEsc+'%,telefono.ilike.%'+qEsc+'%,direccion.ilike.%'+qEsc+'%');
+query=query.or('nombre.ilike.%'+qEsc+'%,apellido.ilike.%'+qEsc+'%,telefono.ilike.%'+qEsc+'%,documento.ilike.%'+qEsc+'%,direccion.ilike.%'+qEsc+'%');
 }
 const {data,error}=await query;
 const tbody=el('agenda-body');
 if(!tbody) return;
 if(error){
-tbody.innerHTML='<tr><td colspan="4" style="color:var(--danger)">No se pudo cargar agenda: '+escHtml(error.message)+'</td></tr>';
+tbody.innerHTML='<tr><td colspan="6" style="color:var(--danger)">No se pudo cargar agenda: '+escHtml(error.message)+'</td></tr>';
 return;
 }
 appState.agendaCache=data||[];
 if(!appState.agendaCache.length){
-tbody.innerHTML='<tr><td colspan="4" style="color:var(--text3)">Sin clientes en agenda</td></tr>';
+tbody.innerHTML='<tr><td colspan="6" style="color:var(--text3)">Sin clientes en agenda</td></tr>';
 return;
 }
 tbody.innerHTML=appState.agendaCache.map(c=>'<tr>'+
 '<td>'+escHtml(c.nombre||'')+'</td>'+
+'<td>'+escHtml(c.apellido||'')+'</td>'+
 '<td>'+escHtml(c.telefono||'')+'</td>'+
+'<td>'+escHtml(c.documento||'')+'</td>'+
 '<td>'+escHtml(c.direccion||'')+'</td>'+
 '<td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="editarClienteAgenda(\''+c.id+'\')">✏️</button> '+
 '<button class="btn btn-danger btn-sm" onclick="eliminarClienteAgenda(\''+c.id+'\')">🗑️</button></td>'+
@@ -2229,8 +2235,10 @@ function abrirModalNuevoClienteAgenda(desdePedido=false){
 appState.clienteDesdePedido=!!desdePedido;
 el('cliente-agenda-id').value='';
 el('cliente-agenda-nombre').value=el('new-cliente')?.value||'';
+el('cliente-agenda-apellido').value='';
 el('cliente-agenda-telefono').value=el('new-telefono')?.value||'';
 el('cliente-agenda-direccion').value='';
+el('cliente-agenda-documento').value='';
 safeSet('modal-cliente-title','➕ Nuevo cliente');
 openModal('modal-cliente-agenda');
 }
@@ -2241,8 +2249,10 @@ if(!c) return;
 appState.clienteDesdePedido=false;
 el('cliente-agenda-id').value=c.id;
 el('cliente-agenda-nombre').value=c.nombre||'';
+el('cliente-agenda-apellido').value=c.apellido||'';
 el('cliente-agenda-telefono').value=c.telefono||'';
 el('cliente-agenda-direccion').value=c.direccion||'';
+el('cliente-agenda-documento').value=c.documento||'';
 safeSet('modal-cliente-title','✏️ Editar cliente');
 openModal('modal-cliente-agenda');
 }
@@ -2250,17 +2260,17 @@ openModal('modal-cliente-agenda');
 async function guardarClienteAgenda(){
 const id=el('cliente-agenda-id').value||null;
 const nombre=el('cliente-agenda-nombre').value.trim();
+const apellido=el('cliente-agenda-apellido').value.trim();
 const telefono=el('cliente-agenda-telefono').value.trim();
 const direccion=el('cliente-agenda-direccion').value.trim();
-if(!nombre||!telefono) return notify('Completá nombre y teléfono','error');
-const payload={nombre,telefono,direccion:direccion||null};
-const req=id
-?db.from('clientes_agenda').update(payload).eq('id',id).select().single()
-:db.from('clientes_agenda').insert(payload).select().single();
-const {data,error}=await req;
+const documento=el('cliente-agenda-documento').value.trim();
+if(!nombre&&!apellido&&!telefono&&!direccion&&!documento) return notify('Completá al menos un dato del cliente','error');
+const payload={nombre:nombre||null,apellido:apellido||null,telefono:telefono||null,direccion:direccion||null,documento:documento||null};
+const {data:result,error}=await db.rpc('op_agenda_guardar_cliente',{p_id:id,p_datos:payload});
 if(error) return notify('No se pudo guardar cliente: '+error.message,'error');
+const data=result.client;
 await closeModal('modal-cliente-agenda');
-notify(id?'Cliente actualizado':'Cliente agregado','success');
+notify(id?'Cliente actualizado':result.merged?'Cliente existente actualizado; no se creó un duplicado':'Cliente agregado','success');
 if(appState.clienteDesdePedido){
 seleccionarClienteAgendaPedido(data);
 appState.clienteDesdePedido=false;
@@ -2286,7 +2296,7 @@ clearTimeout(_agendaPedidoTimeout);
 _agendaPedidoTimeout=setTimeout(async()=>{
 const qEsc=q.replace(/,/g,' ');
 const {data,error}=await db.from('clientes_agenda').select('*')
-.or('nombre.ilike.%'+qEsc+'%,telefono.ilike.%'+qEsc+'%')
+.or('nombre.ilike.%'+qEsc+'%,apellido.ilike.%'+qEsc+'%,telefono.ilike.%'+qEsc+'%,documento.ilike.%'+qEsc+'%')
 .order('nombre').limit(20);
 if(error) return;
 if(!data||!data.length){
@@ -2296,7 +2306,7 @@ return;
 }
 window._agenda_sr=data;
 res.innerHTML=data.map((c,i)=>'<div class="product-result" onclick="selClienteAgenda('+i+')">'+
-'<div class="p-name">'+escHtml(c.nombre||'')+'</div>'+
+'<div class="p-name">'+escHtml([c.nombre,c.apellido].filter(Boolean).join(' '))+'</div>'+
 '<div class="p-code">'+escHtml(c.telefono||'')+(c.direccion?' · '+escHtml(c.direccion):'')+'</div>'+
 '</div>').join('');
 res.classList.add('show');
@@ -2310,9 +2320,9 @@ seleccionarClienteAgendaPedido(c);
 }
 
 function seleccionarClienteAgendaPedido(c){
-el('new-cliente').value=c.nombre||'';
+el('new-cliente').value=[c.nombre,c.apellido].filter(Boolean).join(' ');
 el('new-telefono').value=c.telefono||'';
-el('cliente-search-input').value=(c.nombre||'')+(c.telefono?' · '+c.telefono:'');
+el('cliente-search-input').value=([c.nombre,c.apellido].filter(Boolean).join(' '))+(c.telefono?' · '+c.telefono:'');
 el('cliente-search-results').classList.remove('show');
 updatePedidoClienteDisplay();
 }

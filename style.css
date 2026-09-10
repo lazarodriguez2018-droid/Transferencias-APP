@@ -769,7 +769,7 @@ button { cursor:pointer; border:none; outline:none; }
 .operations-card{display:flex;align-items:center;gap:16px;min-height:112px;padding:18px 22px;border:1px solid var(--border);border-radius:18px;background:var(--surface);color:var(--text);text-align:left;text-decoration:none;cursor:pointer;font:inherit;box-shadow:0 12px 36px rgba(0,0,0,.08);transition:transform .18s,border-color .18s,box-shadow .18s}
 .operations-card:hover{transform:translateY(-3px);border-color:var(--accent);box-shadow:var(--shadow-elevation, 0 18px 44px rgba(0,0,0,.14))}
 .operations-icon{display:grid;place-items:center;width:54px;height:54px;flex:0 0 54px;border-radius:16px;background:rgba(108,99,255,.13);font-size:25px;color:var(--accent)}
-.operations-card.replenishment .operations-icon{background:rgba(245,158,11,.14);color:#f59e0b}.operations-card.reception .operations-icon{background:rgba(14,165,233,.14);color:#38bdf8}.operations-card.orders .operations-icon{background:rgba(34,197,94,.14);color:#22c55e}
+.operations-card.replenishment .operations-icon{background:rgba(245,158,11,.14);color:#f59e0b}.operations-card.reception .operations-icon{background:rgba(14,165,233,.14);color:#38bdf8}.operations-card.orders .operations-icon{background:rgba(34,197,94,.14);color:#22c55e}.operations-card.reservations .operations-icon{background:rgba(236,72,153,.14);color:#ec4899}
 .operations-card>div{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"title action" "description action";align-items:center;column-gap:24px;width:100%;min-width:0}
 .operations-card h2{grid-area:title;font-size:20px;margin:0 0 6px}.operations-card p{grid-area:description;margin:0;color:var(--text2);font-size:14px;line-height:1.55}.operations-card strong{grid-area:action;font-size:13px;color:var(--accent);white-space:nowrap}
 @media(max-width:600px){.operations-hero h1{font-size:26px;line-height:1.2}.operations-card{align-items:flex-start;padding:16px;min-height:0}.operations-card>div{display:block}.operations-card h2{margin:1px 0 6px}.operations-card p{margin-bottom:12px}.operations-card strong{display:block;white-space:normal}.operations-icon{width:46px;height:46px;flex-basis:46px}}
@@ -1364,7 +1364,7 @@ button { cursor:pointer; border:none; outline:none; }
 #view-hub .operations-card p{font-size:12px;line-height:1.5;margin:0}
 #view-hub .operations-card strong{font-size:11px;white-space:normal;line-height:1.4;margin-top:auto;padding-top:4px}
 .operations-home-help{font-size:12px;color:var(--text2);line-height:1.5;margin-top:16px}
-@media(min-width:1200px){#view-hub .operations-grid{grid-template-columns:repeat(4,minmax(0,1fr))}#view-hub .operations-card{flex-direction:column;min-height:192px;padding:16px}#view-hub .operations-card>div{flex:1}}
+@media(min-width:1200px){#view-hub .operations-grid{grid-template-columns:repeat(5,minmax(0,1fr))}#view-hub .operations-card{flex-direction:column;min-height:192px;padding:16px}#view-hub .operations-card>div{flex:1}}
 @media(max-width:600px){
   #app-page.hub-mode .main-content{padding:calc(16px + env(safe-area-inset-top)) 12px calc(96px + env(safe-area-inset-bottom))}
   #view-hub .operations-hero{padding-bottom:14px}
