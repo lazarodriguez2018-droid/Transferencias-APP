@@ -19,6 +19,8 @@ assert.match(sql,/if p_tipo='no_retirado'[\s\S]*cantidad_local=0,estado=case whe
 assert.match(sql,/cantidad_local=least\(i\.cantidad-i\.cantidad_entregada,i\.cantidad_local\+a\.cantidad\)/,'Una recepción no debe volver a separar unidades ya entregadas');
 assert.match(sql,/clientes_agenda alter column nombre drop not null/,'Los datos del cliente deben seguir siendo opcionales también en la agenda');
 assert.match(sql,/pg_advisory_xact_lock\(hashtext\('agenda:'\|\|v_phone\)\)/,'La agenda debe serializar la deduplicación por teléfono');
+assert.match(sql,/'ubicacion_reservas',ubicacion_reservas/,'La configuración debe exponer el lugar fijo de reservas de cada tienda');
+assert.match(sql,/grant execute on function public\.op_reserva_guardar_config\(text,integer,smallint\[\],text,text,text\) to authenticated/,'Solo usuarios autenticados pueden cambiar la configuración del local');
 assert.match(sql,/alter table public\.op_reservas enable row level security/,'Reservas debe usar RLS');
 assert.match(sql,/grant execute on function public\.op_reserva_qr_detalle\(text\) to anon,authenticated/,'El QR de solo lectura debe ser público');
 assert.doesNotMatch(sql,/grant (?:all|select|insert|update|delete)[^;]+op_reservas[^;]+to anon/i,'Anónimos no deben acceder directamente a las tablas');

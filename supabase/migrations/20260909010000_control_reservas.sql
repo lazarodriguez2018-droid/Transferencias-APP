@@ -16,6 +16,7 @@ create table if not exists public.op_reserva_config_local (
   local_nombre text primary key,
   horas_reserva integer not null default 48 check (horas_reserva between 1 and 720),
   dias_recepcion smallint[] not null default '{}'::smallint[],
+  ubicacion_reservas text,
   printer_path text,
   printer_profile text not null default 'star-bsc10-80-max',
   updated_by uuid references public.perfiles(id) on delete set null,
@@ -24,6 +25,7 @@ create table if not exists public.op_reserva_config_local (
     dias_recepcion <@ array[0,1,2,3,4,5,6]::smallint[]
   )
 );
+alter table public.op_reserva_config_local add column if not exists ubicacion_reservas text;
 
 create table if not exists public.op_reserva_motivos (
   id uuid primary key default gen_random_uuid(),
@@ -311,7 +313,7 @@ begin
   select coalesce(jsonb_agg(jsonb_build_object('id',id,'local_nombre',local_nombre,'nombre',nombre,'activo',activo,'orden',orden) order by orden,nombre),'[]')
     into motivos from public.op_reserva_motivos where (local_nombre=a->>'local' or coalesce((a->>'supervisor')::boolean,false));
   select coalesce(jsonb_object_agg(local_nombre,jsonb_build_object('horas_reserva',horas_reserva,'dias_recepcion',dias_recepcion,
-    'printer_path',printer_path,'printer_profile',printer_profile)),'{}') into cfg
+    'ubicacion_reservas',ubicacion_reservas,'printer_path',printer_path,'printer_profile',printer_profile)),'{}') into cfg
     from public.op_reserva_config_local where local_nombre=a->>'local' or coalesce((a->>'supervisor')::boolean,false);
   return jsonb_build_object('actor',a,'locals',locales,'reasons',motivos,'config',cfg);
 end $$;
@@ -756,7 +758,7 @@ begin
   return jsonb_build_object('ok',true,'reservation',jsonb_build_object('code',r.codigo,'local',r.local_nombre,'reason',r.motivo_nombre,
     'customer',nullif(trim(concat_ws(' ',r.cliente_nombre,r.cliente_apellido)),''),'phone',r.cliente_telefono,'responsible',r.responsable_nombre,
     'state',r.estado,'created_at',r.created_at,'merchandise_at',r.mercaderia_local_at,'expires_at',r.vencimiento_at,'reference',r.referencia_externa,
-    'items',items));
+    'location',(select ubicacion_reservas from public.op_reserva_config_local where local_nombre=r.local_nombre),'items',items));
 end $$;
 
 create or replace function public.op_reserva_qr_resolver(p_token text,p_acceso text default null)
@@ -865,16 +867,16 @@ begin
   return to_jsonb(m);
 end $$;
 
-create or replace function public.op_reserva_guardar_config(p_local text,p_horas integer,p_dias smallint[],p_printer_path text,p_printer_profile text default 'star-bsc10-80-max')
+create or replace function public.op_reserva_guardar_config(p_local text,p_horas integer,p_dias smallint[],p_printer_path text,p_printer_profile text default 'star-bsc10-80-max',p_ubicacion text default null)
 returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
 declare c public.op_reserva_config_local;
 begin
   if not public.is_ops_supervisor() then raise exception 'Solo supervisores pueden configurar locales'; end if;
   if p_horas not between 1 and 720 or not (coalesce(p_dias,'{}'::smallint[]) <@ array[0,1,2,3,4,5,6]::smallint[]) then raise exception 'Configuración inválida'; end if;
-  insert into public.op_reserva_config_local(local_nombre,horas_reserva,dias_recepcion,printer_path,printer_profile,updated_by)
-    values(trim(p_local),p_horas,coalesce(p_dias,'{}'),nullif(trim(coalesce(p_printer_path,'')),''),coalesce(nullif(trim(p_printer_profile),''),'star-bsc10-80-max'),auth.uid())
+  insert into public.op_reserva_config_local(local_nombre,horas_reserva,dias_recepcion,ubicacion_reservas,printer_path,printer_profile,updated_by)
+    values(trim(p_local),p_horas,coalesce(p_dias,'{}'),nullif(left(trim(coalesce(p_ubicacion,'')),160),''),nullif(trim(coalesce(p_printer_path,'')),''),coalesce(nullif(trim(p_printer_profile),''),'star-bsc10-80-max'),auth.uid())
   on conflict(local_nombre) do update set horas_reserva=excluded.horas_reserva,dias_recepcion=excluded.dias_recepcion,
-    printer_path=excluded.printer_path,printer_profile=excluded.printer_profile,updated_by=auth.uid(),updated_at=now() returning * into c;
+    ubicacion_reservas=excluded.ubicacion_reservas,printer_path=excluded.printer_path,printer_profile=excluded.printer_profile,updated_by=auth.uid(),updated_at=now() returning * into c;
   return to_jsonb(c);
 end $$;
 
@@ -1011,7 +1013,7 @@ revoke all on function public.op_reserva_enlace_estado(uuid) from public;
 revoke all on function public.op_reserva_crear_enlace(uuid) from public;
 revoke all on function public.op_reserva_configurar_enlace(uuid,text) from public;
 revoke all on function public.op_reserva_guardar_motivo(uuid,text,text,boolean,integer) from public;
-revoke all on function public.op_reserva_guardar_config(text,integer,smallint[],text,text) from public;
+revoke all on function public.op_reserva_guardar_config(text,integer,smallint[],text,text,text) from public;
 
 grant execute on function public.op_reserva_invitado_entrar(text,text,text) to anon,authenticated;
 grant execute on function public.op_reserva_contexto(text) to anon,authenticated;
@@ -1039,7 +1041,7 @@ grant execute on function public.op_reserva_enlace_estado(uuid) to authenticated
 grant execute on function public.op_reserva_crear_enlace(uuid) to authenticated;
 grant execute on function public.op_reserva_configurar_enlace(uuid,text) to authenticated;
 grant execute on function public.op_reserva_guardar_motivo(uuid,text,text,boolean,integer) to authenticated;
-grant execute on function public.op_reserva_guardar_config(text,integer,smallint[],text,text) to authenticated;
+grant execute on function public.op_reserva_guardar_config(text,integer,smallint[],text,text,text) to authenticated;
 
 do $$ begin alter publication supabase_realtime add table public.op_reservas; exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table public.op_reserva_comentarios; exception when duplicate_object then null; end $$;

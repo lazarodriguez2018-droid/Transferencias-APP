@@ -90,6 +90,10 @@ async function main(){
   check(await scalar('select estado from op_reservas where id=$1',[supplier.id]),'listo','Closing a linked receipt allocates the received goods');
   check(await scalar('select cantidad_local from op_reserva_items where reserva_id=$1',[supplier.id]),2,'Receipt allocation tracks the exact local quantity');
 
+  await login('supervisor');const config=await scalar("select op_reserva_guardar_config('Maldonado',48,array[1,3]::smallint[],'\\\\DESKTOP-TEST\\Star BSC10','star-bsc10-80-max','Estantería de reservas')");
+  check(config.ubicacion_reservas,'Estantería de reservas','Supervisor configures the fixed reservation place per shop');
+  await login(null,'anon');const locatedQr=await scalar('select op_reserva_qr_detalle($1)',[inter.qr_token]);
+  check(locatedQr.reservation.location,'Estantería de reservas','Public internal QR shows where the shop keeps reservations');
   await login('supervisor');const localId=await scalar("select id from locales where nombre='Maldonado'");
   const link=await scalar('select op_reserva_crear_enlace($1)',[localId]);truth(link.token,'Supervisor can generate the local quick link');
   await login(null,'anon');const guest=await scalar("select op_reserva_invitado_entrar($1,'Empleado sin cuenta','device-reservation-test')",[link.token]);
