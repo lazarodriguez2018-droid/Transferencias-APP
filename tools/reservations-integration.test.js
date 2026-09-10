@@ -74,6 +74,14 @@ async function main(){
   await fails(()=>scalar("select op_reserva_cambiar_estado($1,'buscando','Cambio directo')",[local.id]),/acción específica|cerrada/);
   await fails(()=>scalar("select op_reserva_finalizar($1,'no_retirado','[]'::jsonb,'Segundo cierre')",[local.id]),/cerrada/);
 
+  await login();const cancelled=await create({local:'Maldonado',motivo_id:await motive(),responsable:'Empleado Prueba',items:[{codigo:'CANCEL-1',nombre:'Mercadería a liberar',cantidad:2,cantidad_local:2,procedencia:'local'}]});
+  const cancelledItem=(await detail(cancelled.id)).items[0];let cancelledData=await scalar("select op_reserva_cancelar($1,'Cliente desistió')",[cancelled.id]);
+  check(cancelledData.reservation.estado,'cancelado','Cancellation closes the reservation with a reason');
+  check(cancelledData.items[0].cantidad_local,0,'Cancellation releases separated goods for sale');
+  cancelledData=await scalar("select op_reserva_corregir_cierre($1,$2::jsonb,'Cancelación realizada por error')",[cancelled.id,JSON.stringify([{id:cancelledItem.id,cantidad:0}])]);
+  check(cancelledData.items[0].cantidad_local,2,'Undoing cancellation restores the previously separated quantity');
+  check(cancelledData.reservation.estado,'listo','Undoing cancellation restores the operational state');
+
   await login();const inter=await create({local:'Maldonado',motivo_id:await motive(),responsable:'Empleado Prueba',items:[{codigo:'MOVE-1',nombre:'Producto entre locales',cantidad:2,cantidad_local:0,procedencia:'pedido_local',origen_local:'Punta del Este'}]});
   await admin();const orderId=await scalar('select id from pedidos where reserva_id=$1',[inter.id]);truth(orderId,'Inter-store source creates a linked order');
   check(await scalar('select count(*)::int from pedido_productos where pedido_id=$1 and codigo=$2 and cantidad=2',[orderId,'MOVE-1']),1,'Linked order receives the requested product');

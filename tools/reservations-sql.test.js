@@ -17,6 +17,7 @@ assert.match(sql,/token:=r\.qr_token;[\s\S]*if token is null then/,'Reimprimir n
 assert.match(sql,/function public\.op_reserva_corregir_cierre[\s\S]*cantidad_local=least\(cantidad-nueva,cantidad_local\+devueltas\)/,'Deshacer una entrega debe devolver las unidades al seguimiento local');
 assert.match(sql,/if r\.estado in \('completado','cancelado'\) then raise exception 'La reserva está cerrada; usá Corregir cierre'/,'Una reserva cerrada solo debe reabrirse mediante la acción auditada');
 assert.match(sql,/if p_tipo='no_retirado'[\s\S]*cantidad_local=0,estado=case when cantidad_entregada>=cantidad then 'entregado' else 'pendiente' end/,'No retirado debe liberar lo pendiente sin registrarlo como entregado');
+assert.match(sql,/detalle->'productos_locales'[\s\S]*accion='cancelar'[\s\S]*jsonb_array_elements\(cancelados\)/,'Deshacer una cancelación debe restaurar la mercadería separada desde la auditoría');
 assert.match(sql,/cantidad_local=least\(i\.cantidad-i\.cantidad_entregada,i\.cantidad_local\+a\.cantidad\)/,'Una recepción no debe volver a separar unidades ya entregadas');
 assert.match(sql,/clientes_agenda alter column nombre drop not null/,'Los datos del cliente deben seguir siendo opcionales también en la agenda');
 assert.match(sql,/pg_advisory_xact_lock\(hashtext\('agenda:'\|\|v_phone\)\)/,'La agenda debe serializar la deduplicación por teléfono');

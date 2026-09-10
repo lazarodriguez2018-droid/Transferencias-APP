@@ -16,6 +16,7 @@ assert.match(page,/jsbarcode@3\.12\.3/,'La calibración usa un Code 128 real y u
 assert.match(js,/op_reserva_invitado_entrar/,'El acceso rápido usa una sesión limitada');
 assert.match(js,/procedencia==='pedido_local'/,'El formulario pregunta el local de origen cuando corresponde');
 assert.match(js,/op_reserva_corregir_cierre/,'Los empleados deben poder corregir un cierre o una entrega errónea');
+assert.match(js,/Se restaurarán las cantidades que estaban separadas antes de cancelar/,'La corrección de cancelación debe explicar que restaura la mercadería');
 assert.match(js,/returned\?x\.dataset\.current:x\.dataset\.withLocal/,'No retirado no debe sumar la mercadería local como si hubiera sido entregada');
 assert.match(js,/volverán a exhibición\. No se modifica stock/,'La interfaz debe explicar el efecto de no retirado');
 assert.match(js,/@page\{size:80mm 56mm;margin:0\}/,'La etiqueta usa el perfil de 80 mm');

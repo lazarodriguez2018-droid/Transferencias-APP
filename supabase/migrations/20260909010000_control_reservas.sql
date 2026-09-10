@@ -693,26 +693,41 @@ end $$;
 
 create or replace function public.op_reserva_cancelar(p_reserva uuid,p_motivo text,p_acceso text default null)
 returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
-declare a jsonb; r public.op_reservas;
+declare a jsonb; r public.op_reservas; v_items jsonb;
 begin
   a:=public.op_reserva_actor(p_acceso); select * into r from public.op_reservas where id=p_reserva for update;
   if r.id is null or not public.op_reserva_puede_ver(r.id,a) or r.estado in ('completado','cancelado') then raise exception 'Reserva no disponible'; end if;
   if char_length(trim(coalesce(p_motivo,''))) not between 3 and 500 then raise exception 'Explicá por qué se cancela'; end if;
+  select coalesce(jsonb_agg(jsonb_build_object('item_id',id,'cantidad_local',cantidad_local,'estado',estado)),'[]') into v_items
+    from public.op_reserva_items where reserva_id=r.id;
+  update public.op_reserva_items set cantidad_local=0,
+    estado=case when cantidad_entregada>=cantidad then 'entregado' else 'pendiente' end,updated_at=now() where reserva_id=r.id;
   update public.op_reservas set estado='cancelado',final_comentario=trim(p_motivo),completed_at=now(),updated_at=now() where id=r.id;
   insert into public.op_reserva_eventos(reserva_id,accion,estado,detalle,usuario_id,invitado_id,autor_nombre)
-    values(r.id,'cancelar','cancelado',jsonb_build_object('motivo',trim(p_motivo),'estado_anterior',r.estado),(a->>'user_id')::uuid,(a->>'guest_id')::uuid,a->>'name');
+    values(r.id,'cancelar','cancelado',jsonb_build_object('motivo',trim(p_motivo),'estado_anterior',r.estado,'productos_locales',v_items),(a->>'user_id')::uuid,(a->>'guest_id')::uuid,a->>'name');
   return public.op_reserva_detalle(r.id,p_acceso);
 end $$;
 
 create or replace function public.op_reserva_corregir_cierre(p_reserva uuid,p_entregas jsonb,p_motivo text,p_acceso text default null)
 returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
-declare a jsonb; r public.op_reservas; x jsonb; i public.op_reserva_items; nueva integer; devueltas integer; cambios jsonb:='[]'::jsonb;
+declare a jsonb; r public.op_reservas; x jsonb; i public.op_reserva_items; nueva integer; devueltas integer; cambios jsonb:='[]'::jsonb; cancelados jsonb;
 begin
   a:=public.op_reserva_actor(p_acceso); select * into r from public.op_reservas where id=p_reserva for update;
   if r.id is null or not public.op_reserva_puede_ver(r.id,a) then raise exception 'Reserva no disponible'; end if;
   if r.estado not in ('completado','cancelado','parcial') then raise exception 'Esta reserva no tiene un cierre o entrega para corregir'; end if;
   if char_length(trim(coalesce(p_motivo,''))) not between 3 and 500 then raise exception 'Explicá el motivo de la corrección'; end if;
   if jsonb_typeof(p_entregas)<>'array' then raise exception 'Confirmá las cantidades entregadas correctas'; end if;
+  if r.estado='cancelado' then
+    select detalle->'productos_locales' into cancelados from public.op_reserva_eventos
+      where reserva_id=r.id and accion='cancelar' order by created_at desc,id desc limit 1;
+    if jsonb_typeof(cancelados)='array' then
+      update public.op_reserva_items ri set cantidad_local=least(ri.cantidad-ri.cantidad_entregada,greatest(0,(x.valor->>'cantidad_local')::integer)),
+        estado=case when ri.cantidad_entregada>=ri.cantidad then 'entregado'
+          when least(ri.cantidad-ri.cantidad_entregada,greatest(0,(x.valor->>'cantidad_local')::integer))+ri.cantidad_entregada>=ri.cantidad then 'separado'
+          when greatest(0,(x.valor->>'cantidad_local')::integer)>0 then 'recibido' else 'pendiente' end,updated_at=now()
+        from jsonb_array_elements(cancelados) x(valor) where ri.id=(x.valor->>'item_id')::uuid and ri.reserva_id=r.id;
+    end if;
+  end if;
   for x in select * from jsonb_array_elements(p_entregas) loop
     select * into i from public.op_reserva_items where id=(x->>'id')::uuid and reserva_id=r.id for update;
     if i.id is null or coalesce(x->>'cantidad','')!~'^\d{1,6}$' then raise exception 'Cantidad entregada inválida'; end if;
