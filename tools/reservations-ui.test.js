@@ -35,9 +35,11 @@ assert.match(js,/p_horas:48/,'La interfaz debe guardar siempre la política de 4
 assert.match(js,/Días habituales de recepción en este local/,'Los días configurados deben orientar la fecha estimada sin imponerla');
 assert.match(js,/Cómo usar Control de reservas[\s\S]*Resolver el pedido entre locales[\s\S]*Editar o corregir[\s\S]*Cerrar siempre/,'La guía debe cubrir el proceso completo y las correcciones auditadas');
 assert.match(js,/actionCreated\(result,state\.current\.items\.some\(item=>item\.cantidad_local>0\)\)/,'La creación debe distinguir si ya hay mercadería física para etiquetar');
-assert.match(js,/function actionCreated\(result,hasLocalStock\)[\s\S]*Cuando cargues unidades en “En el local”/,'Si todavía no llegó mercadería, debe explicar cuándo se ofrecerá la etiqueta');
+assert.match(js,/function actionCreated\(result,hasLocalStock\)[\s\S]*podés imprimir la etiqueta desde ahora[\s\S]*Continuar sin imprimir/,'La creación debe ofrecer la etiqueta aunque todavía falte mercadería');
 assert.match(js,/const arrived=qty>item\.cantidad_local[\s\S]*if\(arrived\)actionMerchandiseArrived/,'Al registrar una llegada debe recordarse colocar la etiqueta');
 assert.match(js,/function actionPrintPrompt[\s\S]*Imprimir etiqueta ahora/,'Cuando hay mercadería física debe ofrecerse la impresión inmediata');
+assert.match(js,/function printShortcutMarkup\(\)[\s\S]*Podés imprimirla en cualquier momento[\s\S]*qué productos llegaron y cuáles faltan/,'El detalle debe mantener siempre visible la impresión del QR');
+assert.match(js,/Unidades separadas aquí[\s\S]*Solo las que están físicamente juntas para esta reserva[\s\S]*Solicitadas[\s\S]*Ya entregadas/,'Las cantidades de cada producto deben explicar su significado operativo');
 assert.match(js,/function nextStep\(r,items\)[\s\S]*data-next-step/,'Cada estado debe mostrar una única acción siguiente y comprensible');
 for(const label of ['Confirmar envío · Pasar a En tránsito','Registrar llegada y separación','Confirmar que el cliente fue avisado','Registrar entrega o cierre'])assert.ok(js.includes(label),`Falta la acción guiada: ${label}`);
 assert.match(js,/function actionRegisterArrival\(\)[\s\S]*No cuentes mercadería que siga en góndola o depósito general[\s\S]*estado avanzará automáticamente/,'La llegada guiada debe evitar separar mercadería solo de palabra');
@@ -48,7 +50,7 @@ assert.match(js,/function startRealtimeFallback\(error\)[\s\S]*setInterval\(refr
 assert.match(js,/hadContent=listEl\.dataset\.loaded==='true'[\s\S]*signature!==state\.listSignatures\[kind\]/,'La actualización periódica debe conservar las tarjetas y evitar reemplazos sin cambios');
 assert.match(js,/openDetail\(state\.current\.reservation\.id,\{silent:true\}\)/,'El detalle abierto debe refrescarse sin mostrar una pantalla de carga');
 assert.match(js,/channel\.subscribe\(status=>[\s\S]*startRealtimeFallback\(error\)/,'Un fallo al abrir Realtime no debe impedir entrar al módulo');
-assert.match(page,/reservas\.css\?v=3[\s\S]*reservas\.js\?v=4/,'El nuevo flujo y la etiqueta deben invalidar la caché anterior');
+assert.match(page,/reservas\.css\?v=4[\s\S]*reservas\.js\?v=5/,'La impresión permanente y las ayudas deben invalidar la caché anterior');
 assert.match(js,/async function printCalibration\(\)[\s\S]*window\.open[\s\S]*await qrDataUrl/,'La calibración debe abrir su ventana antes de generar el QR');
 assert.match(js,/\/reserva#/,'La etiqueta abre una consulta de solo lectura');
 assert.match(receipt,/receiptReservationData/,'Recepción muestra reservas coincidentes');

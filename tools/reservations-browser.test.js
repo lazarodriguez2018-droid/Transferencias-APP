@@ -158,12 +158,12 @@ window.supabase={createClient:()=>db};
     await page.locator('#create-button').click();
     try{await page.waitForSelector('#action-modal:not([hidden])',{timeout:10000});}
     catch(error){const state=await page.evaluate(()=>({formError:document.querySelector('#new-error')?.textContent,view:document.querySelector('#view-new')?.className,clicks:window.__createClicks,submits:window.__createSubmits,button:{disabled:document.querySelector('#create-button')?.disabled,type:document.querySelector('#create-button')?.type,visible:!!document.querySelector('#create-button')?.getClientRects().length},valid:document.querySelector('#reservation-form')?.checkValidity(),invalid:[...document.querySelectorAll('#reservation-form :invalid')].map(element=>({id:element.id,value:element.value})),calls:window.__reservationRpcCalls.map(call=>call.name)}));throw new Error(`La creación no abrió su confirmación: ${JSON.stringify({state,browserErrors})}`,{cause:error});}
-    assert.match(await page.locator('#action-content').innerText(),/SUCAN001[\s\S]*espera de mercadería/,'La creación sin mercadería debe explicar el siguiente paso');
+    assert.match(await page.locator('#action-content').innerText(),/SUCAN001[\s\S]*imprimir la etiqueta desde ahora[\s\S]*lo que llegó y lo que falta/,'La creación sin mercadería debe permitir imprimir el seguimiento completo');
     const createPayload=await page.evaluate(()=>window.__reservationRpcCalls.find(call=>call.name==='op_reserva_crear_v2').args.p_datos);
     assert.equal(createPayload.cliente.telefono,'099 123 456','El teléfono debe enviarse en la reserva');
     assert.equal(createPayload.items[0].procedencia,'proveedor','La procedencia elegida debe conservarse');
     assert.equal(createPayload.items[0].cantidad_local,0,'No debe marcarse mercadería que todavía no llegó');
-    await page.getByRole('button',{name:'Entendido'}).click();
+    await page.getByRole('button',{name:'Continuar sin imprimir'}).click();
 
     await page.locator('[data-close-modal]').click();
     await page.evaluate(()=>{window.__holdNextReservationList=true;});
@@ -172,6 +172,9 @@ window.supabase={createClient:()=>db};
     assert.doesNotMatch(await page.locator('#active-list').innerText(),/Actualizando reservas/,'La lista no debe desaparecer mientras sincroniza');
     await page.waitForFunction(()=>!document.querySelector('#active-list')?.matches('[aria-busy="true"]'));
     await page.locator('#active-list [data-reservation-id]').click();
+    assert.equal(await page.locator('.print-shortcut [data-detail-action="print"]').isVisible(),true,'Imprimir etiqueta debe estar visible en cualquier estado');
+    assert.match(await page.locator('.print-shortcut').innerText(),/estado actual[\s\S]*productos llegaron[\s\S]*faltan/,'La impresión permanente debe explicar que el QR muestra el avance actual');
+    assert.match(await page.locator('.product-line').innerText(),/PENDIENTE DE LLEGADA[\s\S]*UNIDADES SEPARADAS AQUÍ[\s\S]*SOLICITADAS[\s\S]*YA ENTREGADAS/i,'El bloque de producto debe explicar cantidades y estado');
 
     await page.locator('.more-actions summary').click();
     await page.locator('[data-detail-action="edit"]').click();
@@ -236,7 +239,7 @@ window.supabase={createClient:()=>db};
     await page.locator('#correct-close-reason').fill('Se marcó una unidad de más por error');
     await page.locator('#correct-close-form button[type="submit"]').click();
     await page.waitForFunction(()=>document.querySelector('#action-modal')?.hidden);
-    assert.match(await page.locator('#detail-content').innerText(),/Lista para entregar[\s\S]*2 \/ 0/,'La corrección debe reabrir el seguimiento sin entregas antes de eliminarlo');
+    assert.match(await page.locator('#detail-content').innerText(),/Avisar al cliente[\s\S]*Solicitadas[\s\S]*2[\s\S]*Ya entregadas[\s\S]*0/i,'La corrección debe reabrir el seguimiento sin entregas antes de eliminarlo');
     await page.locator('.more-actions summary').click();
     await page.locator('[data-detail-action="delete"]').click();
     await page.locator('#delete-code').fill('SUCAN001');
