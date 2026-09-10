@@ -1,5 +1,5 @@
 const fs=require('fs'),assert=require('assert');
-const sql=fs.readFileSync('supabase/migrations/20260909010000_control_reservas.sql','utf8'),changes=fs.readFileSync('supabase/migrations/20260910010000_reservas_edicion_eliminacion.sql','utf8'),unaccentFix=fs.readFileSync('supabase/migrations/20260910020000_reservas_unaccent_listado.sql','utf8');
+const sql=fs.readFileSync('supabase/migrations/20260909010000_control_reservas.sql','utf8'),changes=fs.readFileSync('supabase/migrations/20260910010000_reservas_edicion_eliminacion.sql','utf8'),unaccentFix=fs.readFileSync('supabase/migrations/20260910020000_reservas_unaccent_listado.sql','utf8'),itemOrigins=fs.readFileSync('supabase/migrations/20260910030000_reservas_origen_por_producto.sql','utf8');
 for(const table of ['op_reservas','op_reserva_items','op_reserva_motivos','op_reserva_comentarios','op_reserva_eventos','op_reserva_enlaces','op_reserva_invitados','op_recepcion_reservas'])assert.match(sql,new RegExp(`create table if not exists public\\.${table}\\b`),`Falta ${table}`);
 for(const fn of ['op_reserva_crear','op_reserva_listar','op_reserva_detalle','op_reserva_actualizar_item','op_reserva_pedidos_disponibles','op_reserva_vincular_pedido','op_reserva_cambiar_estado','op_reserva_finalizar','op_reserva_cancelar','op_reserva_corregir_cierre','op_reserva_excepcion','op_reserva_qr_detalle','op_reserva_invitado_entrar','op_recepcion_reservas_datos','op_recepcion_confirmar_reserva','op_agenda_guardar_cliente'])assert.match(sql,new RegExp(`function public\\.${fn}\\(`),`Falta ${fn}`);
 assert.match(sql,/make_interval\(hours=>v_horas\)/,'El vencimiento debe usar las horas configuradas');
@@ -35,4 +35,11 @@ assert.match(changes,/create table if not exists public\.op_reserva_eliminacione
 assert.match(changes,/cantidad_entregada>0[\s\S]*no se puede eliminar/,'Una reserva con entregas no se puede borrar');
 assert.match(changes,/gestion='existente'[\s\S]*op_reserva_vincular_pedido/,'Un pedido ya creado se vincula en vez de duplicarse');
 assert.match(unaccentFix,/alter function public\.op_reserva_listar\(jsonb,text\)[\s\S]*search_path\s*=\s*public,\s*extensions,\s*pg_temp/,'El listado debe poder resolver unaccent en producción');
+assert.match(itemOrigins,/add column if not exists proveedor_nombre[\s\S]*add column if not exists pedido_local_gestion/,'Proveedor y gestión entre locales se guardan por producto');
+assert.match(itemOrigins,/create table if not exists public\.op_reserva_recepciones_habituales[\s\S]*origen_tipo in \('proveedor','local'\)[\s\S]*dias_recepcion/,'Los calendarios distinguen proveedor y local de origen');
+assert.match(itemOrigins,/Solo administradores pueden configurar calendarios de recepción/,'Solo administradores pueden cambiar calendarios');
+assert.match(itemOrigins,/'reception_schedules',recepciones/,'El contexto expone calendarios al formulario');
+assert.match(itemOrigins,/count\(distinct x->>'procedencia'\)>1 then 'Origen mixto'/,'El encabezado se deriva de los orígenes de las líneas');
+assert.match(itemOrigins,/pedido_local_gestion='crear'[\s\S]*insert into public\.pedidos/,'Solo las líneas configuradas para crear generan pedidos entre locales');
+assert.match(itemOrigins,/pedido_local_gestion'='existente'[\s\S]*pedido_existente_id/,'Cada línea puede vincular su propio pedido existente');
 console.log('reservations sql contract ok');

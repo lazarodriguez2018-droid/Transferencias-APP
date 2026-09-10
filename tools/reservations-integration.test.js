@@ -24,6 +24,30 @@ async function main(){
   await admin();check(await scalar("select count(*)::int from op_reserva_motivos where local_nombre='Maldonado' and activo"),3,'Each shop exposes exactly the three operational reasons');
   check(await scalar("select count(*)::int from op_reserva_motivos where local_nombre='Maldonado' and activo and nombre in ('Pedido a otro local','Esperando proveedor','Ya estaba en local')"),3,'The active reasons match the agreed workflow');
 
+  await login();await fails(()=>scalar("select op_reserva_guardar_recepcion_habitual(null,'Maldonado','proveedor','Distribuidora Prueba',array[1,3]::smallint[],true)"),/Solo administradores/);
+  await login('supervisor');const schedule=await scalar("select op_reserva_guardar_recepcion_habitual(null,'Maldonado','proveedor','Distribuidora Prueba',array[1,3]::smallint[],true)");
+  check(schedule.dias_recepcion,[1,3],'Administrator configures reception days for one supplier and destination shop');
+  await login();const employeeContext=await scalar('select op_reserva_contexto(null)');
+  check(employeeContext.reception_schedules.map(row=>row.origen_nombre),['Distribuidora Prueba'],'Employees receive only the schedules for their shop');
+
+  const mixed=await create({local:'Maldonado',responsable:'Empleado Prueba',cliente:{nombre:'Cliente Mixto'},items:[
+    {codigo:'MIX-SAME',nombre:'Producto dividido',cantidad:1,cantidad_local:0,procedencia:'local'},
+    {codigo:'MIX-SAME',nombre:'Producto dividido',cantidad:2,cantidad_local:0,procedencia:'proveedor',proveedor_nombre:'Distribuidora Prueba'},
+    {codigo:'MIX-EXT',nombre:'Gestionado por mensaje',cantidad:1,cantidad_local:0,procedencia:'pedido_local',origen_local:'Punta del Este',pedido_local_gestion:'externo'},
+    {codigo:'MIX-CREATE',nombre:'Pedido integrado',cantidad:1,cantidad_local:0,procedencia:'pedido_local',origen_local:'Punta del Este',pedido_local_gestion:'crear'}
+  ]});
+  const mixedData=await detail(mixed.id);
+  check(mixedData.reservation.motivo_nombre,'Origen mixto','Mixed item sources derive the reservation header automatically');
+  check(mixedData.items.find(i=>i.procedencia==='proveedor').proveedor_nombre,'Distribuidora Prueba','Supplier is retained on its product line');
+  check(mixedData.items.find(i=>i.codigo==='MIX-EXT').pedido_local_gestion,'externo','External inter-shop handling is retained on its product line');
+  check(mixedData.items.find(i=>i.codigo==='MIX-EXT').pedido_id,null,'External handling does not create a duplicate inter-shop order');
+  truth(mixedData.items.find(i=>i.codigo==='MIX-CREATE').pedido_id,'Only the configured product line creates and links an inter-shop order');
+  check(await scalar('select count(*)::int from pedidos where reserva_id=$1',[mixed.id]),1,'Mixed reservation creates exactly the required inter-shop order');
+  const mixedQr=await scalar('select op_reserva_qr_detalle($1)',[mixed.qr_token]);
+  check(mixedQr.reservation.reason,'Origen mixto','Public QR exposes the derived mixed origin');
+  check(mixedQr.reservation.items.find(i=>i.procedencia==='proveedor').proveedor_nombre,'Distribuidora Prueba','Public QR identifies the supplier for each product');
+  check(mixedQr.reservation.items.find(i=>i.codigo==='MIX-EXT').pedido_local_gestion,'externo','Public QR identifies external inter-shop handling');
+
   await login();
   const local=await create({local:'Maldonado',motivo_id:await motive('Ya estaba en local'),responsable:'Empleado Prueba',cliente:{nombre:'Ana',apellido:'Reserva',telefono:'099 111 222',direccion:'Dirección de prueba'},items:[
     {codigo:'LOCAL-1',nombre:'Bolsa disponible',cantidad:2,cantidad_local:2,procedencia:'local'}
