@@ -2,7 +2,8 @@ const assert=require('assert');
 const E=require('../reservas/reserva-engine.js');
 
 assert.equal(E.derive([{cantidad:2,cantidad_local:2,cantidad_entregada:0,estado:'separado'}]),'listo','Una reserva completa queda lista');
-assert.equal(E.derive([{cantidad:2,cantidad_local:1,cantidad_entregada:0,estado:'recibido'},{cantidad:1,cantidad_local:0,cantidad_entregada:0,estado:'pendiente'}]),'separando','Una reserva mixta permanece separando');
+assert.equal(E.derive([{cantidad:2,cantidad_local:1,cantidad_entregada:0,estado:'recibido'},{cantidad:1,cantidad_local:0,cantidad_entregada:0,estado:'pendiente'}]),'recibido','La llegada parcial queda visible antes de comenzar a separar');
+assert.equal(E.derive([{cantidad:2,cantidad_local:1,cantidad_entregada:0,estado:'recibido'},{cantidad:1,cantidad_local:0,cantidad_entregada:0,estado:'pendiente'}],'separando'),'separando','Separando no retrocede por una actualización posterior');
 assert.equal(E.derive([{cantidad:1,cantidad_local:0,cantidad_entregada:0,estado:'en_transito'}]),'en_transito','Un pedido enviado se refleja en tránsito');
 assert.equal(E.derive([{cantidad:3,cantidad_local:1,cantidad_entregada:1,estado:'recibido'}]),'parcial','Una entrega parcial no cierra la reserva');
 assert.equal(E.derive([{cantidad:1,cantidad_local:0,cantidad_entregada:1,estado:'entregado'}],'completado'),'completado','Los estados terminales no se reabren automáticamente');

@@ -25,7 +25,7 @@
     const rows=items||[],total=rows.reduce((s,x)=>s+n(x.cantidad),0),local=rows.reduce((s,x)=>s+n(x.cantidad_local),0),delivered=rows.reduce((s,x)=>s+n(x.cantidad_entregada),0);
     if(total&&delivered>0&&delivered<total)return 'parcial';
     if(total&&local+delivered>=total)return current==='avisado'?'avisado':'listo';
-    if(local>0)return 'separando';
+    if(local>0)return current==='separando'?'separando':rows.some(x=>x.estado==='recibido')?'recibido':'separando';
     if(rows.some(x=>x.estado==='en_transito'))return 'en_transito';
     return 'buscando';
   }

@@ -231,13 +231,13 @@ revoke all on function public.op_reserva_puede_ver(uuid,jsonb) from public,anon,
 create or replace function public.op_reserva_recalcular(p_reserva uuid,p_autor text default 'Sistema')
 returns void language plpgsql security definer set search_path=public,pg_temp as $$
 declare r public.op_reservas; v_total integer; v_local integer; v_entregado integer;
-  v_transito boolean; v_nuevo text; v_horas integer;
+  v_transito boolean; v_recibido boolean; v_nuevo text; v_horas integer;
 begin
   select * into r from public.op_reservas where id=p_reserva for update;
   if r.id is null or r.estado in ('completado','cancelado','vencido') then return; end if;
   select coalesce(sum(cantidad),0),coalesce(sum(cantidad_local),0),coalesce(sum(cantidad_entregada),0),
-    coalesce(bool_or(estado='en_transito'),false)
-    into v_total,v_local,v_entregado,v_transito from public.op_reserva_items where reserva_id=r.id;
+    coalesce(bool_or(estado='en_transito'),false),coalesce(bool_or(estado='recibido'),false)
+    into v_total,v_local,v_entregado,v_transito,v_recibido from public.op_reserva_items where reserva_id=r.id;
   if v_local>0 and r.mercaderia_local_at is null then
     select coalesce(c.horas_reserva,48) into v_horas from public.op_reserva_config_local c where c.local_nombre=r.local_nombre;
     v_horas:=coalesce(v_horas,48);
@@ -246,7 +246,7 @@ begin
   if v_total>0 and v_entregado>0 and v_entregado<v_total then v_nuevo:='parcial';
   elsif v_total>0 and v_local+v_entregado>=v_total then
     v_nuevo:=case when r.estado='avisado' then 'avisado' else 'listo' end;
-  elsif v_local>0 then v_nuevo:='separando';
+  elsif v_local>0 then v_nuevo:=case when r.estado='separando' then 'separando' when v_recibido then 'recibido' else 'separando' end;
   elsif v_transito then v_nuevo:='en_transito';
   else v_nuevo:='buscando'; end if;
   if v_nuevo is distinct from r.estado then
@@ -895,26 +895,37 @@ alter table public.op_reserva_comentarios enable row level security;
 alter table public.op_reserva_eventos enable row level security;
 alter table public.op_recepcion_reservas enable row level security;
 
+drop policy if exists op_reserva_config_read on public.op_reserva_config_local;
 create policy op_reserva_config_read on public.op_reserva_config_local for select to authenticated
   using(public.is_ops_supervisor() or local_nombre=public.my_local());
+drop policy if exists op_reserva_config_admin on public.op_reserva_config_local;
 create policy op_reserva_config_admin on public.op_reserva_config_local for all to authenticated
   using(public.is_ops_supervisor()) with check(public.is_ops_supervisor());
+drop policy if exists op_reserva_motivos_read on public.op_reserva_motivos;
 create policy op_reserva_motivos_read on public.op_reserva_motivos for select to authenticated
   using(public.is_ops_supervisor() or local_nombre=public.my_local());
+drop policy if exists op_reserva_motivos_admin on public.op_reserva_motivos;
 create policy op_reserva_motivos_admin on public.op_reserva_motivos for all to authenticated
   using(public.is_ops_supervisor()) with check(public.is_ops_supervisor());
+drop policy if exists op_reservas_read on public.op_reservas;
 create policy op_reservas_read on public.op_reservas for select to authenticated
   using(public.is_ops_supervisor() or local_nombre=public.my_local());
+drop policy if exists op_reserva_items_read on public.op_reserva_items;
 create policy op_reserva_items_read on public.op_reserva_items for select to authenticated
   using(exists(select 1 from public.op_reservas r where r.id=reserva_id and (public.is_ops_supervisor() or r.local_nombre=public.my_local())));
+drop policy if exists op_reserva_comentarios_read on public.op_reserva_comentarios;
 create policy op_reserva_comentarios_read on public.op_reserva_comentarios for select to authenticated
   using(exists(select 1 from public.op_reservas r where r.id=reserva_id and (public.is_ops_supervisor() or r.local_nombre=public.my_local())));
+drop policy if exists op_reserva_eventos_read on public.op_reserva_eventos;
 create policy op_reserva_eventos_read on public.op_reserva_eventos for select to authenticated
   using(exists(select 1 from public.op_reservas r where r.id=reserva_id and (public.is_ops_supervisor() or r.local_nombre=public.my_local())));
+drop policy if exists op_reserva_enlaces_admin on public.op_reserva_enlaces;
 create policy op_reserva_enlaces_admin on public.op_reserva_enlaces for all to authenticated
   using(public.is_ops_supervisor()) with check(public.is_ops_supervisor());
+drop policy if exists op_reserva_invitados_admin on public.op_reserva_invitados;
 create policy op_reserva_invitados_admin on public.op_reserva_invitados for select to authenticated
   using(public.is_ops_supervisor());
+drop policy if exists op_recepcion_reservas_read on public.op_recepcion_reservas;
 create policy op_recepcion_reservas_read on public.op_recepcion_reservas for select to authenticated
   using(exists(select 1 from public.op_recepciones r where r.id=recepcion_id and (public.is_ops_supervisor() or r.destino_local=public.my_local())));
 
