@@ -10,6 +10,7 @@ assert.match(page,/data-view="history"/,'Existe historial');
 assert.match(page,/id="settings-printer"/,'La ruta de impresora es configurable');
 assert.match(js,/op_reserva_invitado_entrar/,'El acceso rápido usa una sesión limitada');
 assert.match(js,/procedencia==='pedido_local'/,'El formulario pregunta el local de origen cuando corresponde');
+assert.match(js,/op_reserva_corregir_cierre/,'Los empleados deben poder corregir un cierre o una entrega errónea');
 assert.match(js,/@page\{size:80mm 56mm;margin:0\}/,'La etiqueta usa el perfil de 80 mm');
 assert.match(js,/\/reserva#/,'La etiqueta abre una consulta de solo lectura');
 assert.match(receipt,/receiptReservationData/,'Recepción muestra reservas coincidentes');

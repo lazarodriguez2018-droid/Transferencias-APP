@@ -639,7 +639,36 @@ begin
   if char_length(trim(coalesce(p_motivo,''))) not between 3 and 500 then raise exception 'Explicá por qué se cancela'; end if;
   update public.op_reservas set estado='cancelado',final_comentario=trim(p_motivo),completed_at=now(),updated_at=now() where id=r.id;
   insert into public.op_reserva_eventos(reserva_id,accion,estado,detalle,usuario_id,invitado_id,autor_nombre)
-    values(r.id,'cancelar','cancelado',jsonb_build_object('motivo',trim(p_motivo)),(a->>'user_id')::uuid,(a->>'guest_id')::uuid,a->>'name');
+    values(r.id,'cancelar','cancelado',jsonb_build_object('motivo',trim(p_motivo),'estado_anterior',r.estado),(a->>'user_id')::uuid,(a->>'guest_id')::uuid,a->>'name');
+  return public.op_reserva_detalle(r.id,p_acceso);
+end $$;
+
+create or replace function public.op_reserva_corregir_cierre(p_reserva uuid,p_entregas jsonb,p_motivo text,p_acceso text default null)
+returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare a jsonb; r public.op_reservas; x jsonb; i public.op_reserva_items; nueva integer; devueltas integer; cambios jsonb:='[]'::jsonb;
+begin
+  a:=public.op_reserva_actor(p_acceso); select * into r from public.op_reservas where id=p_reserva for update;
+  if r.id is null or not public.op_reserva_puede_ver(r.id,a) then raise exception 'Reserva no disponible'; end if;
+  if r.estado not in ('completado','cancelado','parcial') then raise exception 'Esta reserva no tiene un cierre o entrega para corregir'; end if;
+  if char_length(trim(coalesce(p_motivo,''))) not between 3 and 500 then raise exception 'Explicá el motivo de la corrección'; end if;
+  if jsonb_typeof(p_entregas)<>'array' then raise exception 'Confirmá las cantidades entregadas correctas'; end if;
+  for x in select * from jsonb_array_elements(p_entregas) loop
+    select * into i from public.op_reserva_items where id=(x->>'id')::uuid and reserva_id=r.id for update;
+    if i.id is null or coalesce(x->>'cantidad','')!~'^\d{1,6}$' then raise exception 'Cantidad entregada inválida'; end if;
+    nueva:=(x->>'cantidad')::integer;
+    if nueva<0 or nueva>i.cantidad_entregada then raise exception 'Para aumentar una entrega usá Entrega o cierre'; end if;
+    devueltas:=i.cantidad_entregada-nueva;
+    cambios:=cambios||jsonb_build_array(jsonb_build_object('item_id',i.id,'codigo',i.codigo,'antes',i.cantidad_entregada,'despues',nueva));
+    update public.op_reserva_items set cantidad_entregada=nueva,
+      cantidad_local=least(cantidad-nueva,cantidad_local+devueltas),
+      estado=case when nueva>=cantidad then 'entregado' when cantidad_local+devueltas+nueva>=cantidad then 'separado'
+        when cantidad_local+devueltas>0 then 'recibido' else 'pendiente' end,updated_at=now() where id=i.id;
+  end loop;
+  update public.op_reservas set estado='buscando',final_tipo=null,final_comentario=null,completed_at=null,estado_antes_vencido=null,updated_at=now() where id=r.id;
+  perform public.op_reserva_recalcular(r.id,a->>'name');
+  insert into public.op_reserva_eventos(reserva_id,accion,estado,detalle,usuario_id,invitado_id,autor_nombre)
+    values(r.id,'corregir_cierre',null,jsonb_build_object('estado_anterior',r.estado,'motivo',trim(p_motivo),'entregas',cambios),
+      (a->>'user_id')::uuid,(a->>'guest_id')::uuid,a->>'name');
   return public.op_reserva_detalle(r.id,p_acceso);
 end $$;
 
@@ -904,6 +933,7 @@ revoke all on function public.op_reserva_comentar(uuid,text,text) from public;
 revoke all on function public.op_reserva_excepcion(uuid,timestamptz,text,text) from public;
 revoke all on function public.op_reserva_finalizar(uuid,text,jsonb,text,text) from public;
 revoke all on function public.op_reserva_cancelar(uuid,text,text) from public;
+revoke all on function public.op_reserva_corregir_cierre(uuid,jsonb,text,text) from public;
 revoke all on function public.op_reserva_qr_regenerar(uuid,text) from public;
 revoke all on function public.op_reserva_qr_detalle(text) from public;
 revoke all on function public.op_reserva_qr_resolver(text,text) from public;
@@ -930,6 +960,7 @@ grant execute on function public.op_reserva_comentar(uuid,text,text) to anon,aut
 grant execute on function public.op_reserva_excepcion(uuid,timestamptz,text,text) to anon,authenticated;
 grant execute on function public.op_reserva_finalizar(uuid,text,jsonb,text,text) to anon,authenticated;
 grant execute on function public.op_reserva_cancelar(uuid,text,text) to anon,authenticated;
+grant execute on function public.op_reserva_corregir_cierre(uuid,jsonb,text,text) to anon,authenticated;
 grant execute on function public.op_reserva_qr_regenerar(uuid,text) to anon,authenticated;
 grant execute on function public.op_reserva_qr_detalle(text) to anon,authenticated;
 grant execute on function public.op_reserva_qr_resolver(text,text) to anon,authenticated;

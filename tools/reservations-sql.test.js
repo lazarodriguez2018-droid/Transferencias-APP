@@ -1,7 +1,7 @@
 const fs=require('fs'),assert=require('assert');
 const sql=fs.readFileSync('supabase/migrations/20260909010000_control_reservas.sql','utf8');
 for(const table of ['op_reservas','op_reserva_items','op_reserva_motivos','op_reserva_comentarios','op_reserva_eventos','op_reserva_enlaces','op_reserva_invitados','op_recepcion_reservas'])assert.match(sql,new RegExp(`create table if not exists public\\.${table}\\b`),`Falta ${table}`);
-for(const fn of ['op_reserva_crear','op_reserva_listar','op_reserva_detalle','op_reserva_actualizar_item','op_reserva_pedidos_disponibles','op_reserva_vincular_pedido','op_reserva_cambiar_estado','op_reserva_finalizar','op_reserva_cancelar','op_reserva_excepcion','op_reserva_qr_detalle','op_reserva_invitado_entrar','op_recepcion_reservas_datos','op_recepcion_confirmar_reserva'])assert.match(sql,new RegExp(`function public\\.${fn}\\(`),`Falta ${fn}`);
+for(const fn of ['op_reserva_crear','op_reserva_listar','op_reserva_detalle','op_reserva_actualizar_item','op_reserva_pedidos_disponibles','op_reserva_vincular_pedido','op_reserva_cambiar_estado','op_reserva_finalizar','op_reserva_cancelar','op_reserva_corregir_cierre','op_reserva_excepcion','op_reserva_qr_detalle','op_reserva_invitado_entrar','op_recepcion_reservas_datos','op_recepcion_confirmar_reserva'])assert.match(sql,new RegExp(`function public\\.${fn}\\(`),`Falta ${fn}`);
 assert.match(sql,/make_interval\(hours=>v_horas\)/,'El vencimiento debe usar las horas configuradas');
 assert.match(sql,/estado_antes_vencido=estado,estado='vencido'/,'Debe conservar el estado al vencer');
 assert.match(sql,/estado=restaurar,estado_antes_vencido=null,excepcion_hasta=p_hasta/,'La excepción debe restaurar el proceso');
@@ -12,6 +12,7 @@ assert.match(sql,/cron\.schedule\([\s\S]*control-reservas-vencimientos[\s\S]*op_
 assert.match(sql,/cantidad_local \+ cantidad_entregada <= cantidad/,'Una entrega parcial no debe permitir volver a contar unidades ya entregadas');
 assert.match(sql,/set qr_token=v_token,qr_token_hash=/,'El QR impreso debe quedar asociado de forma estable a la reserva');
 assert.match(sql,/token:=r\.qr_token;[\s\S]*if token is null then/,'Reimprimir no debe invalidar etiquetas anteriores');
+assert.match(sql,/function public\.op_reserva_corregir_cierre[\s\S]*cantidad_local=least\(cantidad-nueva,cantidad_local\+devueltas\)/,'Deshacer una entrega debe devolver las unidades al seguimiento local');
 assert.match(sql,/alter table public\.op_reservas enable row level security/,'Reservas debe usar RLS');
 assert.match(sql,/grant execute on function public\.op_reserva_qr_detalle\(text\) to anon,authenticated/,'El QR de solo lectura debe ser público');
 assert.doesNotMatch(sql,/grant (?:all|select|insert|update|delete)[^;]+op_reservas[^;]+to anon/i,'Anónimos no deben acceder directamente a las tablas');
