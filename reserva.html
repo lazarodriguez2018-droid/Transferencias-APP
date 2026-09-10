@@ -17,16 +17,16 @@
   <main class="lookup-shell">
     <header class="brand"><img src="/logo.svg?v=2" alt="Sucaneitor"><div><strong>Sucaneitor</strong><span>Identificación de mercadería</span></div></header>
     <section class="loading" id="lookup-loading"><span class="spinner"></span><p>Consultando la reserva…</p></section>
-    <section class="error" id="lookup-error" hidden><b>!</b><h1>Este QR no está disponible</h1><p id="lookup-error-message">La etiqueta pudo haber sido reemplazada.</p></section>
+    <section class="error" id="lookup-error" hidden><b>!</b><h1>Este QR no está vigente</h1><p id="lookup-error-message">Solicitá una etiqueta actualizada en el local.</p></section>
     <section id="lookup-content" hidden>
       <article class="hero"><div><span class="eyebrow" id="lookup-code"></span><h1 id="lookup-customer"></h1><p id="lookup-reason"></p></div><span class="status" id="lookup-state"></span></article>
       <div class="alert" id="lookup-alert" hidden></div>
       <div class="grid"><article class="card"><h2>Datos</h2><div id="lookup-data"></div></article><article class="card"><h2>Productos</h2><div id="lookup-products"></div></article></div>
-      <article class="manage"><div><strong>¿Necesitás continuar el proceso?</strong><span>Para cambiar cantidades, estados o comentarios se requiere acceso al módulo.</span></div><a class="primary" id="lookup-manage" href="/">Iniciar sesión para gestionar</a></article>
+      <article class="manage"><div><strong>Gestión de la reserva</strong><span>Ingresá al módulo para actualizar cantidades, estados o comentarios.</span></div><a class="primary" id="lookup-manage" href="/">Iniciar sesión</a></article>
     </section>
   </main>
   <script src="/operaciones/cloud-config.js"></script>
-  <script src="/reservas/reserva-engine.js?v=1"></script>
-  <script src="/reservas/consulta.js?v=2"></script>
+  <script src="/reservas/reserva-engine.js?v=2"></script>
+  <script src="/reservas/consulta.js?v=3"></script>
 </body>
 </html>

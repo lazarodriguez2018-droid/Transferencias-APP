@@ -5,7 +5,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
   const labels={buscando:'Buscando mercadería',en_transito:'En tránsito',recibido:'Recibida',separando:'Separando',listo:'Lista para entregar',avisado:'Cliente avisado',parcial:'Entrega parcial',vencido:'Más de 48 horas',completado:'Completada',cancelado:'Cancelada'};
-  const sources={local:'Ya estaba en el local',proveedor:'Esperando proveedor',pedido_local:'Pedido a otro local',reposicion:'Próxima reposición',remito:'Remito',otro:'Otra procedencia'};
+  const sources={local:'Disponible en el local',proveedor:'Esperando proveedor',pedido_local:'Pedido a otro local',reposicion:'Próxima reposición',remito:'Remito',otro:'Otra procedencia'};
   const outcomes={retiro_cliente:'Retiró el cliente',reparto:'Enviado por reparto',envio_otro_local:'Enviado a otro local',uso_interno:'Utilizado internamente',no_retirado:'No fue retirado; volvió a exhibición',otro:'Otro resultado'};
   function n(value){const x=Number(value);return Number.isFinite(x)?x:0;}
   function customer(row){return [row?.cliente_nombre,row?.cliente_apellido].filter(Boolean).join(' ').trim()||'Sin cliente';}

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101117">
   <meta name="robots" content="noindex,nofollow,noarchive">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co; base-uri 'self'; form-action 'self'">
-  <title>Control de reservas · Sucaneitor</title>
+  <title>Reservas de mercadería · Sucaneitor</title>
   <link rel="icon" type="image/svg+xml" href="/logo.svg?v=2">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700;800&display=swap">
@@ -14,32 +14,32 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-  <div class="boot" id="boot"><img src="/logo.svg?v=2" alt=""><span class="spinner"></span><p>Abriendo Control de reservas…</p></div>
+  <div class="boot" id="boot"><img src="/logo.svg?v=2" alt=""><span class="spinner"></span><p>Cargando reservas…</p></div>
 
   <section class="access" id="access-screen" hidden>
     <article class="access-card">
-      <a class="brand" href="/"><img src="/logo.svg?v=2" alt="Sucaneitor"><div><strong>Sucaneitor</strong><span>Control de reservas</span></div></a>
-      <span class="eyebrow">ACCESO RÁPIDO · <b id="access-local">LOCAL</b></span>
-      <h1>Registrá quién separó la mercadería y para qué</h1>
-      <p>Este enlace permite trabajar únicamente con las reservas del local indicado.</p>
+      <a class="brand" href="/"><img src="/logo.svg?v=2" alt="Sucaneitor"><div><strong>Sucaneitor</strong><span>Reservas de mercadería</span></div></a>
+      <span class="eyebrow">ACCESO DEL LOCAL · <b id="access-local">LOCAL</b></span>
+      <h1>Ingresá para gestionar las reservas del local</h1>
+      <p>Registrá, ubicá y entregá la mercadería reservada desde un único lugar.</p>
       <form id="access-form">
         <label class="field"><span>Contraseña de la empresa</span><input class="input" id="access-key" type="password" autocomplete="current-password" required></label>
         <label class="field"><span>Tu nombre y apellido</span><input class="input" id="access-name" maxlength="80" autocomplete="name" required placeholder="Ej: Martina Pérez"></label>
         <p class="form-error" id="access-error"></p>
-        <button class="button primary full" type="submit">Entrar al módulo</button>
+        <button class="button primary full" type="submit">Ingresar</button>
       </form>
       <a class="button secondary full" href="/">Iniciar sesión con mi cuenta</a>
     </article>
   </section>
 
   <section class="access" id="access-missing" hidden>
-    <article class="access-card compact"><img class="missing-logo" src="/logo.svg?v=2" alt="Sucaneitor"><h1>Necesitás un enlace del local</h1><p>Pedile a un supervisor el enlace rápido o ingresá con tu cuenta.</p><a class="button primary full" href="/">Ir a iniciar sesión</a></article>
+    <article class="access-card compact"><img class="missing-logo" src="/logo.svg?v=2" alt="Sucaneitor"><h1>Acceso al local no disponible</h1><p>Abrí el enlace asignado a tu local o iniciá sesión con tu cuenta.</p><a class="button primary full" href="/">Iniciar sesión</a></article>
   </section>
 
   <div class="app" id="app" hidden>
     <header class="topbar">
-      <a class="brand" href="/"><img src="/logo.svg?v=2" alt="Sucaneitor"><div><strong>Control de reservas</strong><span id="current-local">—</span></div></a>
-      <div class="top-actions"><span class="actor" id="actor-name"></span><button class="button secondary small" id="guide-button" type="button">Guía</button><button class="button secondary small" id="refresh-button" type="button">↻ Actualizar</button><a class="button secondary small" href="/">Módulos</a></div>
+      <a class="brand" href="/"><img src="/logo.svg?v=2" alt="Sucaneitor"><div><strong>Reservas de mercadería</strong><span id="current-local">—</span></div></a>
+      <div class="top-actions"><span class="actor" id="actor-name"></span><button class="button secondary small" id="guide-button" type="button">Ayuda</button><button class="button secondary small" id="refresh-button" type="button">↻ Actualizar</button><a class="button secondary small" href="/">Módulos</a></div>
     </header>
     <nav class="tabs" aria-label="Secciones">
       <button class="tab active" data-view="active" type="button">Activas <b id="active-count">0</b></button>
@@ -50,30 +50,30 @@
 
     <main class="shell">
       <section class="view active" id="view-active">
-        <div class="page-head"><div><span class="eyebrow">MERCADERÍA EN SEGUIMIENTO</span><h1>Reservas activas</h1><p>Encontrá rápidamente para quién es cada pedido y desde cuándo está en el local.</p></div><button class="button primary" type="button" data-open-new>+ Nueva reserva</button></div>
+        <div class="page-head"><div><span class="eyebrow">RESERVAS DEL LOCAL</span><h1>Mercadería reservada</h1><p>Buscá por cliente, producto, código o responsable y consultá el estado de cada reserva.</p></div><button class="button primary" type="button" data-open-new>+ Nueva reserva</button></div>
         <div class="stats" id="stats"></div>
         <div class="filters"><input class="input" id="active-search" type="search" placeholder="Cliente, teléfono, producto, código o responsable…"><select class="input" id="active-state"><option value="">Todos los estados</option><option value="buscando">Buscando mercadería</option><option value="en_transito">En tránsito</option><option value="separando">Separando</option><option value="listo">Lista</option><option value="avisado">Cliente avisado</option><option value="parcial">Entrega parcial</option><option value="vencido">Más de 48 h</option></select><select class="input supervisor-local" id="active-local" hidden></select></div>
         <div class="reservation-grid" id="active-list"></div>
       </section>
 
       <section class="view" id="view-history">
-        <div class="page-head"><div><span class="eyebrow">REGISTRO CONSERVADO</span><h1>Historial</h1><p>Reservas completadas o canceladas, con toda su trazabilidad.</p></div></div>
+        <div class="page-head"><div><span class="eyebrow">RESERVAS CERRADAS</span><h1>Historial</h1><p>Consultá las reservas completadas o canceladas y sus movimientos.</p></div></div>
         <div class="filters"><input class="input" id="history-search" type="search" placeholder="Buscar en el historial…"><select class="input" id="history-state"><option value="">Todos</option><option value="completado">Completadas</option><option value="cancelado">Canceladas</option></select><select class="input supervisor-local" id="history-local" hidden></select></div>
         <div class="reservation-grid" id="history-list"></div>
       </section>
 
       <section class="view" id="view-new">
-        <div class="page-head"><div><span class="eyebrow">NUEVO SEGUIMIENTO</span><h1 id="form-title">Crear reserva</h1><p id="form-subtitle">Indicá el origen de cada producto y registrá todo antes de separarlo.</p></div></div>
+        <div class="page-head"><div><span class="eyebrow">NUEVA RESERVA</span><h1 id="form-title">Crear reserva</h1><p id="form-subtitle">Completá los datos del destinatario y agregá toda la mercadería reservada.</p></div></div>
         <form class="builder" id="reservation-form">
-          <article class="panel step-panel"><div class="step-number">1</div><div class="panel-head"><h2>Local y responsable</h2><p>El origen, la fecha estimada y el remito se registran después en cada producto.</p></div>
-            <div class="form-grid"><label class="field"><span>Local</span><select class="input" id="new-local" required></select></label><label class="field"><span>Responsable *</span><input class="input" id="new-responsible" maxlength="80" required></label><label class="field full"><span>Referencia externa (opcional)</span><input class="input" id="new-reference" maxlength="120" placeholder="Pedido web, ticket, CX…"></label><label class="field full"><span>Comentario general</span><textarea class="input" id="new-reason-comment" maxlength="1000" placeholder="Información necesaria para entender el caso"></textarea></label></div>
+          <article class="panel step-panel"><div class="step-number">1</div><div class="panel-head"><h2>Local y responsable</h2><p>Seleccioná el local y la persona encargada del seguimiento.</p></div>
+            <div class="form-grid"><label class="field"><span>Local</span><select class="input" id="new-local" required></select></label><label class="field"><span>Responsable *</span><input class="input" id="new-responsible" maxlength="80" required></label><label class="field full"><span>Referencia (opcional)</span><input class="input" id="new-reference" maxlength="120" placeholder="Pedido web, ticket o comprobante"></label><label class="field full"><span>Observaciones</span><textarea class="input" id="new-reason-comment" maxlength="1000" placeholder="Información útil para el equipo"></textarea></label></div>
           </article>
-          <article class="panel step-panel"><div class="step-number">2</div><div class="panel-head"><h2>Cliente o destinatario</h2><p>Todos los datos son opcionales. El teléfono permite reutilizar la agenda.</p></div>
+          <article class="panel step-panel"><div class="step-number">2</div><div class="panel-head"><h2>Cliente o destinatario</h2><p>Buscá un cliente existente o completá los datos necesarios para identificarlo.</p></div>
             <div class="customer-search"><input class="input" id="customer-search" type="search" placeholder="Buscar cliente por nombre o teléfono…"><div class="floating-results" id="customer-results" hidden></div></div>
             <input type="hidden" id="customer-id">
             <div class="form-grid"><label class="field"><span>Nombre</span><input class="input" id="customer-name" maxlength="120"></label><label class="field"><span>Apellido</span><input class="input" id="customer-surname" maxlength="120"></label><label class="field"><span>Teléfono</span><input class="input" id="customer-phone" maxlength="40" type="tel"></label><label class="field"><span>Documento</span><input class="input" id="customer-document" maxlength="50"></label><label class="field full"><span>Dirección</span><input class="input" id="customer-address" maxlength="240"></label></div>
           </article>
-          <article class="panel step-panel"><div class="step-number">3</div><div class="panel-head"><h2>Productos y origen</h2><p>Cada producto puede estar en el local, esperar proveedor o pedirse a otro local. Si una cantidad se divide entre orígenes, usá “Dividir origen”.</p></div>
+          <article class="panel step-panel"><div class="step-number">3</div><div class="panel-head"><h2>Productos y origen</h2><p>Agregá todos los productos y seleccioná el origen de cada uno. Usá “Dividir origen” cuando una misma cantidad llegue desde lugares distintos.</p></div>
             <div class="product-search"><div class="search-row"><input class="input" id="product-search" type="search" placeholder="Buscar por nombre o código…"><button class="button secondary" id="custom-product-button" type="button">Agregar manualmente</button></div><div class="floating-results" id="product-results" hidden></div></div>
             <div class="items" id="new-items"><div class="empty">Buscá un producto para comenzar.</div></div>
           </article>
@@ -81,14 +81,14 @@
         </form>
       </section>
 
-      <section class="view" id="view-settings">
-        <div class="page-head"><div><span class="eyebrow">SOLO ADMINISTRADORES</span><h1>Configuración</h1><p>Ubicación, impresora, calendarios de recepción y enlace rápido.</p></div></div>
+      <section class="view admin-only" id="view-settings" hidden>
+        <div class="page-head"><div><span class="eyebrow">ADMINISTRACIÓN</span><h1>Configuración</h1><p>Ajustes de ubicación, impresión, recepciones y accesos de los locales.</p></div></div>
         <label class="field settings-local"><span>Configurar local</span><select class="input" id="settings-local"></select></label>
         <div class="settings-grid">
-          <article class="panel"><div class="panel-head"><h2>Orígenes operativos</h2><p>Se eligen por producto. El encabezado se calcula automáticamente y muestra “Origen mixto” cuando corresponde.</p></div><div class="settings-list"><div class="setting-row"><span>Pedido a otro local</span></div><div class="setting-row"><span>Esperando proveedor</span></div><div class="setting-row"><span>Ya estaba en local</span></div></div></article>
-          <article class="panel"><div class="panel-head"><h2>Plazo e impresión</h2><p>La alerta se activa a las 48 horas exactas desde que la primera mercadería queda separada. La etiqueta usa el rollo térmico de 80 mm.</p></div><label class="field"><span>Lugar donde se guardan las reservas</span><input class="input" id="settings-location" maxlength="160" placeholder="Ej: Estantería junto al depósito"></label><label class="field"><span>Ruta de impresora</span><input class="input mono" id="settings-printer" placeholder="\\DESKTOP-A09RVUK\Star BSC10"></label><p class="printer-note">En Chrome elegí papel “80 mm × 200 mm”, escala 100 %, sin márgenes y sin “Ajustar a página”.</p><div class="settings-actions"><button class="button primary" id="save-settings" type="button">Guardar configuración</button><button class="button secondary" id="print-calibration" type="button">Imprimir prueba BSC10</button></div></article>
-          <article class="panel wide"><div class="panel-head"><h2>Calendarios de recepción</h2><p>Indican qué días este local suele recibir de cada proveedor o desde cada local de origen. Solo orientan la fecha estimada; no registran una llegada automáticamente.</p></div><div class="schedule-form"><input type="hidden" id="schedule-id"><label class="field"><span>Origen</span><select class="input" id="schedule-type"><option value="proveedor">Proveedor</option><option value="local">Otro local</option></select></label><label class="field" id="schedule-provider-field"><span>Proveedor</span><input class="input" id="schedule-provider" maxlength="120" placeholder="Ej: Distribuidora X"></label><label class="field" id="schedule-local-field" hidden><span>Local que envía</span><select class="input" id="schedule-origin-local"></select></label><fieldset class="days schedule-days"><legend>Días habituales para este origen</legend><label><input type="checkbox" value="1"> Lun</label><label><input type="checkbox" value="2"> Mar</label><label><input type="checkbox" value="3"> Mié</label><label><input type="checkbox" value="4"> Jue</label><label><input type="checkbox" value="5"> Vie</label><label><input type="checkbox" value="6"> Sáb</label><label><input type="checkbox" value="0"> Dom</label></fieldset><div class="settings-actions"><button class="button primary" id="save-schedule" type="button">Agregar calendario</button><button class="button secondary" id="cancel-schedule-edit" type="button" hidden>Cancelar edición</button></div></div><div class="schedule-list" id="schedule-list"></div></article>
-          <article class="panel wide"><div class="panel-head"><h2>Enlace rápido del local</h2><p>Los empleados sin cuenta ingresan con la contraseña de empresa y dejan registrado su nombre.</p></div><div id="quick-link-panel" class="quick-link-panel"></div></article>
+          <article class="panel"><div class="panel-head"><h2>Opciones de origen</h2><p>Estas opciones están disponibles para cada producto de una reserva.</p></div><div class="settings-list"><div class="setting-row"><span>Pedido a otro local</span></div><div class="setting-row"><span>Esperando proveedor</span></div><div class="setting-row"><span>Disponible en el local</span></div></div></article>
+          <article class="panel"><div class="panel-head"><h2>Plazo e impresión</h2><p>Las reservas vencen 48 horas después de separar la primera unidad. Las etiquetas se imprimen en papel térmico de 80 mm.</p></div><label class="field"><span>Ubicación de la mercadería reservada</span><input class="input" id="settings-location" maxlength="160" placeholder="Ej: Estantería junto al depósito"></label><label class="field"><span>Ruta de impresora</span><input class="input mono" id="settings-printer" placeholder="\\DESKTOP-A09RVUK\Star BSC10"></label><p class="printer-note">En Chrome seleccioná papel “80 mm × 200 mm”, escala 100 %, sin márgenes y sin “Ajustar a página”.</p><div class="settings-actions"><button class="button primary" id="save-settings" type="button">Guardar configuración</button><button class="button secondary" id="print-calibration" type="button">Imprimir prueba BSC10</button></div></article>
+          <article class="panel wide"><div class="panel-head"><h2>Días de recepción</h2><p>Definí los días en que el local suele recibir mercadería de cada proveedor o de otro local. Esta información se muestra como ayuda al cargar la fecha estimada.</p></div><div class="schedule-form"><input type="hidden" id="schedule-id"><label class="field"><span>Origen</span><select class="input" id="schedule-type"><option value="proveedor">Proveedor</option><option value="local">Otro local</option></select></label><label class="field" id="schedule-provider-field"><span>Proveedor</span><input class="input" id="schedule-provider" maxlength="120" placeholder="Ej: Distribuidora X"></label><label class="field" id="schedule-local-field" hidden><span>Local que envía</span><select class="input" id="schedule-origin-local"></select></label><fieldset class="days schedule-days"><legend>Días habituales de recepción</legend><label><input type="checkbox" value="1"> Lun</label><label><input type="checkbox" value="2"> Mar</label><label><input type="checkbox" value="3"> Mié</label><label><input type="checkbox" value="4"> Jue</label><label><input type="checkbox" value="5"> Vie</label><label><input type="checkbox" value="6"> Sáb</label><label><input type="checkbox" value="0"> Dom</label></fieldset><div class="settings-actions"><button class="button primary" id="save-schedule" type="button">Agregar calendario</button><button class="button secondary" id="cancel-schedule-edit" type="button" hidden>Cancelar edición</button></div></div><div class="schedule-list" id="schedule-list"></div></article>
+          <article class="panel wide"><div class="panel-head"><h2>Acceso rápido del local</h2><p>Generá un enlace para que el equipo del local ingrese con la contraseña de la empresa y registre su nombre.</p></div><div id="quick-link-panel" class="quick-link-panel"></div></article>
         </div>
       </section>
     </main>
@@ -101,7 +101,7 @@
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.12.3/dist/JsBarcode.all.min.js"></script>
   <script src="/operaciones/cloud-config.js"></script>
-  <script src="/reservas/reserva-engine.js?v=1"></script>
-  <script src="/reservas/reservas.js?v=7"></script>
+  <script src="/reservas/reserva-engine.js?v=2"></script>
+  <script src="/reservas/reservas.js?v=8"></script>
 </body>
 </html>
