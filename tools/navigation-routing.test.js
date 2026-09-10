@@ -29,7 +29,7 @@ assert.match(portalHtml, /<h1>Inicio<\/h1>/,
   'El selector debe orientar al usuario para elegir su tarea');
 assert.doesNotMatch(portalHtml, /SUCANEITOR OPERACIONES|Administrar padrón de mercaderías|Los cuatro módulos comparten/,
   'El selector no debe conservar el texto ni el botón eliminados');
-assert.match(portalCss, /#view-hub \.operations-grid\{grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/,
+assert.match(portalCss, /#view-hub \.operations-grid\{grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/,
   'En PC los módulos deben tener accesos compactos independientes');
 assert.doesNotMatch(operationsHtml, /data-directory-module|directory-module-nav/,
   'El cambio de módulo debe hacerse desde Inicio');

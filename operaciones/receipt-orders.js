@@ -29,20 +29,24 @@
 })(typeof window!=='undefined'?window:globalThis);
 
 let receiptLastOrderCode='',receiptOrderBusy=false;
+const receiptOrderNormalize=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 function receiptOrderData(){return receiptState?.order_panel?.orders||[];}
+function receiptReservationData(){return receiptState?.reservation_panel?.reservations||[];}
 function receiptOrderLink(id){return `/?module=pedidos&pedido=${encodeURIComponent(id)}`;}
+function receiptReservationLink(id){return `/reservas?open=${encodeURIComponent(id)}`;}
 function receiptOrderDate(value){if(!value)return 'Sin registrar';const d=new Date(value);return Number.isNaN(d.getTime())?'Sin registrar':d.toLocaleString('es-UY',{dateStyle:'short',timeStyle:'short'});}
 function receiptApplyOrderPanel(data,code){
   if(data.order_panel){receiptState.order_panel=data.order_panel;receiptState.orders=data.order_panel.orders.filter(o=>o.linked);}
   if(code)receiptLastOrderCode=code;
 }
 function receiptOrderProductNotice(sku){
-  const ui=SucanReceiptOrders,orders=ui.matching(receiptOrderData(),sku);
-  if(!orders.length)return '';
-  return `<aside class="receipt-order-notice" role="status"><strong>Este producto figura en ${orders.length===1?'un pedido':`${orders.length} pedidos`}</strong>${orders.map(o=>`<div><a href="${receiptOrderLink(o.id)}" target="_blank" rel="noopener">Ver pedido #${ui.code(o.id)} · ${ui.html(o.cliente||'Sin cliente')}</a><span>${ui.html(ui.relations[o.relation]||'Revisar pedido')} · ${ui.pending(o)} unidades pendientes en el pedido</span></div>`).join('')}<button type="button" class="btn btn-s" onclick="showReceiptTab('pedidos')">Revisar pedidos esperados</button></aside>`;
+  const ui=SucanReceiptOrders,orders=ui.matching(receiptOrderData(),sku),reservations=receiptReservationData().filter(r=>(r.items||[]).some(i=>String(i.codigo)===String(sku)&&i.en_remito));
+  if(!orders.length&&!reservations.length)return '';
+  const total=orders.length+reservations.length;
+  return `<aside class="receipt-order-notice" role="status"><strong>Este producto está esperado en ${total===1?'un seguimiento':`${total} seguimientos`}</strong>${orders.map(o=>`<div><a href="${receiptOrderLink(o.id)}" target="_blank" rel="noopener">Ver pedido #${ui.code(o.id)} · ${ui.html(o.cliente||'Sin cliente')}</a><span>${ui.html(ui.relations[o.relation]||'Revisar pedido')} · ${ui.pending(o)} unidades pendientes en el pedido</span></div>`).join('')}${reservations.map(r=>`<div><a href="${receiptReservationLink(r.id)}" target="_blank" rel="noopener">Ver reserva #${ui.html(r.codigo)} · ${ui.html([r.cliente_nombre,r.cliente_apellido].filter(Boolean).join(' ')||'Sin cliente')}</a><span>${r.linked?'Vinculada a este remito':'Requiere confirmar la vinculación'}</span></div>`).join('')}<button type="button" class="btn btn-s" onclick="showReceiptTab('pedidos')">Revisar pedidos y reservas</button></aside>`;
 }
 function renderReceiptOrderNotice(){
-  const camera=document.getElementById('receipt-camera-orders');if(camera)camera.hidden=!SucanReceiptOrders.matching(receiptOrderData(),receiptCurrentCode||receiptLastOrderCode).length;
+  const code=receiptCurrentCode||receiptLastOrderCode,camera=document.getElementById('receipt-camera-orders');if(camera)camera.hidden=!(SucanReceiptOrders.matching(receiptOrderData(),code).length||receiptReservationData().some(r=>(r.items||[]).some(i=>String(i.codigo)===String(code)&&i.en_remito)));
   const host=document.getElementById('receipt-order-notice');if(!host)return;
   host.innerHTML=receiptOrderProductNotice(receiptCurrentCode||receiptLastOrderCode);host.hidden=!host.innerHTML;
 }
@@ -50,13 +54,13 @@ function renderReceiptOrders(){
   if(!receiptState)return;
   const ui=SucanReceiptOrders,all=receiptOrderData(),canReceive=receiptState.order_panel?.can_receive&&receiptCanEdit(),canNotify=receiptState.order_panel?.can_notify;
   const counter=document.getElementById('receipt-orders-count');
-  if(counter){const count=all.filter(o=>ui.pending(o)>0||o.cliente_aviso_pendiente).length;counter.textContent=count;counter.classList.toggle('show',count>0);}
+  if(counter){const count=all.filter(o=>ui.pending(o)>0||o.cliente_aviso_pendiente).length+receiptReservationData().length;counter.textContent=count;counter.classList.toggle('show',count>0);}
   const route=document.getElementById('receipt-orders-route');if(route)route.textContent=`${receiptState.origin} → ${receiptState.destination} · Remito ${receiptState.document_number}`;
   const summary=document.getElementById('receipt-orders-list');
-  if(summary)summary.innerHTML=`<p>${all.filter(o=>o.linked).length} pedidos vinculados · ${all.filter(o=>o.cliente_aviso_pendiente).length} clientes por avisar</p><button class="btn btn-s" onclick="showReceiptTab('pedidos')">Ver pedidos esperados</button>`;
+  if(summary)summary.innerHTML=`<p>${all.filter(o=>o.linked).length} pedidos vinculados · ${receiptReservationData().length} reservas coincidentes · ${all.filter(o=>o.cliente_aviso_pendiente).length} clientes por avisar</p><button class="btn btn-s" onclick="showReceiptTab('pedidos')">Ver pedidos y reservas</button>`;
   const host=document.getElementById('receipt-expected-orders');if(!host)return;
   const orders=ui.filtered(all,document.getElementById('receipt-order-search')?.value,document.getElementById('receipt-order-filter')?.value);
-  host.innerHTML=orders.map(o=>{
+  const orderHtml=orders.map(o=>{
     const quantity=ui.allocation(o).reduce((sum,p)=>sum+p.quantity,0),verify=ui.lines(o).some(p=>p.en_remito&&p.verificar);
     const receivable=canReceive&&ui.canLink(o),remaining=ui.pending(o);
     const products=ui.lines(o).map(p=>`<li><div><strong>${ui.html(p.nombre)}</strong><span>Código ${ui.html(p.codigo)} · ${p.en_remito?`En remito: ${p.remito_esperado} · Controlado: ${p.remito_recibido}${p.verificar?' · Control final pendiente':''}`:'No figura en este remito'}</span></div><div class="receipt-order-quantity"><b>${Number(p.cantidad_recibida||0)} / ${Number(p.cantidad_aceptada??p.cantidad)}</b><span>recibido en el pedido</span><span>${Number(p.asignada_aqui||0)} de este remito</span></div></li>`).join('');
@@ -71,8 +75,16 @@ function renderReceiptOrders(){
       ${o.cliente_aviso_pendiente?`<strong>Avisar al cliente</strong>${canNotify?`${o.telefono?`<button class="btn btn-g" data-contact-order="${ui.html(o.id)}" onclick="receiptContactOrder(this.dataset.contactOrder)">Abrir WhatsApp</button>`:''}<button class="btn btn-s" data-notified-order="${ui.html(o.id)}" onclick="receiptMarkCustomerNotified(this.dataset.notifiedOrder)">Marcar cliente avisado</button>`:'<span class="tm">El local de destino debe contactar al cliente.</span>'}`:o.cliente_avisado_at?`<span class="tm">Cliente avisado: ${receiptOrderDate(o.cliente_avisado_at)}</span>`:''}
       </div>${o.cliente_aviso_pendiente&&canNotify?'<p class="tm">El mensaje no se envía automáticamente. Marcá el aviso después de contactar al cliente.</p>':''}
       </article>`;
-  }).join('')||`<div class="repo-empty">${all.length?'No hay pedidos con estos filtros.':'No hay pedidos pendientes desde este origen.'}</div>`;
+  }).join('');
+  const query=receiptOrderNormalize(document.getElementById('receipt-order-search')?.value||''),filter=document.getElementById('receipt-order-filter')?.value||'all';
+  const reservations=receiptReservationData().filter(r=>(filter!=='linked'||r.linked)&&(filter!=='notify')&&(!query||receiptOrderNormalize([r.codigo,r.cliente_nombre,r.cliente_apellido,r.motivo_nombre,...(r.items||[]).flatMap(i=>[i.codigo,i.nombre])].join(' ')).includes(query)));
+  const reservationHtml=reservations.map(r=>`<article class="receipt-order reservation-expected"><div class="receipt-order-head"><div><h2>Reserva #${ui.html(r.codigo)} · ${ui.html([r.cliente_nombre,r.cliente_apellido].filter(Boolean).join(' ')||'Sin cliente')}</h2><span>${ui.html(r.motivo_nombre)} · ${ui.html(r.estado)}</span></div><a class="btn btn-s" href="${receiptReservationLink(r.id)}" target="_blank" rel="noopener">Ver reserva ↗</a></div><p class="receipt-order-relation">${r.linked?'Vinculada a este control':r.relation==='remito'?'Mismo número de remito':'Coincidencia por fecha y productos · confirmar'}</p><ul class="receipt-order-products">${(r.items||[]).map(i=>`<li><div><strong>${ui.html(i.nombre)}</strong><span>Código ${ui.html(i.codigo)} · ${i.en_remito?`En remito: ${i.remito_esperado} · Controlado: ${i.remito_recibido}`:'No figura en este remito'}</span></div><div class="receipt-order-quantity"><b>${i.cantidad_local} / ${i.cantidad}</b><span>ya en el local</span></div></li>`).join('')}</ul><div class="receipt-order-actions">${!r.linked&&receiptState.reservation_panel?.can_link&&receiptCanEdit()?`<button class="btn btn-p" data-link-reservation="${ui.html(r.id)}" onclick="receiptConfirmReservation(this.dataset.linkReservation)">Vincular a este remito</button>`:r.linked?'<strong>Se actualizará al cerrar el control</strong>':''}</div></article>`).join('');
+  host.innerHTML=(reservationHtml?`<div class="receipt-section-title">Reservas de mercadería</div>${reservationHtml}`:'')+(orderHtml?`<div class="receipt-section-title">Pedidos entre locales</div>${orderHtml}`:'')||`<div class="repo-empty">No hay pedidos ni reservas con estos filtros.</div>`;
   renderReceiptOrderNotice();
+}
+async function receiptConfirmReservation(id){
+  if(receiptOrderBusy||!receiptCanEdit())return;receiptOrderBusy=true;
+  try{const confirmed=await openAppDialog({title:'Vincular reserva al remito',subtitle:'Confirmá que la mercadería controlada corresponde a esta reserva.',icon:'▣',confirmText:'Vincular reserva',bodyHtml:'<p>Al cerrar el control, las unidades recibidas se registrarán en la reserva y comenzará su plazo de 48 horas.</p>'});if(confirmed!==true)return;const {data,error}=await window.SucanCloud.db.rpc('op_recepcion_confirmar_reserva',{p_recepcion:sessionId,p_reserva:id});if(error)throw error;receiptState.reservation_panel=data;renderReceiptOrders();renderReceiptOrderNotice();toast('Reserva vinculada a este remito.','s');}catch(error){toast(error.message||'No se pudo vincular la reserva.','e');}finally{receiptOrderBusy=false;}
 }
 async function receiptConfirmOrder(id){
   if(receiptOrderBusy||!receiptCanEdit())return;

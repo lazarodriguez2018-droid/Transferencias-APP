@@ -764,7 +764,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
   <div class="tab active" onclick="showReceiptTab('control')" id="receipt-tab-control"><span class="tab-icon">⌕</span><span>Controlar</span></div>
   <div class="tab" onclick="showReceiptTab('lista')" id="receipt-tab-lista"><span class="tab-icon">☷</span><span>Lista</span><span class="tab-cnt" id="receipt-list-count">0</span></div>
   <div class="tab" onclick="showReceiptTab('extras')" id="receipt-tab-extras"><span class="tab-icon">＋</span><span>Extras</span></div>
-  <button type="button" class="tab" onclick="showReceiptTab('pedidos')" id="receipt-tab-pedidos"><span class="tab-icon" aria-hidden="true">▣</span><span class="receipt-tab-label">Pedidos esperados</span><span class="tab-cnt" id="receipt-orders-count">0</span></button>
+  <button type="button" class="tab" onclick="showReceiptTab('pedidos')" id="receipt-tab-pedidos"><span class="tab-icon" aria-hidden="true">▣</span><span class="receipt-tab-label">Pedidos y reservas</span><span class="tab-cnt" id="receipt-orders-count">0</span></button>
   <div class="tab" onclick="showReceiptTab('resumen')" id="receipt-tab-resumen"><span class="tab-icon">▦</span><span>Resumen</span></div>
   <div class="tab" onclick="showReceiptTab('config')" id="receipt-tab-config"><span class="tab-icon">⚙</span><span>Config.</span></div>
 </div>
@@ -871,7 +871,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
 </div>
 
 <div class="page receipt-page" id="receipt-page-pedidos">
-  <div class="page-heading"><div><h1>Pedidos esperados</h1><p id="receipt-orders-route"></p></div><button class="btn btn-s" onclick="refreshReceptionState(true)">↻ Actualizar</button></div>
+  <div class="page-heading"><div><h1>Pedidos y reservas esperados</h1><p id="receipt-orders-route"></p></div><button class="btn btn-s" onclick="refreshReceptionState(true)">↻ Actualizar</button></div>
   <div class="receipt-order-filters"><label>Buscar pedido o producto<input id="receipt-order-search" class="input" type="search" placeholder="Cliente, pedido, nombre o código" oninput="renderReceiptOrders()"></label><label>Mostrar<select id="receipt-order-filter" class="input" onchange="renderReceiptOrders()"><option value="all">Todos los pedidos de este origen</option><option value="linked">En este remito</option><option value="pending">Pendientes de recibir</option><option value="notify">Clientes por avisar</option></select></label></div>
   <p class="tm">Confirmá a qué pedido corresponde la mercadería recibida. Los pedidos aún no enviados o de otro remito no se completan con este control.</p>
   <div id="receipt-expected-orders" class="receipt-orders-list"></div>
@@ -900,7 +900,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
   <div class="repo-camera-head"><strong id="receipt-camera-title">Escanear producto recibido</strong><button class="btn btn-s" onclick="closeReceiptScanner()">Cerrar</button></div>
   <div id="receipt-camera-reader" class="repo-camera-reader"></div>
   <div id="receipt-camera-help" class="repo-camera-help">Apuntá al código de barras. Cada lectura válida suma una unidad.</div>
-  <button type="button" class="btn btn-p" id="receipt-camera-orders" hidden onclick="closeReceiptScanner().then(()=>showReceiptTab('pedidos'))">Este producto tiene pedidos · Ver pedidos esperados</button>
+  <button type="button" class="btn btn-p" id="receipt-camera-orders" hidden onclick="closeReceiptScanner().then(()=>showReceiptTab('pedidos'))">Este producto tiene seguimiento · Ver pedidos y reservas</button>
 </div>
 
 <!-- ===== CONTEO ===== -->

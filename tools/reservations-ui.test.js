@@ -1,0 +1,18 @@
+const fs=require('fs'),assert=require('assert');
+const page=fs.readFileSync('reservas/index.html','utf8'),js=fs.readFileSync('reservas/reservas.js','utf8'),css=fs.readFileSync('reservas/reservas.css','utf8'),root=fs.readFileSync('index.html','utf8'),receipt=fs.readFileSync('operaciones/receipt-orders.js','utf8');
+assert.match(root,/href="\/reservas"[\s\S]+Control de reservas/,'El inicio debe mostrar el módulo');
+assert.match(page,/id="access-key"/,'El acceso rápido pide contraseña de empresa');
+assert.match(page,/id="access-name"/,'El acceso rápido registra al empleado');
+assert.match(page,/id="new-reason"/,'La creación pregunta el motivo');
+assert.match(page,/id="new-responsible"/,'La creación pide responsable');
+assert.match(page,/id="customer-document"/,'Los datos opcionales incluyen documento');
+assert.match(page,/data-view="history"/,'Existe historial');
+assert.match(page,/id="settings-printer"/,'La ruta de impresora es configurable');
+assert.match(js,/op_reserva_invitado_entrar/,'El acceso rápido usa una sesión limitada');
+assert.match(js,/procedencia==='pedido_local'/,'El formulario pregunta el local de origen cuando corresponde');
+assert.match(js,/@page\{size:80mm 56mm;margin:0\}/,'La etiqueta usa el perfil de 80 mm');
+assert.match(js,/\/reserva#/,'La etiqueta abre una consulta de solo lectura');
+assert.match(receipt,/receiptReservationData/,'Recepción muestra reservas coincidentes');
+assert.match(receipt,/op_recepcion_confirmar_reserva/,'Recepción permite confirmar la vinculación');
+assert.match(css,/@media\(max-width:780px\)/,'El módulo incluye interfaz móvil');
+console.log('reservations ui contract ok');

@@ -5,9 +5,16 @@ Aplicación web unificada para:
 - inventarios colaborativos;
 - preparación de reposiciones desde XLS;
 - pedidos de clientes entre locales;
-- recepción y control colaborativo de remitos.
+- recepción y control colaborativo de remitos;
+- control de mercadería reservada o pendiente para clientes, repartos y uso interno.
 
-Los cuatro módulos comparten autenticación, locales y un único padrón en Supabase.
+Los módulos comparten autenticación, locales y un único padrón en Supabase.
+
+## Control de reservas
+
+`/reservas` registra una reserva completa por cliente o destinatario, con varios productos, responsable, motivo, procedencia y cantidades. Puede crear automáticamente un pedido entre locales o vincular uno ya existente. El ingreso de mercadería también se integra con el control de remitos. Una etiqueta térmica de 80 mm incluye nombre, motivo, fecha y un QR interno de consulta; modificar datos exige autenticación o el enlace rápido privado del local más la contraseña de empresa.
+
+El plazo comienza cuando existe mercadería físicamente en el local. Un trabajo automático revisa vencimientos cada minuto, marca la reserva al superar las horas configuradas —48 de forma predeterminada— y avisa a los usuarios del local. Las entregas parciales, correcciones, excepciones y cierres conservan trazabilidad.
 
 ## Integración de reposiciones y pedidos
 
@@ -23,7 +30,7 @@ Al cerrar, los pedidos entre locales vinculados se comparan contra las unidades 
 
 ## Base de datos
 
-Las migraciones son aditivas. La base operativa está en `supabase/migrations/20260822010000_sucaneitor_operaciones.sql` y el control de remitos en `supabase/migrations/20260824170000_recepcion_remitos.sql`.
+Las migraciones son aditivas. La base operativa está en `supabase/migrations/20260822010000_sucaneitor_operaciones.sql`, el control de remitos en `supabase/migrations/20260824170000_recepcion_remitos.sql` y Control de reservas en `supabase/migrations/20260909010000_control_reservas.sql`. Esta última requiere habilitar Supabase Cron (`pg_cron`) para ejecutar el vencimiento automático.
 
 ## Pruebas
 
@@ -34,6 +41,9 @@ node operaciones/tests/reposition-export.test.js
 node operaciones/tests/reception-engine.test.js
 node operaciones/tests/ui-dialogs.test.js
 node tools/reception-workflow.test.js
+node tools/reservations.test.js
+node tools/reservations-sql.test.js
+node tools/reservations-ui.test.js
 node tools/integration-volume-test.js 12000 100000
 node tools/volume-test.js 100000
 ```

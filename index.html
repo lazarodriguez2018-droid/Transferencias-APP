@@ -420,6 +420,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         <a class="operations-card replenishment" href="/operaciones?module=reposicion"><span class="operations-icon" aria-hidden="true">⇄</span><div><h2>Reposición</h2><p>Juntá mercadería para otros locales y prepará el envío.</p><strong>Abrir Reposición →</strong></div></a>
         <a class="operations-card reception" href="/operaciones?module=recepcion"><span class="operations-icon" aria-hidden="true">⌕</span><div><h2>Control de remitos</h2><p>Controlá lo recibido y registrá las diferencias del remito.</p><strong>Abrir Control de remitos →</strong></div></a>
         <button class="operations-card orders" type="button" onclick="navigateTo('misPedidos')"><span class="operations-icon" aria-hidden="true">📦</span><div><h2>Pedidos entre locales</h2><p>Solicitá productos y seguí cada pedido hasta su llegada.</p><strong>Abrir Pedidos entre locales →</strong></div></button>
+        <a class="operations-card reservations" href="/reservas"><span class="operations-icon" aria-hidden="true">▣</span><div><h2>Control de reservas</h2><p>Identificá la mercadería separada y seguí cada pedido hasta su destino final.</p><strong>Abrir Control de reservas →</strong></div></a>
       </div>
       <p class="operations-home-help">Para trabajar en otro módulo, volvé a Inicio.</p>
     </div>
@@ -623,17 +624,17 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
     <div id="view-agenda" style="display:none">
       <div class="page-header"><div>
         <h1>📒 Agenda de clientes</h1>
-        <p>Buscá y gestioná clientes por nombre o teléfono</p>
+        <p>Buscá, modificá y consultá los datos de cada cliente</p>
       </div>
       <button class="btn btn-primary btn-sm" onclick="abrirModalNuevoClienteAgenda()" style="white-space:nowrap">+ Nuevo cliente</button>
       </div>
       <div class="filters">
-        <input class="filter-select" id="agenda-search" type="text" placeholder="Buscar por nombre, teléfono o dirección..." oninput="renderAgendaClientes()">
+        <input class="filter-select" id="agenda-search" type="text" placeholder="Buscar por nombre, apellido, teléfono, documento o dirección..." oninput="renderAgendaClientes()">
       </div>
       <div class="card">
         <div class="card-body" style="overflow-x:auto">
           <table class="admin-table">
-            <thead><tr><th>Nombre</th><th>Teléfono</th><th>Dirección</th><th>Acciones</th></tr></thead>
+            <thead><tr><th>Nombre</th><th>Apellido</th><th>Teléfono</th><th>Documento</th><th>Dirección</th><th>Acciones</th></tr></thead>
             <tbody id="agenda-body"></tbody>
           </table>
         </div>
@@ -1048,7 +1049,11 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
       <input type="hidden" id="cliente-agenda-id">
       <div class="form-group">
         <label class="form-label">Nombre</label>
-        <input class="form-input" type="text" id="cliente-agenda-nombre" placeholder="Ej: Juan Pérez">
+        <input class="form-input" type="text" id="cliente-agenda-nombre" placeholder="Ej: Juan">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Apellido (opcional)</label>
+        <input class="form-input" type="text" id="cliente-agenda-apellido" placeholder="Ej: Pérez">
       </div>
       <div class="form-group">
         <label class="form-label">Teléfono</label>
@@ -1057,6 +1062,10 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
       <div class="form-group">
         <label class="form-label">Dirección (opcional)</label>
         <input class="form-input" type="text" id="cliente-agenda-direccion" placeholder="Ej: Calle 123">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Documento (opcional)</label>
+        <input class="form-input" type="text" id="cliente-agenda-documento" placeholder="Cédula, RUT u otro">
       </div>
     </div>
     <div class="modal-footer">

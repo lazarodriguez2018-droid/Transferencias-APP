@@ -294,10 +294,14 @@
     const catalogByCode=new Map(products.map(product=>[clean(product.codigo),product]));
     const {data:orderPanel,error:orderError}=await cloud.db.rpc('op_recepcion_panel_pedidos',{p_recepcion:receiptId});
     if(orderError)throw orderError;
+    const {data:reservationData,error:reservationError}=await cloud.db.rpc('op_recepcion_reservas_datos',{p_recepcion:receiptId});
+    const reservationPanel=reservationError?.code==='PGRST202'?{reservations:[],can_link:false}:reservationData;
+    if(reservationError&&reservationError.code!=='PGRST202')throw reservationError;
     const orders=(orderPanel.orders||[]).filter(order=>order.linked);
     const linkByOrder=new Map((links||[]).map(link=>[link.pedido_id,link]));
     const snapshot={id:receipt.id,nombre:receipt.nombre,document_number:receipt.numero_remito,date:receipt.fecha_remito,origin:receipt.origen_local,destination:receipt.destino_local,estado:receipt.estado,original_filename:receipt.original_filename,original_file:receipt.original_path,import_meta:receipt.import_meta||{},observaciones_cierre:receipt.observaciones_cierre||'',created_at:receipt.created_at,updated_at:receipt.updated_at,closed_at:receipt.closed_at,can_edit:canEditReception(receipt),can_delete:canEditReception(receipt),viewer_client_id:cloud.clientId,items:(items||[]).map(row=>receiptItem(row,catalogByCode)),extras:(extras||[]).map(row=>({codigo:row.codigo,nombre:clean(catalogByCode.get(clean(row.codigo))?.nombre)||row.nombre,barras:clean(catalogByCode.get(clean(row.codigo))?.barras)||row.barras||'',cantidad:Number(row.cantidad||0),observacion:row.observacion||'',updated_by:row.updated_by_name||'',updated_at:row.updated_at})),participantes:(devices||[]).map(row=>({nombre:row.nombre,cliente_id:row.cliente_id,usuario_id:row.usuario_id,invitado_id:row.invitado_id,last_seen:row.last_seen,joined:asDate(row.last_seen)})),orders:orders.map(order=>({...order,coincidencia:linkByOrder.get(order.id)?.coincidencia||'ruta_sku'})),log:(events||[]).map(row=>({ts:row.created_at,usuario:row.usuario_nombre,accion:row.accion,codigo:row.codigo,detalle:row.detalle||{}}))};
     snapshot.order_panel=orderPanel;
+    snapshot.reservation_panel=reservationPanel;
     snapshot.can_delete=snapshot.can_delete&&!orderPanel.orders.some(order=>order.processed);
     snapshot.summary=receiptSummary(snapshot); return snapshot;
   }
