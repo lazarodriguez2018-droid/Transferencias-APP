@@ -26,7 +26,7 @@ assert.match(js,/op_reserva_corregir_cierre/,'Los empleados deben poder corregir
 assert.match(js,/Se restaurarán las cantidades que estaban separadas antes de cancelar/,'La corrección de cancelación debe explicar que restaura la mercadería');
 assert.match(js,/returned\?x\.dataset\.current:x\.dataset\.withLocal/,'No retirado no debe sumar la mercadería local como si hubiera sido entregada');
 assert.match(js,/volverán a exhibición\. No se modifica stock/,'La interfaz debe explicar el efecto de no retirado');
-assert.match(js,/@page\{size:200mm 80mm;margin:0\}[\s\S]*width:200mm;height:80mm[\s\S]*grid-template-columns:66mm/,'La etiqueta ocupa en horizontal todo el papel de 200 por 80 mm');
+assert.match(js,/@page\{size:80mm 200mm;margin:0\}[\s\S]*width:80mm;height:200mm[\s\S]*width:199mm;height:79mm[\s\S]*transform:rotate\(90deg\)[\s\S]*grid-template-columns:66mm/,'La etiqueta horizontal se rota dentro de una única hoja física de 80 por 200 mm');
 assert.match(js,/@page\{size:80mm 116mm;margin:0\}[\s\S]*width:72mm;height:100\.1mm/,'La plantilla de calibración respeta 576 por 800 puntos a 203 dpi');
 assert.match(js,/ESCALA 100 % · SIN MÁRGENES · SIN AJUSTAR/,'La prueba incluye las instrucciones críticas del controlador');
 assert.match(js,/UBICACIÓN: \$\{html\(location\)\}/,'La etiqueta debe indicar el lugar configurado para encontrar la mercadería');
@@ -50,7 +50,7 @@ assert.match(js,/function startRealtimeFallback\(error\)[\s\S]*setInterval\(refr
 assert.match(js,/hadContent=listEl\.dataset\.loaded==='true'[\s\S]*signature!==state\.listSignatures\[kind\]/,'La actualización periódica debe conservar las tarjetas y evitar reemplazos sin cambios');
 assert.match(js,/openDetail\(state\.current\.reservation\.id,\{silent:true\}\)/,'El detalle abierto debe refrescarse sin mostrar una pantalla de carga');
 assert.match(js,/channel\.subscribe\(status=>[\s\S]*startRealtimeFallback\(error\)/,'Un fallo al abrir Realtime no debe impedir entrar al módulo');
-assert.match(page,/reservas\.css\?v=4[\s\S]*reservas\.js\?v=5/,'La impresión permanente y las ayudas deben invalidar la caché anterior');
+assert.match(page,/reservas\.css\?v=4[\s\S]*reservas\.js\?v=6/,'La corrección de impresión en una sola hoja debe invalidar la caché anterior');
 assert.match(js,/async function printCalibration\(\)[\s\S]*window\.open[\s\S]*await qrDataUrl/,'La calibración debe abrir su ventana antes de generar el QR');
 assert.match(js,/\/reserva#/,'La etiqueta abre una consulta de solo lectura');
 assert.match(receipt,/receiptReservationData/,'Recepción muestra reservas coincidentes');

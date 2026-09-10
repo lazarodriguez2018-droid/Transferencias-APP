@@ -199,10 +199,15 @@ window.supabase={createClient:()=>db};
     await page.getByRole('button',{name:'Imprimir etiqueta ahora'}).click();
     const popup=await popupPromise;await popup.waitForSelector('.label');
     const labelLayout=await popup.evaluate(()=>{const label=document.querySelector('.label').getBoundingClientRect(),qr=document.querySelector('.qr').getBoundingClientRect(),style=document.querySelector('style').textContent;return {label:{width:label.width,height:label.height},qr:{width:qr.width,height:qr.height},style};});
-    assert.match(labelLayout.style,/@page\{size:200mm 80mm;margin:0\}/,'La impresión debe declarar la hoja horizontal de Chrome');
-    assert(labelLayout.label.width>740&&labelLayout.label.height>295,'La etiqueta debe ocupar los 200 por 80 mm completos');
+    assert.match(labelLayout.style,/@page\{size:80mm 200mm;margin:0\}/,'La impresión debe coincidir con el papel 80 por 200 mm del controlador');
+    assert.match(labelLayout.style,/transform:rotate\(90deg\)/,'El contenido debe conservar el diseño horizontal dentro de la hoja física');
+    assert(labelLayout.label.width>295&&labelLayout.label.width<305&&labelLayout.label.height>745&&labelLayout.label.height<760,'La etiqueta rotada debe caber dentro de una única hoja de 80 por 200 mm');
     assert(labelLayout.qr.width>240&&labelLayout.qr.height>240,'El QR debe aprovechar casi toda la altura del rollo');
-    if(process.env.RESERVATIONS_LABEL_SCREENSHOT){await popup.setViewportSize({width:1000,height:400});await popup.screenshot({path:process.env.RESERVATIONS_LABEL_SCREENSHOT,clip:{x:0,y:0,width:labelLayout.label.width,height:labelLayout.label.height}});}
+    if(process.env.RESERVATIONS_LABEL_SCREENSHOT){await popup.setViewportSize({width:400,height:900});await popup.screenshot({path:process.env.RESERVATIONS_LABEL_SCREENSHOT,clip:{x:0,y:0,width:labelLayout.label.width,height:labelLayout.label.height}});}
+    const printPdf=await popup.pdf({preferCSSPageSize:true,printBackground:true});
+    const printPages=(printPdf.toString('latin1').match(/\/Type\s*\/Page\b/g)||[]).length;
+    assert.equal(printPages,1,'La etiqueta no debe paginarse ni generar una primera hoja en blanco');
+    if(process.env.RESERVATIONS_LABEL_PDF)fs.writeFileSync(process.env.RESERVATIONS_LABEL_PDF,printPdf);
     await popup.close();
     await page.locator('#detail-comment').fill('Cliente avisado por teléfono');
     await page.locator('[data-add-comment]').click();
