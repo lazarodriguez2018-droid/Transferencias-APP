@@ -3,6 +3,7 @@ const page=fs.readFileSync('reservas/index.html','utf8'),js=fs.readFileSync('res
 assert.match(root,/href="\/reservas"[\s\S]+Control de reservas/,'El inicio debe mostrar el módulo');
 assert.match(page,/id="access-key"/,'El acceso rápido pide contraseña de empresa');
 assert.match(page,/id="access-name"/,'El acceso rápido registra al empleado');
+assert.match(page,/id="guide-button"/,'El módulo debe ofrecer instrucciones operativas sin salir del flujo');
 assert.match(page,/id="new-reason"/,'La creación pregunta el motivo');
 assert.match(page,/id="new-responsible"/,'La creación pide responsable');
 assert.match(page,/id="arrival-days-hint"/,'La fecha estimada debe mostrar los días habituales del local');
@@ -26,6 +27,7 @@ assert.match(js,/UBICACIÓN: \$\{html\(location\)\}/,'La etiqueta debe indicar e
 assert.match(js,/p_ubicacion:location\|\|null/,'La ubicación se guarda junto con la configuración del local');
 assert.match(js,/p_horas:48/,'La interfaz debe guardar siempre la política de 48 horas exactas');
 assert.match(js,/Días habituales de recepción en este local/,'Los días configurados deben orientar la fecha estimada sin imponerla');
+assert.match(js,/Cómo usar Control de reservas[\s\S]*Cerrar siempre[\s\S]*Corregir con trazabilidad/,'La guía debe cubrir el proceso completo y las correcciones auditadas');
 assert.match(js,/\/reserva#/,'La etiqueta abre una consulta de solo lectura');
 assert.match(receipt,/receiptReservationData/,'Recepción muestra reservas coincidentes');
 assert.match(receipt,/op_recepcion_confirmar_reserva/,'Recepción permite confirmar la vinculación');
