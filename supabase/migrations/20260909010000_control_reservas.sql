@@ -618,10 +618,17 @@ begin
     if i.id is null or coalesce(x->>'cantidad','')!~'^\d{1,6}$' or (x->>'cantidad')::integer<i.cantidad_entregada or (x->>'cantidad')::integer>i.cantidad then
       raise exception 'Cantidad entregada inválida';
     end if;
+    if p_tipo='no_retirado' and (x->>'cantidad')::integer<>i.cantidad_entregada then
+      raise exception 'No sumes entregas: la mercadería no retirada vuelve a exhibición';
+    end if;
     update public.op_reserva_items set cantidad_entregada=(x->>'cantidad')::integer,
       cantidad_local=greatest(0,cantidad_local-((x->>'cantidad')::integer-cantidad_entregada)),
       estado=case when (x->>'cantidad')::integer>=cantidad then 'entregado' else estado end,updated_at=now() where id=i.id;
   end loop;
+  if p_tipo='no_retirado' then
+    update public.op_reserva_items set cantidad_local=0,estado=case when cantidad_entregada>=cantidad then 'entregado' else 'pendiente' end,updated_at=now()
+      where reserva_id=r.id;
+  end if;
   select sum(cantidad),sum(cantidad_entregada) into total,entregado from public.op_reserva_items where reserva_id=r.id;
   nuevo:=case when entregado>=total or p_tipo in ('no_retirado','uso_interno','envio_otro_local','otro') then 'completado' else 'parcial' end;
   update public.op_reservas set estado=nuevo,final_tipo=p_tipo,final_comentario=nullif(trim(coalesce(p_comentario,'')),''),
@@ -870,8 +877,8 @@ begin
     where lr.recepcion_id=new.id and i.cantidad_local+i.cantidad_entregada<i.cantidad
   ), asignadas as (
     select id,reserva_id,greatest(0,least(cantidad-cantidad_local-cantidad_entregada,disponible-previa))::integer cantidad from lineas
-  ) update public.op_reserva_items i set cantidad_local=least(i.cantidad,i.cantidad_local+a.cantidad),
-    estado=case when i.cantidad_local+a.cantidad>=i.cantidad then 'separado' when a.cantidad>0 then 'recibido' else i.estado end,
+  ) update public.op_reserva_items i set cantidad_local=least(i.cantidad-i.cantidad_entregada,i.cantidad_local+a.cantidad),
+    estado=case when i.cantidad_local+i.cantidad_entregada+a.cantidad>=i.cantidad then 'separado' when a.cantidad>0 then 'recibido' else i.estado end,
     recepcion_id=new.id,updated_at=now() from asignadas a where i.id=a.id and a.cantidad>0;
   for rid in select reserva_id from public.op_recepcion_reservas where recepcion_id=new.id loop
     perform public.op_reserva_recalcular(rid,'Control de remitos');
