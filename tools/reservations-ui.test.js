@@ -28,6 +28,14 @@ assert.match(js,/p_ubicacion:location\|\|null/,'La ubicación se guarda junto co
 assert.match(js,/p_horas:48/,'La interfaz debe guardar siempre la política de 48 horas exactas');
 assert.match(js,/Días habituales de recepción en este local/,'Los días configurados deben orientar la fecha estimada sin imponerla');
 assert.match(js,/Cómo usar Control de reservas[\s\S]*Cerrar siempre[\s\S]*Corregir con trazabilidad/,'La guía debe cubrir el proceso completo y las correcciones auditadas');
+assert.match(js,/actionCreated\(result,state\.current\.items\.some\(item=>item\.cantidad_local>0\)\)/,'La creación debe distinguir si ya hay mercadería física para etiquetar');
+assert.match(js,/function actionCreated\(result,hasLocalStock\)[\s\S]*Cuando cargues unidades en “En el local”/,'Si todavía no llegó mercadería, debe explicar cuándo se ofrecerá la etiqueta');
+assert.match(js,/const arrived=qty>item\.cantidad_local[\s\S]*if\(arrived\)actionMerchandiseArrived/,'Al registrar una llegada debe recordarse colocar la etiqueta');
+assert.match(js,/function actionPrintPrompt[\s\S]*Imprimir etiqueta ahora/,'Cuando hay mercadería física debe ofrecerse la impresión inmediata');
+assert.match(js,/data-print-created[\s\S]*return printLabel\(\)/,'La acción posterior a la creación debe iniciar la impresión');
+assert.match(js,/async function printLabel\(\)[\s\S]*window\.open[\s\S]*await renderPrintWindow\(r,url,win\)/,'La etiqueta debe reservar su ventana antes de esperar la generación del QR');
+assert.match(js,/async function renderPrintWindow\(r,url,win\)/,'La impresión debe reutilizar la ventana abierta por el gesto del empleado');
+assert.match(js,/async function printCalibration\(\)[\s\S]*window\.open[\s\S]*await qrDataUrl/,'La calibración debe abrir su ventana antes de generar el QR');
 assert.match(js,/\/reserva#/,'La etiqueta abre una consulta de solo lectura');
 assert.match(receipt,/receiptReservationData/,'Recepción muestra reservas coincidentes');
 assert.match(receipt,/op_recepcion_confirmar_reserva/,'Recepción permite confirmar la vinculación');
