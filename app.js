@@ -2266,13 +2266,11 @@ const direccion=el('cliente-agenda-direccion').value.trim();
 const documento=el('cliente-agenda-documento').value.trim();
 if(!nombre&&!apellido&&!telefono&&!direccion&&!documento) return notify('Completá al menos un dato del cliente','error');
 const payload={nombre:nombre||null,apellido:apellido||null,telefono:telefono||null,direccion:direccion||null,documento:documento||null};
-const req=id
-?db.from('clientes_agenda').update(payload).eq('id',id).select().single()
-:db.from('clientes_agenda').insert(payload).select().single();
-const {data,error}=await req;
+const {data:result,error}=await db.rpc('op_agenda_guardar_cliente',{p_id:id,p_datos:payload});
 if(error) return notify('No se pudo guardar cliente: '+error.message,'error');
+const data=result.client;
 await closeModal('modal-cliente-agenda');
-notify(id?'Cliente actualizado':'Cliente agregado','success');
+notify(id?'Cliente actualizado':result.merged?'Cliente existente actualizado; no se creó un duplicado':'Cliente agregado','success');
 if(appState.clienteDesdePedido){
 seleccionarClienteAgendaPedido(data);
 appState.clienteDesdePedido=false;

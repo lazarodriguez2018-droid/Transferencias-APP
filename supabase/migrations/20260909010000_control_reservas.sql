@@ -345,6 +345,45 @@ begin
   return result;
 end $$;
 
+create or replace function public.op_agenda_guardar_cliente(p_id uuid,p_datos jsonb)
+returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare c public.clientes_agenda; duplicado public.clientes_agenda; v_phone text;
+  v_nombre text; v_apellido text; v_telefono text; v_direccion text; v_documento text; v_email text; combinado boolean:=false;
+begin
+  if auth.uid() is null or not exists(select 1 from public.perfiles where id=auth.uid() and approved=true) then
+    raise exception 'La cuenta no está aprobada';
+  end if;
+  v_nombre:=nullif(left(trim(coalesce(p_datos->>'nombre','')),120),'');
+  v_apellido:=nullif(left(trim(coalesce(p_datos->>'apellido','')),120),'');
+  v_telefono:=nullif(left(trim(coalesce(p_datos->>'telefono','')),40),'');
+  v_direccion:=nullif(left(trim(coalesce(p_datos->>'direccion','')),240),'');
+  v_documento:=nullif(left(trim(coalesce(p_datos->>'documento','')),50),'');
+  v_email:=nullif(left(trim(coalesce(p_datos->>'email','')),160),'');
+  if concat_ws('',v_nombre,v_apellido,v_telefono,v_direccion,v_documento,v_email)='' then raise exception 'Completá al menos un dato del cliente'; end if;
+  v_phone:=regexp_replace(coalesce(v_telefono,''),'\D','','g');
+  if v_phone<>'' then
+    perform pg_advisory_xact_lock(hashtext('agenda:'||v_phone));
+    select * into duplicado from public.clientes_agenda
+      where regexp_replace(coalesce(telefono,''),'\D','','g')=v_phone and (p_id is null or id<>p_id)
+      order by updated_at desc nulls last,created_at desc nulls last limit 1 for update;
+  end if;
+  if p_id is null and duplicado.id is not null then
+    update public.clientes_agenda set nombre=coalesce(v_nombre,nombre),apellido=coalesce(v_apellido,apellido),telefono=coalesce(v_telefono,telefono),
+      direccion=coalesce(v_direccion,direccion),documento=coalesce(v_documento,documento),email=coalesce(v_email,email),updated_at=now()
+      where id=duplicado.id returning * into c;
+    combinado:=true;
+  elsif p_id is null then
+    insert into public.clientes_agenda(nombre,apellido,telefono,direccion,documento,email)
+      values(v_nombre,v_apellido,v_telefono,v_direccion,v_documento,v_email) returning * into c;
+  else
+    if duplicado.id is not null then raise exception 'Ese teléfono ya pertenece a otro cliente de la agenda'; end if;
+    update public.clientes_agenda set nombre=v_nombre,apellido=v_apellido,telefono=v_telefono,direccion=v_direccion,documento=v_documento,email=v_email,updated_at=now()
+      where id=p_id returning * into c;
+    if c.id is null then raise exception 'El cliente ya no existe'; end if;
+  end if;
+  return jsonb_build_object('client',to_jsonb(c),'merged',combinado);
+end $$;
+
 create or replace function public.op_reserva_crear(p_datos jsonb,p_acceso text default null)
 returns jsonb language plpgsql security definer set search_path=public,extensions,pg_temp as $$
 declare a jsonb; l public.locales; m public.op_reserva_motivos; r public.op_reservas; c public.clientes_agenda;
@@ -368,6 +407,7 @@ begin
       or not exists(select 1 from public.locales loc where loc.nombre=x->>'origen_local'))) then raise exception 'Elegí otro local válido para los productos solicitados'; end if;
 
   v_phone:=regexp_replace(coalesce(p_datos#>>'{cliente,telefono}',''),'\D','','g');
+  if v_phone<>'' then perform pg_advisory_xact_lock(hashtext('agenda:'||v_phone)); end if;
   if nullif(p_datos#>>'{cliente,id}','') is not null then
     select * into c from public.clientes_agenda where id=(p_datos#>>'{cliente,id}')::uuid;
     v_cliente:=c.id;
@@ -949,6 +989,7 @@ revoke all on function public.op_reserva_invitado_entrar(text,text,text) from pu
 revoke all on function public.op_reserva_contexto(text) from public;
 revoke all on function public.op_reserva_buscar_productos(text,text) from public;
 revoke all on function public.op_reserva_buscar_clientes(text,text) from public;
+revoke all on function public.op_agenda_guardar_cliente(uuid,jsonb) from public;
 revoke all on function public.op_reserva_crear(jsonb,text) from public;
 revoke all on function public.op_reserva_listar(jsonb,text) from public;
 revoke all on function public.op_reserva_detalle(uuid,text) from public;
@@ -976,6 +1017,7 @@ grant execute on function public.op_reserva_invitado_entrar(text,text,text) to a
 grant execute on function public.op_reserva_contexto(text) to anon,authenticated;
 grant execute on function public.op_reserva_buscar_productos(text,text) to anon,authenticated;
 grant execute on function public.op_reserva_buscar_clientes(text,text) to anon,authenticated;
+grant execute on function public.op_agenda_guardar_cliente(uuid,jsonb) to authenticated;
 grant execute on function public.op_reserva_crear(jsonb,text) to anon,authenticated;
 grant execute on function public.op_reserva_listar(jsonb,text) to anon,authenticated;
 grant execute on function public.op_reserva_detalle(uuid,text) to anon,authenticated;

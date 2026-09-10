@@ -14,7 +14,9 @@ Los módulos comparten autenticación, locales y un único padrón en Supabase.
 
 `/reservas` registra una reserva completa por cliente o destinatario, con varios productos, responsable, motivo, procedencia y cantidades. Puede crear automáticamente un pedido entre locales o vincular uno ya existente. El ingreso de mercadería también se integra con el control de remitos. Una etiqueta térmica de 80 mm incluye nombre, motivo, fecha y un QR interno de consulta; modificar datos exige autenticación o el enlace rápido privado del local más la contraseña de empresa.
 
-El plazo comienza cuando existe mercadería físicamente en el local. Un trabajo automático revisa vencimientos cada minuto, marca la reserva al superar las horas configuradas —48 de forma predeterminada— y avisa a los usuarios del local. Las entregas parciales, correcciones, excepciones y cierres conservan trazabilidad.
+El plazo comienza cuando existe mercadería físicamente en el local. Un trabajo automático revisa vencimientos cada minuto, marca la reserva al superar las horas configuradas —48 de forma predeterminada— y avisa a todos los empleados aprobados. Las entregas parciales, correcciones, excepciones y cierres conservan trazabilidad.
+
+La impresión usa el flujo del navegador porque una web no puede escribir directamente en una cola RAW de Windows. En la BSC10 se debe elegir papel continuo de 80 mm, área imprimible de 72 mm, 203 dpi, escala 100 %, sin márgenes ni ajuste de página. La ruta compartida queda registrada por local como referencia. Antes de usar etiquetas reales, un supervisor debe ejecutar **Imprimir prueba BSC10** y comprobar el rectángulo de 576 × 800 puntos, las marcas cada 10 mm, el QR, el Code 128 y los textos. La BSC10 no detecta separaciones ni marcas negras; para etiquetas troqueladas debe usarse una impresora con sensor de gap.
 
 ## Integración de reposiciones y pedidos
 
@@ -44,6 +46,7 @@ node tools/reception-workflow.test.js
 node tools/reservations.test.js
 node tools/reservations-sql.test.js
 node tools/reservations-ui.test.js
+node tools/reservations-integration.test.js
 node tools/integration-volume-test.js 12000 100000
 node tools/volume-test.js 100000
 ```

@@ -35,8 +35,15 @@ async function main(){
   await create({local:'Maldonado',motivo_id:await motive(),responsable:'Empleado Prueba',cliente:{telefono:'099111222',apellido:'Actualizada'},items:[{codigo:'DUP',nombre:'Duplicado',cantidad:1,cantidad_local:0,procedencia:'otro'}]});
   check((await scalar("select count(*)::int from clientes_agenda where regexp_replace(telefono,'\\D','','g')='099111222'")),1,'Phone deduplicates the agenda');
   check((await scalar("select apellido from clientes_agenda where regexp_replace(telefono,'\\D','','g')='099111222'")),'Actualizada','Known customer details can be updated');
+  await login();const agenda=await scalar("select op_agenda_guardar_cliente(null,$1::jsonb)",[JSON.stringify({nombre:'Ana desde agenda',telefono:'099-111-222',documento:'DOC-1'})]);
+  check(agenda.merged,true,'Manual agenda creation merges an existing phone');
+  check((await scalar("select count(*)::int from clientes_agenda where regexp_replace(telefono,'\\D','','g')='099111222'")),1,'Manual agenda use cannot create a duplicate phone');
+  check(agenda.client.documento,'DOC-1','Merged agenda data is retained');
+  const second=(await scalar("select op_agenda_guardar_cliente(null,$1::jsonb)",[JSON.stringify({nombre:'Segundo',telefono:'098000000'})])).client;
+  await fails(()=>scalar("select op_agenda_guardar_cliente($1,$2::jsonb)",[second.id,JSON.stringify({nombre:'Segundo',telefono:'099111222'})]),/otro cliente/);
 
   await login(null,'anon');
+  await fails(()=>scalar("select op_agenda_guardar_cliente(null,'{\"nombre\":\"Sin permiso\"}'::jsonb)"),/permission denied/);
   const publicQr=await scalar('select op_reserva_qr_detalle($1)',[local.qr_token]);
   check(publicQr.ok,true,'Public QR is read-only and resolvable');
   check(publicQr.reservation.items.length,2,'QR contains every product');

@@ -1,7 +1,7 @@
 const fs=require('fs'),assert=require('assert');
 const sql=fs.readFileSync('supabase/migrations/20260909010000_control_reservas.sql','utf8');
 for(const table of ['op_reservas','op_reserva_items','op_reserva_motivos','op_reserva_comentarios','op_reserva_eventos','op_reserva_enlaces','op_reserva_invitados','op_recepcion_reservas'])assert.match(sql,new RegExp(`create table if not exists public\\.${table}\\b`),`Falta ${table}`);
-for(const fn of ['op_reserva_crear','op_reserva_listar','op_reserva_detalle','op_reserva_actualizar_item','op_reserva_pedidos_disponibles','op_reserva_vincular_pedido','op_reserva_cambiar_estado','op_reserva_finalizar','op_reserva_cancelar','op_reserva_corregir_cierre','op_reserva_excepcion','op_reserva_qr_detalle','op_reserva_invitado_entrar','op_recepcion_reservas_datos','op_recepcion_confirmar_reserva'])assert.match(sql,new RegExp(`function public\\.${fn}\\(`),`Falta ${fn}`);
+for(const fn of ['op_reserva_crear','op_reserva_listar','op_reserva_detalle','op_reserva_actualizar_item','op_reserva_pedidos_disponibles','op_reserva_vincular_pedido','op_reserva_cambiar_estado','op_reserva_finalizar','op_reserva_cancelar','op_reserva_corregir_cierre','op_reserva_excepcion','op_reserva_qr_detalle','op_reserva_invitado_entrar','op_recepcion_reservas_datos','op_recepcion_confirmar_reserva','op_agenda_guardar_cliente'])assert.match(sql,new RegExp(`function public\\.${fn}\\(`),`Falta ${fn}`);
 assert.match(sql,/make_interval\(hours=>v_horas\)/,'El vencimiento debe usar las horas configuradas');
 assert.match(sql,/estado_antes_vencido=estado,estado='vencido'/,'Debe conservar el estado al vencer');
 assert.match(sql,/select p\.id,'Reserva vencida'[\s\S]+from vencidas v join public\.perfiles p on p\.approved=true\s*\n/,'El vencimiento debe avisar a todos los empleados aprobados');
@@ -18,6 +18,7 @@ assert.match(sql,/if r\.estado in \('completado','cancelado'\) then raise except
 assert.match(sql,/if p_tipo='no_retirado'[\s\S]*cantidad_local=0,estado=case when cantidad_entregada>=cantidad then 'entregado' else 'pendiente' end/,'No retirado debe liberar lo pendiente sin registrarlo como entregado');
 assert.match(sql,/cantidad_local=least\(i\.cantidad-i\.cantidad_entregada,i\.cantidad_local\+a\.cantidad\)/,'Una recepción no debe volver a separar unidades ya entregadas');
 assert.match(sql,/clientes_agenda alter column nombre drop not null/,'Los datos del cliente deben seguir siendo opcionales también en la agenda');
+assert.match(sql,/pg_advisory_xact_lock\(hashtext\('agenda:'\|\|v_phone\)\)/,'La agenda debe serializar la deduplicación por teléfono');
 assert.match(sql,/alter table public\.op_reservas enable row level security/,'Reservas debe usar RLS');
 assert.match(sql,/grant execute on function public\.op_reserva_qr_detalle\(text\) to anon,authenticated/,'El QR de solo lectura debe ser público');
 assert.doesNotMatch(sql,/grant (?:all|select|insert|update|delete)[^;]+op_reservas[^;]+to anon/i,'Anónimos no deben acceder directamente a las tablas');
