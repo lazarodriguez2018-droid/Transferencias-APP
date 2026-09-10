@@ -14,7 +14,7 @@ alter table public.clientes_agenda alter column nombre drop not null;
 
 create table if not exists public.op_reserva_config_local (
   local_nombre text primary key,
-  horas_reserva integer not null default 48 check (horas_reserva between 1 and 720),
+  horas_reserva integer not null default 48 constraint op_reserva_config_horas_check check (horas_reserva=48),
   dias_recepcion smallint[] not null default '{}'::smallint[],
   ubicacion_reservas text,
   printer_path text,
@@ -26,6 +26,9 @@ create table if not exists public.op_reserva_config_local (
   )
 );
 alter table public.op_reserva_config_local add column if not exists ubicacion_reservas text;
+update public.op_reserva_config_local set horas_reserva=48 where horas_reserva<>48;
+alter table public.op_reserva_config_local drop constraint if exists op_reserva_config_horas_check;
+alter table public.op_reserva_config_local add constraint op_reserva_config_horas_check check (horas_reserva=48);
 
 create table if not exists public.op_reserva_motivos (
   id uuid primary key default gen_random_uuid(),
@@ -872,7 +875,7 @@ returns jsonb language plpgsql security definer set search_path=public,pg_temp a
 declare c public.op_reserva_config_local;
 begin
   if not public.is_ops_supervisor() then raise exception 'Solo supervisores pueden configurar locales'; end if;
-  if p_horas not between 1 and 720 or not (coalesce(p_dias,'{}'::smallint[]) <@ array[0,1,2,3,4,5,6]::smallint[]) then raise exception 'Configuración inválida'; end if;
+  if p_horas<>48 or not (coalesce(p_dias,'{}'::smallint[]) <@ array[0,1,2,3,4,5,6]::smallint[]) then raise exception 'El plazo de reserva debe ser de 48 horas exactas'; end if;
   insert into public.op_reserva_config_local(local_nombre,horas_reserva,dias_recepcion,ubicacion_reservas,printer_path,printer_profile,updated_by)
     values(trim(p_local),p_horas,coalesce(p_dias,'{}'),nullif(left(trim(coalesce(p_ubicacion,'')),160),''),nullif(trim(coalesce(p_printer_path,'')),''),coalesce(nullif(trim(p_printer_profile),''),'star-bsc10-80-max'),auth.uid())
   on conflict(local_nombre) do update set horas_reserva=excluded.horas_reserva,dias_recepcion=excluded.dias_recepcion,

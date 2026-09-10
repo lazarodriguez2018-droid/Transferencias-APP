@@ -5,10 +5,12 @@ assert.match(page,/id="access-key"/,'El acceso rápido pide contraseña de empre
 assert.match(page,/id="access-name"/,'El acceso rápido registra al empleado');
 assert.match(page,/id="new-reason"/,'La creación pregunta el motivo');
 assert.match(page,/id="new-responsible"/,'La creación pide responsable');
+assert.match(page,/id="arrival-days-hint"/,'La fecha estimada debe mostrar los días habituales del local');
 assert.match(page,/id="customer-document"/,'Los datos opcionales incluyen documento');
 assert.match(page,/data-view="history"/,'Existe historial');
 assert.match(page,/id="settings-printer"/,'La ruta de impresora es configurable');
 assert.match(page,/id="settings-location"/,'El lugar fijo de las reservas debe poder configurarse por tienda');
+assert.doesNotMatch(page,/id="settings-hours"/,'El plazo exacto de 48 horas no debe ser editable');
 assert.match(page,/id="print-calibration"/,'La configuración debe ofrecer la prueba física de la BSC10');
 assert.match(page,/jsbarcode@3\.12\.3/,'La calibración usa un Code 128 real y una versión fijada');
 assert.match(js,/op_reserva_invitado_entrar/,'El acceso rápido usa una sesión limitada');
@@ -21,6 +23,8 @@ assert.match(js,/@page\{size:80mm 116mm;margin:0\}[\s\S]*width:72mm;height:100\.
 assert.match(js,/ESCALA 100 % · SIN MÁRGENES · SIN AJUSTAR/,'La prueba incluye las instrucciones críticas del controlador');
 assert.match(js,/UBICACIÓN: \$\{html\(location\)\}/,'La etiqueta debe indicar el lugar configurado para encontrar la mercadería');
 assert.match(js,/p_ubicacion:location\|\|null/,'La ubicación se guarda junto con la configuración del local');
+assert.match(js,/p_horas:48/,'La interfaz debe guardar siempre la política de 48 horas exactas');
+assert.match(js,/Días habituales de recepción en este local/,'Los días configurados deben orientar la fecha estimada sin imponerla');
 assert.match(js,/\/reserva#/,'La etiqueta abre una consulta de solo lectura');
 assert.match(receipt,/receiptReservationData/,'Recepción muestra reservas coincidentes');
 assert.match(receipt,/op_recepcion_confirmar_reserva/,'Recepción permite confirmar la vinculación');

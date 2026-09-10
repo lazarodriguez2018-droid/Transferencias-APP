@@ -3,6 +3,7 @@ const sql=fs.readFileSync('supabase/migrations/20260909010000_control_reservas.s
 for(const table of ['op_reservas','op_reserva_items','op_reserva_motivos','op_reserva_comentarios','op_reserva_eventos','op_reserva_enlaces','op_reserva_invitados','op_recepcion_reservas'])assert.match(sql,new RegExp(`create table if not exists public\\.${table}\\b`),`Falta ${table}`);
 for(const fn of ['op_reserva_crear','op_reserva_listar','op_reserva_detalle','op_reserva_actualizar_item','op_reserva_pedidos_disponibles','op_reserva_vincular_pedido','op_reserva_cambiar_estado','op_reserva_finalizar','op_reserva_cancelar','op_reserva_corregir_cierre','op_reserva_excepcion','op_reserva_qr_detalle','op_reserva_invitado_entrar','op_recepcion_reservas_datos','op_recepcion_confirmar_reserva','op_agenda_guardar_cliente'])assert.match(sql,new RegExp(`function public\\.${fn}\\(`),`Falta ${fn}`);
 assert.match(sql,/make_interval\(hours=>v_horas\)/,'El vencimiento debe usar las horas configuradas');
+assert.match(sql,/constraint op_reserva_config_horas_check check \(horas_reserva=48\)/,'La política debe quedar fijada en 48 horas exactas');
 assert.match(sql,/estado_antes_vencido=estado,estado='vencido'/,'Debe conservar el estado al vencer');
 assert.match(sql,/select p\.id,'Reserva vencida'[\s\S]+from vencidas v join public\.perfiles p on p\.approved=true\s*\n/,'El vencimiento debe avisar a todos los empleados aprobados');
 assert.match(sql,/estado=restaurar,estado_antes_vencido=null,excepcion_hasta=p_hasta/,'La excepción debe restaurar el proceso');
