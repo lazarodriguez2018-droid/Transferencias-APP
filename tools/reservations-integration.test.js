@@ -101,6 +101,9 @@ async function main(){
   const guestReservation=await create({local:'Maldonado',motivo_id:await motive(),responsable:'Empleado sin cuenta',items:[{codigo:'GUEST-1',nombre:'Producto rápido',cantidad:1,cantidad_local:1,procedencia:'local'}]},guest.access);
   await admin();truth(await scalar('select invitado_id is not null from op_reservas where id=$1',[guestReservation.id]),'Quick-link actions retain guest identity');
   check(await scalar('select created_by is null from op_reservas where id=$1',[guestReservation.id]),true,'Quick-link creation does not impersonate an account');
+  const guestOrder=await create({local:'Maldonado',motivo_id:await motive(),responsable:'Empleado sin cuenta',items:[{codigo:'GUEST-MOVE',nombre:'Pedido rápido entre locales',cantidad:1,cantidad_local:0,procedencia:'pedido_local',origen_local:'Punta del Este'}]},guest.access);
+  await admin();check(await scalar('select count(*)::int from pedidos where reserva_id=$1',[guestOrder.id]),1,'An employee using the quick link can create the linked inter-store order');
+  const otherMotive=await motive('Punta del Este');await fails(()=>create({local:'Punta del Este',motivo_id:otherMotive,responsable:'Empleado sin cuenta',items:[{codigo:'OTHER-SHOP',nombre:'Fuera de local',cantidad:1,cantidad_local:1,procedencia:'local'}]},guest.access),/ese local/);
 
   console.log(`reservations integration: ${checks} assertions passed`);await db.close();
 }
