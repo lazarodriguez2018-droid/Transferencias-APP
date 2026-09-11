@@ -175,6 +175,9 @@ window.supabase={createClient:()=>db};
     try{await page.waitForSelector('#action-modal:not([hidden])',{timeout:10000});}
     catch(error){const state=await page.evaluate(()=>({formError:document.querySelector('#new-error')?.textContent,view:document.querySelector('#view-new')?.className,clicks:window.__createClicks,submits:window.__createSubmits,button:{disabled:document.querySelector('#create-button')?.disabled,type:document.querySelector('#create-button')?.type,visible:!!document.querySelector('#create-button')?.getClientRects().length},valid:document.querySelector('#reservation-form')?.checkValidity(),invalid:[...document.querySelectorAll('#reservation-form :invalid')].map(element=>({id:element.id,value:element.value})),calls:window.__reservationRpcCalls.map(call=>call.name)}));throw new Error(`La creación no abrió su confirmación: ${JSON.stringify({state,browserErrors})}`,{cause:error});}
     assert.match(await page.locator('#action-content').innerText(),/#1[\s\S]*etiqueta ya se puede imprimir[\s\S]*estado desde el QR/,'La creación debe mostrar el número consecutivo y permitir imprimir el seguimiento completo');
+    const createdLink=page.locator('.created-link a');
+    assert.equal(await createdLink.getAttribute('href'),`${new URL(target).origin}/reserva#${'a'.repeat(64)}`,'La confirmación debe mostrar exactamente el enlace usado por el QR');
+    assert.equal(await page.locator('[data-copy-created-link]').isVisible(),true,'La confirmación debe permitir copiar el enlace de seguimiento');
     const createPayload=await page.evaluate(()=>window.__reservationRpcCalls.find(call=>call.name==='op_reserva_crear_v2').args.p_datos);
     assert.equal(createPayload.cliente.telefono,'099 123 456','El teléfono debe enviarse en la reserva');
     assert.deepEqual(createPayload.items.map(item=>item.procedencia),['local','proveedor','pedido_local'],'Cada línea debe conservar su propio origen');
@@ -327,12 +330,28 @@ window.supabase={createClient:()=>db};
     await publicPage.locator('#create-button').click();
     await publicPage.waitForSelector('#action-modal:not([hidden])');
     assert.match(await publicPage.locator('#action-content').innerText(),/#1[\s\S]*Imprimir etiqueta[\s\S]*Crear otra reserva/,'El enlace debe confirmar el correlativo y conservar la impresión inicial');
+    assert.equal(await publicPage.locator('.created-link a').getAttribute('href'),`${new URL(target).origin}/reserva#${'a'.repeat(64)}`,'La creación pública también debe entregar el enlace del QR');
     const publicCalls=await publicPage.evaluate(()=>window.__reservationRpcCalls);
     assert.equal(publicCalls.find(call=>call.name==='op_reserva_crear_v2').args.p_acceso,createToken,'La creación debe validarse con el enlace del local');
     assert.equal(publicCalls.some(call=>['op_reserva_listar','op_reserva_detalle','op_reserva_editar'].includes(call.name)),false,'El modo público no debe consultar ni modificar reservas');
     await publicPage.getByRole('button',{name:'Crear otra reserva'}).click();
     assert.equal(await publicPage.locator('#new-responsible').inputValue(),'','El formulario debe quedar limpio para la siguiente reserva');
     await publicPage.close();
+
+    const lookupPage=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+    const lookupStub=`window.supabase={createClient:()=>({auth:{getSession:async()=>({data:{session:null}})},rpc:async()=>({data:{ok:true,reservation:{number:1,code:'SUCAN001',local:'PDE',warehouse:'01',reason:'Origen mixto',customer:'Ana Suárez',phone:'099 123 456',responsible:'Empleado prueba',state:'listo',created_at:new Date().toISOString(),merchandise_at:new Date().toISOString(),expires_at:new Date(Date.now()+86400000).toISOString(),reference:'WEB-1001',location:'Estante de pruebas',items:[{codigo:'010031110010408',nombre:'CORREA ZEE DOG - SELVA - XS',cantidad:3,cantidad_local:3,cantidad_entregada:0,procedencia:'local'}]}},error:null})})};`;
+    await lookupPage.route('**/npm/@supabase/supabase-js@2**',route=>route.fulfill({contentType:'application/javascript',body:lookupStub}));
+    await lookupPage.route('**/npm/qrcodejs@1.0.0/**',route=>route.fulfill({contentType:'application/javascript',body:`window.QRCode=function(box,options){const canvas=document.createElement('canvas');canvas.width=options.width;canvas.height=options.height;box.appendChild(canvas);};QRCode.CorrectLevel={M:0};`}));
+    await lookupPage.route('https://fonts.googleapis.com/**',route=>route.fulfill({contentType:'text/css',body:''}));
+    const lookupTarget=target.replace(/\/reservas\/$/,'/reserva.html')+'#'+'a'.repeat(64);
+    await lookupPage.goto(lookupTarget,{waitUntil:'domcontentloaded'});await lookupPage.waitForSelector('#lookup-content:not([hidden])');
+    assert.match(await lookupPage.locator('#lookup-code').innerText(),/RESERVA #1/,'El enlace público debe mostrar el correlativo');
+    assert.equal(await lookupPage.locator('#lookup-print').isVisible(),true,'El enlace público debe permitir imprimir la etiqueta');
+    await lookupPage.evaluate(()=>{const nativeOpen=window.open.bind(window);window.open=(...args)=>{const popup=nativeOpen(...args);popup.print=()=>{};popup.close=()=>{};return popup;};});
+    const lookupPopupPromise=lookupPage.waitForEvent('popup');await lookupPage.locator('#lookup-print').click();const lookupPopup=await lookupPopupPromise;await lookupPopup.waitForSelector('.label');
+    assert.match(await lookupPopup.locator('.label').innerText(),/RESERVA #1[\s\S]*Ana Suárez[\s\S]*TEL: 099 123 456/,'La etiqueta reimpresa desde el enlace debe conservar número, nombre y teléfono');
+    assert.doesNotMatch(await lookupPopup.locator('.label').innerText(),/Origen mixto/,'La reimpresión pública tampoco debe incluir el motivo');
+    await lookupPopup.close();await lookupPage.close();
     console.log('reservations browser user journey and websocket fallback ok');
   }finally{
     await browser.close();

@@ -49,6 +49,7 @@ assert.match(createOnly,/create sequence if not exists public\.op_reserva_numero
 assert.match(createOnly,/alter column numero set default nextval\('public\.op_reserva_numero_seq'::regclass\)/,'El correlativo debe asignarse automáticamente y de forma concurrente');
 assert.match(createOnly,/create unique index if not exists op_reservas_numero_uidx/,'El número consecutivo no se puede repetir');
 assert.match(createOnly,/'number',r\.numero[\s\S]*'cliente_telefono',r\.cliente_telefono/,'La creación debe devolver el correlativo y el teléfono para imprimir de inmediato');
+assert.match(createOnly,/'number',r\.numero,'code',r\.codigo,'local',r\.local_nombre,'warehouse',r\.local_almacen/,'El enlace QR debe devolver el almacén necesario para reimprimir la etiqueta');
 assert.match(createOnly,/revoke execute on function public\.op_reserva_listar\(jsonb,text\) from anon/,'Anónimos no pueden listar reservas aunque tengan el enlace');
 assert.match(createOnly,/revoke execute on function public\.op_reserva_editar\(uuid,jsonb,text\) from anon/,'Anónimos no pueden editar reservas');
 assert.match(createOnly,/grant execute on function public\.op_reserva_crear_v2\(jsonb,text\) to anon,authenticated/,'El enlace conserva permiso únicamente para crear');

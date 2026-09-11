@@ -227,7 +227,7 @@ begin
     'pedido_local_gestion',pedido_local_gestion,'origen_local',origen_local,'estado',estado,'fecha_estimada',fecha_estimada,
     'remito_numero',remito_numero) order by created_at),'[]') into items
     from public.op_reserva_items where reserva_id=r.id;
-  return jsonb_build_object('ok',true,'reservation',jsonb_build_object('number',r.numero,'code',r.codigo,'local',r.local_nombre,
+  return jsonb_build_object('ok',true,'reservation',jsonb_build_object('number',r.numero,'code',r.codigo,'local',r.local_nombre,'warehouse',r.local_almacen,
     'reason',r.motivo_nombre,'customer',nullif(trim(concat_ws(' ',r.cliente_nombre,r.cliente_apellido)),''),'phone',r.cliente_telefono,
     'responsible',r.responsable_nombre,'state',r.estado,'created_at',r.created_at,'merchandise_at',r.mercaderia_local_at,
     'expires_at',r.vencimiento_at,'reference',r.referencia_externa,
