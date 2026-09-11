@@ -33,6 +33,8 @@ assert.match(js,/function actionDelete\(\)\{if\(!isAdmin\(\)\)/,'La interfaz deb
 assert.match(js,/function actionCorrectClose\(\)\{if\(!isAdmin\(\)\)/,'La interfaz debe bloquear la reapertura para usuarios no administradores');
 assert.match(js,/if\(view==='settings'&&!isAdmin\(\)\)view='active'/,'Un usuario sin permisos no puede abrir la vista administrativa');
 assert.match(js,/function splitItem\(index\)[\s\S]*state\.newItems\.splice/,'Un mismo producto se puede dividir entre orígenes');
+assert.match(js,/Situación física \*[\s\S]*Está en el local, falta separarlo[\s\S]*Ya está separado para esta reserva[\s\S]*Está separado parcialmente/,'Cada producto disponible debe declarar su situación física');
+assert.match(js,/missingSeparation[\s\S]*Indicá si \$\{missingSeparation\.nombre\} ya quedó separado físicamente/,'La creación debe impedir que se omita la situación física de un producto local');
 assert.match(js,/data-item-field="procedencia"[\s\S]*data-item-field="proveedor_nombre"[\s\S]*data-item-field="origen_local"[\s\S]*data-item-field="pedido_local_gestion"/,'Cada línea captura proveedor o gestión entre locales');
 assert.match(js,/const transportLabels=[\s\S]*Próxima reposición[\s\S]*Agencia o transporte tercero[\s\S]*Traslado propio[\s\S]*data-item-field="traslado_tipo"/,'Cada producto pedido a otro local define cómo viajará');
 assert.match(js,/data-item-field="cantidad_origen"/,'La coordinación externa distingue lo separado en origen');
@@ -63,11 +65,12 @@ assert.match(js,/function trackingUrl\(token\)\{return `\$\{location\.origin\}\/
 assert.match(js,/const arrived=qty>item\.cantidad_local[\s\S]*if\(arrived\)actionMerchandiseArrived/,'Al registrar una llegada debe recordarse colocar la etiqueta');
 assert.match(js,/function actionPrintPrompt[\s\S]*Imprimir etiqueta/,'Cuando hay mercadería física debe ofrecerse la impresión inmediata');
 assert.match(js,/function printShortcutMarkup\(\)[\s\S]*Imprimila cuando necesites identificar la mercadería[\s\S]*unidades disponibles y las pendientes/,'El detalle debe mantener siempre visible la impresión del QR');
-assert.match(js,/Cantidad reservada[\s\S]*Separadas en este local/,'La creación debe distinguir cantidad reservada y cantidad físicamente local');
-assert.match(js,/Está en este local:[\s\S]*No necesita fecha estimada ni remito/,'Un producto disponible no debe pedir datos de una llegada futura');
+assert.match(js,/Situación física \*[\s\S]*Cantidad reservada/,'La creación debe distinguir cantidad reservada y situación física');
+assert.match(js,/Ya está separado para esta reserva:[\s\S]*No necesita fecha estimada ni remito/,'Un producto ya separado no debe pedir datos de una llegada futura');
 assert.match(js,/Unidades separadas aquí[\s\S]*local de destino[\s\S]*Solicitadas[\s\S]*Ya entregadas/,'El detalle debe explicar las cantidades operativas');
 assert.match(js,/function itemProcessMarkup[\s\S]*separadas en origen[\s\S]*recibidas aquí/,'El detalle debe diferenciar preparación en origen y recepción en destino');
 assert.match(js,/function nextStep\(r,items\)[\s\S]*data-next-step/,'Cada estado debe mostrar una única acción siguiente y comprensible');
+assert.match(js,/Separar la mercadería disponible en el local[\s\S]*Registrar separación[\s\S]*Actualizar separaciones y llegadas[\s\S]*Actualizar cantidades/,'El siguiente paso debe distinguir separación local de llegada externa');
 for(const label of ['Registrar llegada y separación','Confirmar que el cliente fue avisado','Registrar entrega o cierre'])assert.ok(js.includes(label),`Falta la acción guiada: ${label}`);
 assert.match(js,/Estado del traslado[\s\S]*preparado_origen[\s\S]*en_transito/,'Los pedidos gestionados por fuera pueden registrar preparación y despacho por producto');
 assert.match(js,/function actionRegisterArrival\(\)[\s\S]*No cuentes mercadería que siga en góndola o depósito general[\s\S]*estado avanzará automáticamente/,'La llegada guiada debe evitar separar mercadería solo de palabra');
@@ -78,7 +81,7 @@ assert.match(js,/function startRealtimeFallback\(error\)[\s\S]*setInterval\(refr
 assert.match(js,/hadContent=listEl\.dataset\.loaded==='true'[\s\S]*signature!==state\.listSignatures\[kind\]/,'La actualización periódica debe conservar las tarjetas y evitar reemplazos sin cambios');
 assert.match(js,/openDetail\(state\.current\.reservation\.id,\{silent:true\}\)/,'El detalle abierto debe refrescarse sin mostrar una pantalla de carga');
 assert.match(js,/channel\.subscribe\(status=>[\s\S]*startRealtimeFallback\(error\)/,'Un fallo al abrir Realtime no debe impedir entrar al módulo');
-assert.match(page,/reservas\.css\?v=7[\s\S]*reserva-engine\.js\?v=3[\s\S]*reservas\.js\?v=13/,'El enlace posterior a la creación debe invalidar la caché anterior');
+assert.match(page,/reservas\.css\?v=7[\s\S]*reserva-engine\.js\?v=3[\s\S]*reservas\.js\?v=14/,'El enlace posterior a la creación debe invalidar la caché anterior');
 assert.match(lookupPage,/consulta\.css\?v=2[\s\S]*qrcodejs@1\.0\.0[\s\S]*reserva-engine\.js\?v=3[\s\S]*consulta\.js\?v=6/,'La reimpresión pública debe cargar el generador QR e invalidar la caché');
 assert.match(lookup,/number=r\.number\?\?r\.code/,'La consulta QR debe mostrar el número consecutivo cuando existe');
 assert.match(lookupPage,/id="lookup-print"[^>]*>Imprimir etiqueta/,'El enlace público debe ofrecer la reimpresión de la etiqueta');
