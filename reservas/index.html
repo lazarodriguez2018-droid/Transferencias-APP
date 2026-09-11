@@ -10,7 +10,7 @@
   <link rel="icon" type="image/svg+xml" href="/logo.svg?v=2">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="/reservas/reservas.css?v=7">
+  <link rel="stylesheet" href="/reservas/reservas.css?v=8">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -58,7 +58,11 @@
             <div class="form-grid"><label class="field"><span>Nombre</span><input class="input" id="customer-name" maxlength="120"></label><label class="field"><span>Apellido</span><input class="input" id="customer-surname" maxlength="120"></label><label class="field"><span>Teléfono</span><input class="input" id="customer-phone" maxlength="40" type="tel"></label><label class="field"><span>Documento</span><input class="input" id="customer-document" maxlength="50"></label><label class="field full"><span>Dirección</span><input class="input" id="customer-address" maxlength="240"></label></div>
           </article>
           <article class="panel step-panel"><div class="step-number">3</div><div class="panel-head"><h2>Productos y origen</h2><p>Agregá todos los productos y seleccioná el origen de cada uno. Usá “Dividir origen” cuando una misma cantidad llegue desde lugares distintos.</p></div>
-            <div class="product-search"><div class="search-row"><input class="input" id="product-search" type="search" placeholder="Buscar por nombre o código…"><button class="button secondary" id="custom-product-button" type="button">Agregar manualmente</button></div><div class="floating-results" id="product-results" hidden></div></div>
+            <div class="product-search inventory-product-search">
+              <div class="product-search-types" role="group" aria-label="Tipo de búsqueda"><button class="active" type="button" data-product-search-type="nombre">🔤 Nombre</button><button type="button" data-product-search-type="codigo">🔢 Código</button><button type="button" data-product-search-type="barras">🔲 Barras</button></div>
+              <div class="search-row"><input class="input" id="product-search" type="search" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Ej: bio cach med, royal pup 15…"><button class="button secondary" id="custom-product-button" type="button">Agregar manualmente</button></div>
+              <p class="product-search-help" id="product-search-help">✨ Acepta palabras parciales y en cualquier orden.</p><div class="floating-results inventory-results" id="product-results" hidden></div>
+            </div>
             <div class="items" id="new-items"><div class="empty">Buscá un producto para comenzar.</div></div>
           </article>
           <p class="form-error" id="new-error"></p><div class="form-actions"><button class="button secondary" type="button" data-cancel-form>Cancelar</button><button class="button primary" id="create-button" type="submit">Crear y generar QR</button></div>
@@ -85,7 +89,8 @@
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.12.3/dist/JsBarcode.all.min.js"></script>
   <script src="/operaciones/cloud-config.js"></script>
+  <script src="/operaciones/search-engine.js?v=search-fast-v6"></script>
   <script src="/reservas/reserva-engine.js?v=3"></script>
-  <script src="/reservas/reservas.js?v=14"></script>
+  <script src="/reservas/reservas.js?v=16"></script>
 </body>
 </html>
