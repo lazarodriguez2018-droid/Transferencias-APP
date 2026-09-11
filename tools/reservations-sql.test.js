@@ -45,6 +45,10 @@ assert.match(itemOrigins,/pedido_local_gestion'='existente'[\s\S]*pedido_existen
 assert.match(createOnly,/function public\.op_reserva_actor_creacion\(p_enlace text/,'El enlace debe resolverse con un actor limitado a creación');
 assert.match(createOnly,/if auth\.uid\(\) is null then raise exception 'Iniciá sesión para consultar o gestionar reservas'/,'La gestión debe requerir una cuenta aprobada');
 assert.match(createOnly,/created_via_link_id uuid references public\.op_reserva_enlaces/,'Cada creación pública debe conservar el enlace local que la originó');
+assert.match(createOnly,/create sequence if not exists public\.op_reserva_numero_seq as bigint start with 1/,'Las reservas nuevas deben usar una secuencia global desde el número uno');
+assert.match(createOnly,/alter column numero set default nextval\('public\.op_reserva_numero_seq'::regclass\)/,'El correlativo debe asignarse automáticamente y de forma concurrente');
+assert.match(createOnly,/create unique index if not exists op_reservas_numero_uidx/,'El número consecutivo no se puede repetir');
+assert.match(createOnly,/'number',r\.numero[\s\S]*'cliente_telefono',r\.cliente_telefono/,'La creación debe devolver el correlativo y el teléfono para imprimir de inmediato');
 assert.match(createOnly,/revoke execute on function public\.op_reserva_listar\(jsonb,text\) from anon/,'Anónimos no pueden listar reservas aunque tengan el enlace');
 assert.match(createOnly,/revoke execute on function public\.op_reserva_editar\(uuid,jsonb,text\) from anon/,'Anónimos no pueden editar reservas');
 assert.match(createOnly,/grant execute on function public\.op_reserva_crear_v2\(jsonb,text\) to anon,authenticated/,'El enlace conserva permiso únicamente para crear');

@@ -34,7 +34,7 @@
 
     <main class="shell">
       <section class="view active" id="view-active">
-        <div class="page-head"><div><span class="eyebrow">RESERVAS DEL LOCAL</span><h1>Mercadería reservada</h1><p>Buscá por cliente, producto, código o responsable y consultá el estado de cada reserva.</p></div><button class="button primary" type="button" data-open-new>+ Nueva reserva</button></div>
+        <div class="page-head"><div><span class="eyebrow">RESERVAS DEL LOCAL</span><h1>Mercadería reservada</h1><p>Buscá por cliente, producto, número o responsable y consultá el estado de cada reserva.</p></div><button class="button primary" type="button" data-open-new>+ Nueva reserva</button></div>
         <div class="stats" id="stats"></div>
         <div class="filters"><input class="input" id="active-search" type="search" placeholder="Cliente, teléfono, producto, código o responsable…"><select class="input" id="active-state"><option value="">Todos los estados</option><option value="buscando">Buscando mercadería</option><option value="en_transito">En tránsito</option><option value="separando">Separando</option><option value="listo">Lista</option><option value="avisado">Cliente avisado</option><option value="parcial">Entrega parcial</option><option value="vencido">Más de 48 h</option></select><select class="input supervisor-local" id="active-local" hidden></select></div>
         <div class="reservation-grid" id="active-list"></div>
@@ -86,6 +86,6 @@
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.12.3/dist/JsBarcode.all.min.js"></script>
   <script src="/operaciones/cloud-config.js"></script>
   <script src="/reservas/reserva-engine.js?v=2"></script>
-  <script src="/reservas/reservas.js?v=9"></script>
+  <script src="/reservas/reservas.js?v=10"></script>
 </body>
 </html>

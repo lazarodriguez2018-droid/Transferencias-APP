@@ -37,6 +37,9 @@ assert.match(js,/Se restaurarán las cantidades que estaban separadas antes de c
 assert.match(js,/returned\?x\.dataset\.current:x\.dataset\.withLocal/,'No retirado no debe sumar la mercadería local como si hubiera sido entregada');
 assert.match(js,/volverán a exhibición\. No se modifica stock/,'La interfaz debe explicar el efecto de no retirado');
 assert.match(js,/@page\{size:80mm 200mm;margin:0\}[\s\S]*width:80mm;height:200mm[\s\S]*width:199mm;height:79mm[\s\S]*transform:rotate\(90deg\)[\s\S]*grid-template-columns:66mm/,'La etiqueta horizontal se rota dentro de una única hoja física de 80 por 200 mm');
+assert.match(js,/function reservationNumber\(r\)[\s\S]*r\?\.numero\?\?r\?\.number/,'La interfaz debe priorizar el número consecutivo de la reserva');
+assert.match(js,/class="phone">TEL: \$\{html\(phone\)\}/,'La etiqueta debe imprimir el teléfono del cliente');
+assert.doesNotMatch(js,/class="reason">\$\{html\(r\.motivo_nombre\)\}/,'La etiqueta no debe imprimir el motivo');
 assert.match(js,/@page\{size:80mm 116mm;margin:0\}[\s\S]*width:72mm;height:100\.1mm/,'La plantilla de calibración respeta 576 por 800 puntos a 203 dpi');
 assert.match(js,/ESCALA 100 % · SIN MÁRGENES · SIN AJUSTAR/,'La prueba incluye las instrucciones críticas del controlador');
 assert.match(js,/UBICACIÓN: \$\{html\(location\)\}/,'La etiqueta debe indicar el lugar configurado para encontrar la mercadería');
@@ -64,8 +67,9 @@ assert.match(js,/function startRealtimeFallback\(error\)[\s\S]*setInterval\(refr
 assert.match(js,/hadContent=listEl\.dataset\.loaded==='true'[\s\S]*signature!==state\.listSignatures\[kind\]/,'La actualización periódica debe conservar las tarjetas y evitar reemplazos sin cambios');
 assert.match(js,/openDetail\(state\.current\.reservation\.id,\{silent:true\}\)/,'El detalle abierto debe refrescarse sin mostrar una pantalla de carga');
 assert.match(js,/channel\.subscribe\(status=>[\s\S]*startRealtimeFallback\(error\)/,'Un fallo al abrir Realtime no debe impedir entrar al módulo');
-assert.match(page,/reserva-engine\.js\?v=2[\s\S]*reservas\.js\?v=9/,'El modo de solo creación debe invalidar la caché anterior');
-assert.match(lookupPage,/reserva-engine\.js\?v=2[\s\S]*consulta\.js\?v=3/,'La consulta QR debe invalidar su caché anterior');
+assert.match(page,/reserva-engine\.js\?v=2[\s\S]*reservas\.js\?v=10/,'La etiqueta y el correlativo deben invalidar la caché anterior');
+assert.match(lookupPage,/reserva-engine\.js\?v=2[\s\S]*consulta\.js\?v=4/,'La consulta QR debe invalidar su caché anterior');
+assert.match(lookup,/number=r\.number\?\?r\.code/,'La consulta QR debe mostrar el número consecutivo cuando existe');
 assert.match(lookup,/const itemOrigin=i=>[\s\S]*proveedor_nombre[\s\S]*origen_local[\s\S]*pedido_local_gestion/,'El QR público explica el origen específico de cada producto');
 assert.match(js,/async function printCalibration\(\)[\s\S]*window\.open[\s\S]*await qrDataUrl/,'La calibración debe abrir su ventana antes de generar el QR');
 assert.match(js,/\/reserva#/,'La etiqueta abre una consulta de solo lectura');

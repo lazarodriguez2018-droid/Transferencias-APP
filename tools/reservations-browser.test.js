@@ -68,10 +68,10 @@ const db={
     if(name==='op_reserva_crear_v2'){
       const input=args.p_datos,now=new Date().toISOString();
       const sources=[...new Set(input.items.map(item=>item.procedencia))],motiveName=sources.length>1?'Origen mixto':sources[0]==='local'?'Ya estaba en local':sources[0]==='pedido_local'?'Pedido a otro local':'Esperando proveedor';
-      reservation={id:'44444444-4444-4444-8444-444444444444',codigo:'SUCAN001',local_nombre:'PDE',local_almacen:'01',motivo_id:null,motivo_nombre:motiveName,motivo_comentario:input.motivo_comentario,responsable_nombre:input.responsable,cliente_id:input.cliente.id,cliente_nombre:input.cliente.nombre,cliente_apellido:input.cliente.apellido,cliente_telefono:input.cliente.telefono,cliente_direccion:input.cliente.direccion,cliente_documento:input.cliente.documento,referencia_externa:input.referencia_externa,estado:'buscando',created_at:now,updated_at:now,mercaderia_local_at:null,vencimiento_at:null,qr_token:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'};
+      reservation={id:'44444444-4444-4444-8444-444444444444',numero:1,codigo:'SUCAN001',local_nombre:'PDE',local_almacen:'01',motivo_id:null,motivo_nombre:motiveName,motivo_comentario:input.motivo_comentario,responsable_nombre:input.responsable,cliente_id:input.cliente.id,cliente_nombre:input.cliente.nombre,cliente_apellido:input.cliente.apellido,cliente_telefono:input.cliente.telefono,cliente_direccion:input.cliente.direccion,cliente_documento:input.cliente.documento,referencia_externa:input.referencia_externa,estado:'buscando',created_at:now,updated_at:now,mercaderia_local_at:null,vencimiento_at:null,qr_token:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'};
       items=input.items.map((item,index)=>({id:'55555555-5555-4555-8555-55555555555'+index,reserva_id:reservation.id,codigo:item.codigo,nombre:item.nombre,cantidad:item.cantidad,cantidad_local:item.cantidad_local,cantidad_entregada:0,procedencia:item.procedencia,origen_local:item.origen_local,proveedor_nombre:item.proveedor_nombre,pedido_local_gestion:item.pedido_local_gestion,pedido_id:item.pedido_existente_id||null,fecha_estimada:item.fecha_estimada,remito_numero:item.remito_numero,comentario:item.comentario,estado:item.cantidad_local?'separado':'pendiente',created_at:now}));
       comments=[];events=[{id:1,accion:'crear',estado:'buscando',detalle:{},autor_nombre:'Empleado prueba',created_at:now}];recalculate();
-      return {data:{ok:true,id:reservation.id,code:reservation.codigo,state:reservation.estado,qr_token:reservation.qr_token},error:null};
+      return {data:{ok:true,id:reservation.id,number:reservation.numero,code:reservation.codigo,state:reservation.estado,qr_token:reservation.qr_token,label:{...reservation}},error:null};
     }
     if(name==='op_reserva_editar'){
       const input=args.p_datos,now=new Date().toISOString(),sources=[...new Set(input.items.map(item=>item.procedencia))],motiveName=sources.length>1?'Origen mixto':sources[0]==='local'?'Ya estaba en local':sources[0]==='pedido_local'?'Pedido a otro local':'Esperando proveedor';
@@ -174,7 +174,7 @@ window.supabase={createClient:()=>db};
     await page.locator('#create-button').click();
     try{await page.waitForSelector('#action-modal:not([hidden])',{timeout:10000});}
     catch(error){const state=await page.evaluate(()=>({formError:document.querySelector('#new-error')?.textContent,view:document.querySelector('#view-new')?.className,clicks:window.__createClicks,submits:window.__createSubmits,button:{disabled:document.querySelector('#create-button')?.disabled,type:document.querySelector('#create-button')?.type,visible:!!document.querySelector('#create-button')?.getClientRects().length},valid:document.querySelector('#reservation-form')?.checkValidity(),invalid:[...document.querySelectorAll('#reservation-form :invalid')].map(element=>({id:element.id,value:element.value})),calls:window.__reservationRpcCalls.map(call=>call.name)}));throw new Error(`La creación no abrió su confirmación: ${JSON.stringify({state,browserErrors})}`,{cause:error});}
-    assert.match(await page.locator('#action-content').innerText(),/SUCAN001[\s\S]*etiqueta ya se puede imprimir[\s\S]*estado desde el QR/,'La creación sin mercadería debe permitir imprimir el seguimiento completo');
+    assert.match(await page.locator('#action-content').innerText(),/#1[\s\S]*etiqueta ya se puede imprimir[\s\S]*estado desde el QR/,'La creación debe mostrar el número consecutivo y permitir imprimir el seguimiento completo');
     const createPayload=await page.evaluate(()=>window.__reservationRpcCalls.find(call=>call.name==='op_reserva_crear_v2').args.p_datos);
     assert.equal(createPayload.cliente.telefono,'099 123 456','El teléfono debe enviarse en la reserva');
     assert.deepEqual(createPayload.items.map(item=>item.procedencia),['local','proveedor','pedido_local'],'Cada línea debe conservar su propio origen');
@@ -218,11 +218,13 @@ window.supabase={createClient:()=>db};
     const popupPromise=page.waitForEvent('popup');
     await page.locator('#action-content [data-print-created]').click();
     const popup=await popupPromise;await popup.waitForSelector('.label');
-    const labelLayout=await popup.evaluate(()=>{const label=document.querySelector('.label').getBoundingClientRect(),qr=document.querySelector('.qr').getBoundingClientRect(),style=document.querySelector('style').textContent;return {label:{width:label.width,height:label.height},qr:{width:qr.width,height:qr.height},style};});
+    const labelLayout=await popup.evaluate(()=>{const label=document.querySelector('.label').getBoundingClientRect(),qr=document.querySelector('.qr').getBoundingClientRect(),style=document.querySelector('style').textContent;return {label:{width:label.width,height:label.height},qr:{width:qr.width,height:qr.height},style,text:document.querySelector('.label').innerText};});
     assert.match(labelLayout.style,/@page\{size:80mm 200mm;margin:0\}/,'La impresión debe coincidir con el papel 80 por 200 mm del controlador');
     assert.match(labelLayout.style,/transform:rotate\(90deg\)/,'El contenido debe conservar el diseño horizontal dentro de la hoja física');
     assert(labelLayout.label.width>295&&labelLayout.label.width<305&&labelLayout.label.height>745&&labelLayout.label.height<760,'La etiqueta rotada debe caber dentro de una única hoja de 80 por 200 mm');
     assert(labelLayout.qr.width>240&&labelLayout.qr.height>240,'El QR debe aprovechar casi toda la altura del rollo');
+    assert.match(labelLayout.text,/RESERVA #1[\s\S]*Ana Suárez[\s\S]*TEL: 099 123 456/,'La etiqueta debe mostrar el correlativo, nombre y teléfono');
+    assert.doesNotMatch(labelLayout.text,/Origen mixto|Esperando proveedor|Pedido a otro local|Ya estaba en local/,'La etiqueta no debe mostrar el motivo');
     if(process.env.RESERVATIONS_LABEL_SCREENSHOT){await popup.setViewportSize({width:400,height:900});await popup.screenshot({path:process.env.RESERVATIONS_LABEL_SCREENSHOT,clip:{x:0,y:0,width:labelLayout.label.width,height:labelLayout.label.height}});}
     const printPdf=await popup.pdf({preferCSSPageSize:true,printBackground:true});
     const printPages=(printPdf.toString('latin1').match(/\/Type\s*\/Page\b/g)||[]).length;
@@ -266,7 +268,7 @@ window.supabase={createClient:()=>db};
     assert.match(await page.locator('#detail-content').innerText(),/Avisar al cliente[\s\S]*Solicitadas[\s\S]*1[\s\S]*Ya entregadas[\s\S]*0/i,'La corrección debe reabrir el seguimiento sin entregas antes de eliminarlo');
     await page.locator('.more-actions summary').click();
     await page.locator('[data-detail-action="delete"]').click();
-    await page.locator('#delete-code').fill('SUCAN001');
+    await page.locator('#delete-code').fill('1');
     await page.locator('#delete-reason').fill('Reserva creada para prueba integral');
     await page.locator('#delete-form button[type="submit"]').click();
     await page.waitForFunction(()=>document.querySelector('#active-list')?.textContent.includes('No hay reservas'));
@@ -324,7 +326,7 @@ window.supabase={createClient:()=>db};
     await publicPage.locator('[data-item-field="cantidad_local"]').press('Tab');
     await publicPage.locator('#create-button').click();
     await publicPage.waitForSelector('#action-modal:not([hidden])');
-    assert.match(await publicPage.locator('#action-content').innerText(),/SUCAN001[\s\S]*Imprimir etiqueta[\s\S]*Crear otra reserva/,'El enlace debe confirmar la creación y conservar la impresión inicial');
+    assert.match(await publicPage.locator('#action-content').innerText(),/#1[\s\S]*Imprimir etiqueta[\s\S]*Crear otra reserva/,'El enlace debe confirmar el correlativo y conservar la impresión inicial');
     const publicCalls=await publicPage.evaluate(()=>window.__reservationRpcCalls);
     assert.equal(publicCalls.find(call=>call.name==='op_reserva_crear_v2').args.p_acceso,createToken,'La creación debe validarse con el enlace del local');
     assert.equal(publicCalls.some(call=>['op_reserva_listar','op_reserva_detalle','op_reserva_editar'].includes(call.name)),false,'El modo público no debe consultar ni modificar reservas');

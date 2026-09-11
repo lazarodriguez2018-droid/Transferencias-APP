@@ -36,7 +36,9 @@ async function main(){
     {codigo:'MIX-EXT',nombre:'Gestionado por mensaje',cantidad:1,cantidad_local:0,procedencia:'pedido_local',origen_local:'Punta del Este',pedido_local_gestion:'externo'},
     {codigo:'MIX-CREATE',nombre:'Pedido integrado',cantidad:1,cantidad_local:0,procedencia:'pedido_local',origen_local:'Punta del Este',pedido_local_gestion:'crear'}
   ]});
+  check(mixed.number,1,'The first reservation after enabling the sequence receives number one');
   const mixedData=await detail(mixed.id);
+  check(mixedData.reservation.numero,1,'The consecutive number remains available in reservation details');
   check(mixedData.reservation.motivo_nombre,'Origen mixto','Mixed item sources derive the reservation header automatically');
   check(mixedData.items.find(i=>i.procedencia==='proveedor').proveedor_nombre,'Distribuidora Prueba','Supplier is retained on its product line');
   check(mixedData.items.find(i=>i.codigo==='MIX-EXT').pedido_local_gestion,'externo','External inter-shop handling is retained on its product line');
@@ -44,6 +46,7 @@ async function main(){
   truth(mixedData.items.find(i=>i.codigo==='MIX-CREATE').pedido_id,'Only the configured product line creates and links an inter-shop order');
   check(await scalar('select count(*)::int from pedidos where reserva_id=$1',[mixed.id]),1,'Mixed reservation creates exactly the required inter-shop order');
   const mixedQr=await scalar('select op_reserva_qr_detalle($1)',[mixed.qr_token]);
+  check(mixedQr.reservation.number,1,'Public QR exposes the same consecutive number as the label');
   check(mixedQr.reservation.reason,'Origen mixto','Public QR exposes the derived mixed origin');
   check(mixedQr.reservation.items.find(i=>i.procedencia==='proveedor').proveedor_nombre,'Distribuidora Prueba','Public QR identifies the supplier for each product');
   check(mixedQr.reservation.items.find(i=>i.codigo==='MIX-EXT').pedido_local_gestion,'externo','Public QR identifies external inter-shop handling');
@@ -52,6 +55,7 @@ async function main(){
   const local=await create({local:'Maldonado',motivo_id:await motive('Ya estaba en local'),responsable:'Empleado Prueba',cliente:{nombre:'Ana',apellido:'Reserva',telefono:'099 111 222',direccion:'Dirección de prueba'},items:[
     {codigo:'LOCAL-1',nombre:'Bolsa disponible',cantidad:2,cantidad_local:2,procedencia:'local'}
   ]});
+  check(local.number,2,'The next reservation receives the next number without depending on its shop');
   truth(local.qr_token,'Creation returns a stable QR token');
   let data=await detail(local.id),r=data.reservation;
   check(r.estado,'listo','Goods already in the shop start ready');
@@ -121,14 +125,14 @@ async function main(){
   check(edited.reservation.referencia_externa,'REF-DESPUES','Editing updates reservation metadata');
   check(edited.items[0].cantidad,3,'Editing updates product quantities');
   check(edited.events[0].accion,'editar','Editing leaves an audit event');
-  const removed=await scalar("select op_reserva_eliminar($1,$2,'Carga de prueba eliminada')",[editable.id,editable.code]);
-  check(removed.ok,true,'A newly created reservation can be deleted with its code');
+  const removed=await scalar("select op_reserva_eliminar($1,$2,'Carga de prueba eliminada')",[editable.id,String(editable.number)]);
+  check(removed.ok,true,'A newly created reservation can be deleted with its consecutive number');
   await admin();check(await scalar('select count(*)::int from op_reservas where id=$1',[editable.id]),0,'Deleted reservation disappears from operational data');
   check(await scalar('select count(*)::int from op_reserva_eliminaciones where reserva_id=$1',[editable.id]),1,'Deletion preserves an audit snapshot');
 
   await login();const generatedDelete=await create({local:'Maldonado',motivo_id:await motive('Pedido a otro local'),pedido_local_gestion:'crear',pedido_local_origen:'Punta del Este',responsable:'Empleado Prueba',items:[{codigo:'DELETE-MOVE',nombre:'Pedido generado para borrar',cantidad:1,cantidad_local:0,procedencia:'pedido_local'}]});
   await admin();const generatedOrder=await scalar('select id from pedidos where reserva_id=$1',[generatedDelete.id]);
-  await login();await scalar("select op_reserva_eliminar($1,$2,'Prueba de eliminación segura')",[generatedDelete.id,generatedDelete.code]);
+  await login();await scalar("select op_reserva_eliminar($1,$2,'Prueba de eliminación segura')",[generatedDelete.id,String(generatedDelete.number)]);
   await admin();check(await scalar('select count(*)::int from pedidos where id=$1',[generatedOrder]),0,'Deleting a reservation removes only its still-pending generated order');
 
   await login();const external=await create({local:'Maldonado',motivo_id:await motive('Pedido a otro local'),pedido_local_gestion:'externo',pedido_local_origen:'Punta del Este',responsable:'Empleado Prueba',items:[{codigo:'WHATSAPP-1',nombre:'Pedido por WhatsApp',cantidad:1,cantidad_local:0,procedencia:'pedido_local'}]});
@@ -141,7 +145,7 @@ async function main(){
   await login();const linkedExisting=await create({local:'Maldonado',motivo_id:await motive('Pedido a otro local'),pedido_local_gestion:'existente',pedido_local_origen:'Punta del Este',pedido_existente_id:existingOrder,responsable:'Empleado Prueba',items:[{codigo:'EXIST-1',nombre:'Producto ya solicitado',cantidad:2,cantidad_local:0,procedencia:'pedido_local'}]});
   await admin();check(await scalar('select reserva_id from pedidos where id=$1',[existingOrder]),linkedExisting.id,'Choosing an existing order links it instead of creating another');
   check(await scalar("select count(*)::int from pedidos p join pedido_productos pp on pp.pedido_id=p.id where pp.codigo='EXIST-1'"),1,'Existing-order creation does not duplicate the order');
-  await login();await scalar("select op_reserva_eliminar($1,$2,'Prueba de desvinculación')",[linkedExisting.id,linkedExisting.code]);
+  await login();await scalar("select op_reserva_eliminar($1,$2,'Prueba de desvinculación')",[linkedExisting.id,String(linkedExisting.number)]);
   await admin();check(await scalar('select count(*)::int from pedidos where id=$1',[existingOrder]),1,'Deleting the reservation never deletes a pre-existing order');
   check(await scalar('select reserva_id is null from pedidos where id=$1',[existingOrder]),true,'Deleting the reservation unlinks the pre-existing order');
 

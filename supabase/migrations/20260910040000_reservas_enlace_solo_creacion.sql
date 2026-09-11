@@ -6,6 +6,22 @@ begin;
 alter table public.op_reservas
   add column if not exists created_via_link_id uuid references public.op_reserva_enlaces(id) on delete set null;
 
+-- Los registros anteriores conservan su código histórico. La primera reserva
+-- creada luego de esta migración será la #1 y la secuencia nunca reutiliza números.
+create sequence if not exists public.op_reserva_numero_seq as bigint start with 1 increment by 1;
+
+alter table public.op_reservas
+  add column if not exists numero bigint;
+
+alter table public.op_reservas
+  alter column numero set default nextval('public.op_reserva_numero_seq'::regclass);
+
+alter sequence public.op_reserva_numero_seq owned by public.op_reservas.numero;
+
+create unique index if not exists op_reservas_numero_uidx
+  on public.op_reservas(numero)
+  where numero is not null;
+
 create index if not exists op_reservas_created_via_link_idx
   on public.op_reservas(created_via_link_id,created_at desc)
   where created_via_link_id is not null;
@@ -171,9 +187,102 @@ begin
   update public.op_reservas set qr_token=v_token,qr_token_hash=encode(digest(v_token,'sha256'),'hex'),qr_updated_at=now() where id=r.id returning estado into v_estado;
   insert into public.op_reserva_eventos(reserva_id,accion,estado,detalle,usuario_id,invitado_id,autor_nombre)
     values(r.id,'crear',v_estado,jsonb_build_object('productos',jsonb_array_length(items),'origen_general',motivo,'canal',case when v_public then 'enlace_local' else 'cuenta' end),(a->>'user_id')::uuid,null,a->>'name');
-  return jsonb_build_object('ok',true,'id',r.id,'code',r.codigo,'state',v_estado,'qr_token',v_token,
-    'label',jsonb_build_object('id',r.id,'codigo',r.codigo,'local_nombre',r.local_nombre,'local_almacen',r.local_almacen,
-      'motivo_nombre',r.motivo_nombre,'cliente_nombre',r.cliente_nombre,'cliente_apellido',r.cliente_apellido,'created_at',r.created_at));
+  return jsonb_build_object('ok',true,'id',r.id,'number',r.numero,'code',r.codigo,'state',v_estado,'qr_token',v_token,
+    'label',jsonb_build_object('id',r.id,'numero',r.numero,'codigo',r.codigo,'local_nombre',r.local_nombre,'local_almacen',r.local_almacen,
+      'cliente_nombre',r.cliente_nombre,'cliente_apellido',r.cliente_apellido,'cliente_telefono',r.cliente_telefono,'created_at',r.created_at));
+end $$;
+
+create or replace function public.op_reserva_listar(p_filtros jsonb default '{}'::jsonb,p_acceso text default null)
+returns jsonb language plpgsql security definer set search_path=public,extensions,pg_temp as $$
+declare a jsonb; result jsonb; v_local text; v_history boolean; q text;
+begin
+  a:=public.op_reserva_actor(p_acceso); perform public.op_reservas_actualizar_vencidas();
+  v_local:=case when coalesce((a->>'supervisor')::boolean,false) then nullif(trim(p_filtros->>'local'),'') else a->>'local' end;
+  v_history:=coalesce((p_filtros->>'history')::boolean,false); q:=lower(unaccent(trim(coalesce(p_filtros->>'search',''))));
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.updated_at desc),'[]') into result from (
+    select r.id,r.numero,r.codigo,r.local_nombre,r.motivo_nombre,r.responsable_nombre,r.cliente_nombre,r.cliente_apellido,r.cliente_telefono,
+      r.estado,r.mercaderia_local_at,r.vencimiento_at,r.fecha_estimada,r.referencia_externa,r.created_at,r.updated_at,
+      count(i.id)::integer productos,coalesce(sum(i.cantidad),0)::integer unidades,coalesce(sum(i.cantidad_local),0)::integer unidades_local,
+      coalesce(sum(i.cantidad_entregada),0)::integer unidades_entregadas
+    from public.op_reservas r left join public.op_reserva_items i on i.reserva_id=r.id
+    where (coalesce((a->>'supervisor')::boolean,false) or r.local_nombre=a->>'local')
+      and (v_local is null or r.local_nombre=v_local)
+      and (case when v_history then r.estado in ('completado','cancelado') else r.estado not in ('completado','cancelado') end)
+      and (nullif(p_filtros->>'estado','') is null or r.estado=p_filtros->>'estado')
+      and (q='' or lower(unaccent(concat_ws(' ',r.numero::text,r.codigo,r.cliente_nombre,r.cliente_apellido,r.cliente_telefono,r.motivo_nombre,
+        r.responsable_nombre,r.referencia_externa,i.codigo,i.nombre))) like '%'||q||'%')
+    group by r.id order by r.updated_at desc limit 300
+  ) x;
+  return result;
+end $$;
+
+create or replace function public.op_reserva_qr_detalle(p_token text)
+returns jsonb language plpgsql stable security definer set search_path=public,extensions,pg_temp as $$
+declare r public.op_reservas; items jsonb;
+begin
+  select * into r from public.op_reservas where qr_token_hash=encode(digest(coalesce(p_token,''),'sha256'),'hex');
+  if r.id is null then return jsonb_build_object('ok',false,'error','El QR no es válido o fue reemplazado'); end if;
+  select coalesce(jsonb_agg(jsonb_build_object('codigo',codigo,'nombre',nombre,'cantidad',cantidad,'cantidad_local',cantidad_local,
+    'cantidad_entregada',cantidad_entregada,'procedencia',procedencia,'proveedor_nombre',proveedor_nombre,
+    'pedido_local_gestion',pedido_local_gestion,'origen_local',origen_local,'estado',estado,'fecha_estimada',fecha_estimada,
+    'remito_numero',remito_numero) order by created_at),'[]') into items
+    from public.op_reserva_items where reserva_id=r.id;
+  return jsonb_build_object('ok',true,'reservation',jsonb_build_object('number',r.numero,'code',r.codigo,'local',r.local_nombre,
+    'reason',r.motivo_nombre,'customer',nullif(trim(concat_ws(' ',r.cliente_nombre,r.cliente_apellido)),''),'phone',r.cliente_telefono,
+    'responsible',r.responsable_nombre,'state',r.estado,'created_at',r.created_at,'merchandise_at',r.mercaderia_local_at,
+    'expires_at',r.vencimiento_at,'reference',r.referencia_externa,
+    'location',(select ubicacion_reservas from public.op_reserva_config_local where local_nombre=r.local_nombre),'items',items));
+end $$;
+
+create or replace function public.op_reserva_eliminar(p_reserva uuid,p_codigo text,p_motivo text,p_acceso text default null)
+returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare a jsonb; r public.op_reservas; snap jsonb; referencia text;
+begin
+  a:=public.op_reserva_actor(p_acceso);
+  select * into r from public.op_reservas where id=p_reserva for update;
+  if r.id is null or not public.op_reserva_puede_ver(r.id,a) then raise exception 'Reserva no disponible'; end if;
+  referencia:=coalesce(r.numero::text,r.codigo);
+  if upper(trim(coalesce(p_codigo,'')))<>upper(referencia) then raise exception 'Escribí el número de la reserva para confirmar'; end if;
+  if char_length(trim(coalesce(p_motivo,''))) not between 3 and 500 then raise exception 'Explicá por qué se elimina'; end if;
+  if exists(select 1 from public.op_reserva_items where reserva_id=r.id and cantidad_entregada>0) then raise exception 'Una reserva con entregas no se puede eliminar; cancelala para conservar la trazabilidad'; end if;
+  if exists(select 1 from public.pedidos where reserva_id=r.id and generado_desde_reserva and estado<>'pendiente') then raise exception 'El pedido entre locales ya avanzó y no se puede eliminar desde Reservas'; end if;
+  snap:=jsonb_build_object('reservation',to_jsonb(r)-'qr_token'-'qr_token_hash',
+    'items',(select coalesce(jsonb_agg(to_jsonb(i) order by i.created_at),'[]') from public.op_reserva_items i where i.reserva_id=r.id),
+    'comments',(select coalesce(jsonb_agg(to_jsonb(c) order by c.created_at),'[]') from public.op_reserva_comentarios c where c.reserva_id=r.id),
+    'events',(select coalesce(jsonb_agg(to_jsonb(e) order by e.created_at),'[]') from public.op_reserva_eventos e where e.reserva_id=r.id),
+    'delete_reason',trim(p_motivo));
+  insert into public.op_reserva_eliminaciones(reserva_id,codigo,local_nombre,motivo,snapshot,usuario_id,invitado_id,autor_nombre)
+    values(r.id,r.codigo,r.local_nombre,trim(p_motivo),snap,(a->>'user_id')::uuid,(a->>'guest_id')::uuid,a->>'name');
+  delete from public.pedidos where reserva_id=r.id and generado_desde_reserva and estado='pendiente';
+  delete from public.op_reservas where id=r.id;
+  return jsonb_build_object('ok',true,'id',r.id,'number',r.numero,'code',r.codigo);
+end $$;
+
+create or replace function public.op_recepcion_reservas_datos(p_recepcion uuid)
+returns jsonb language plpgsql stable security definer set search_path=public,pg_temp as $$
+declare rec public.op_recepciones; result jsonb;
+begin
+  select * into rec from public.op_recepciones where id=p_recepcion;
+  if rec.id is null or not (public.is_ops_supervisor() or rec.destino_local=public.my_local()) then raise exception 'Recepción no disponible'; end if;
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.created_at),'[]') into result from (
+    select r.id,r.numero,r.codigo,r.cliente_nombre,r.cliente_apellido,r.cliente_telefono,r.motivo_nombre,r.estado,r.created_at,
+      lr.reserva_id is not null linked,
+      case when lr.reserva_id is not null then 'vinculada' when exists(select 1 from public.op_reserva_items z where z.reserva_id=r.id and trim(coalesce(z.remito_numero,''))=trim(rec.numero_remito)) then 'remito' else 'fecha_productos' end relation,
+      coalesce((select jsonb_agg(jsonb_build_object('id',i.id,'codigo',i.codigo,'nombre',i.nombre,'cantidad',i.cantidad,
+        'cantidad_local',i.cantidad_local,'cantidad_entregada',i.cantidad_entregada,'remito_numero',i.remito_numero,
+        'fecha_estimada',i.fecha_estimada,'en_remito',ri.codigo is not null,'remito_esperado',coalesce(ri.esperado,0),'remito_recibido',coalesce(ri.recibido,0)) order by i.created_at)
+        from public.op_reserva_items i left join public.op_recepcion_items ri on ri.recepcion_id=rec.id and ri.codigo=i.codigo
+        where i.reserva_id=r.id and i.pedido_id is null),'[]') items
+    from public.op_reservas r
+    left join public.op_recepcion_reservas lr on lr.recepcion_id=rec.id and lr.reserva_id=r.id
+    where r.local_nombre=rec.destino_local and r.estado not in ('completado','cancelado')
+      and exists(select 1 from public.op_reserva_items i join public.op_recepcion_items ri on ri.recepcion_id=rec.id and ri.codigo=i.codigo
+        where i.reserva_id=r.id and i.pedido_id is null and i.cantidad_local+i.cantidad_entregada<i.cantidad
+          and (trim(coalesce(i.remito_numero,''))=trim(rec.numero_remito)
+            or (nullif(trim(coalesce(i.remito_numero,'')),'') is null and i.procedencia in ('proveedor','reposicion','remito','otro')
+              and (i.fecha_estimada is null or i.fecha_estimada<=rec.fecha_remito+7))))
+  ) x;
+  return jsonb_build_object('reservations',result,'can_link',rec.estado='en_control' and (public.is_ops_supervisor() or rec.destino_local=public.my_local()));
 end $$;
 
 -- El rol anónimo conserva únicamente contexto de creación, búsquedas necesarias,
