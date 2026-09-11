@@ -272,14 +272,16 @@ window.supabase={createClient:()=>db};
     assert.match(await page.locator('#history-list').innerText(),/COMPLETADA[\s\S]*Ana Suárez/,'La reserva cerrada debe quedar en el historial');
 
     await page.locator('#history-list [data-reservation-id]').click();
-    await page.locator('.more-actions summary').click();
+    await page.waitForSelector('.admin-reservation-actions');
+    assert.match(await page.locator('.admin-reservation-actions').innerText(),/ADMINISTRACIÓN[\s\S]*Reserva cerrada[\s\S]*Reabrir o corregir entrega[\s\S]*Eliminar reserva/,'El administrador debe ver reapertura y eliminación sin desplegar menús');
+    assert.equal(await page.locator('[data-detail-action="correct-close"]').isVisible(),true,'La reapertura debe ser visible en una reserva cerrada');
+    assert.equal(await page.locator('[data-detail-action="delete"]').isVisible(),true,'La eliminación debe seguir disponible en una reserva cerrada');
     await page.locator('[data-detail-action="correct-close"]').click();
     for(let index=0;index<3;index++)await page.locator('.corrected-delivery').nth(index).fill('0');
     await page.locator('#correct-close-reason').fill('Se marcó una unidad de más por error');
     await page.locator('#correct-close-form button[type="submit"]').click();
     await page.waitForFunction(()=>document.querySelector('#action-modal')?.hidden);
     assert.match(await page.locator('#detail-content').innerText(),/Despachar el pedido web[\s\S]*Solicitadas[\s\S]*1[\s\S]*Ya entregadas[\s\S]*0/i,'La corrección debe reabrir el seguimiento web sin entregas antes de eliminarlo');
-    await page.locator('.more-actions summary').click();
     await page.locator('[data-detail-action="delete"]').click();
     await page.locator('#delete-code').fill('1');
     await page.locator('#delete-reason').fill('Reserva creada para prueba integral');

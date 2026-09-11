@@ -28,6 +28,9 @@ assert.match(js,/const sourceLabels=\{local:'Disponible en el local',proveedor:'
 assert.match(page,/class="tab admin-only"[\s\S]*data-view="settings"[\s\S]*hidden>Configuración/,'La pestaña de configuración comienza oculta');
 assert.match(page,/class="view admin-only" id="view-settings" hidden/,'La vista completa de configuración comienza oculta');
 assert.match(js,/function isAdmin\(\)\{return state\.actor\?\.supervisor===true;\}/,'El acceso administrativo requiere un valor booleano explícito');
+assert.match(js,/function adminActionsMarkup\(r\)[\s\S]*Reabrir o corregir entrega[\s\S]*Retroceder o corregir estado[\s\S]*Eliminar reserva/,'El administrador debe tener acciones visibles para reabrir, retroceder y eliminar');
+assert.match(js,/function actionDelete\(\)\{if\(!isAdmin\(\)\)/,'La interfaz debe bloquear la eliminación para usuarios no administradores');
+assert.match(js,/function actionCorrectClose\(\)\{if\(!isAdmin\(\)\)/,'La interfaz debe bloquear la reapertura para usuarios no administradores');
 assert.match(js,/if\(view==='settings'&&!isAdmin\(\)\)view='active'/,'Un usuario sin permisos no puede abrir la vista administrativa');
 assert.match(js,/function splitItem\(index\)[\s\S]*state\.newItems\.splice/,'Un mismo producto se puede dividir entre orígenes');
 assert.match(js,/data-item-field="procedencia"[\s\S]*data-item-field="proveedor_nombre"[\s\S]*data-item-field="origen_local"[\s\S]*data-item-field="pedido_local_gestion"/,'Cada línea captura proveedor o gestión entre locales');
@@ -36,7 +39,7 @@ assert.match(js,/data-item-field="cantidad_origen"/,'La coordinación externa di
 assert.match(js,/op_reserva_pedidos_candidatos/,'La creación puede elegir un pedido existente sin duplicarlo');
 assert.match(js,/op_reserva_editar/,'La reserva completa se puede editar antes de entregas');
 assert.match(js,/op_reserva_eliminar/,'Una carga errónea se puede eliminar con confirmación');
-assert.match(js,/op_reserva_corregir_cierre/,'Los empleados deben poder corregir un cierre o una entrega errónea');
+assert.match(js,/op_reserva_corregir_cierre/,'Los administradores deben poder corregir un cierre o una entrega errónea');
 assert.match(js,/Se restaurarán las cantidades que estaban separadas antes de cancelar/,'La corrección de cancelación debe explicar que restaura la mercadería');
 assert.match(js,/returned\?x\.dataset\.current:x\.dataset\.withLocal/,'No retirado no debe sumar la mercadería local como si hubiera sido entregada');
 assert.match(js,/volverán a exhibición\. No se modifica stock/,'La interfaz debe explicar el efecto de no retirado');
@@ -75,7 +78,7 @@ assert.match(js,/function startRealtimeFallback\(error\)[\s\S]*setInterval\(refr
 assert.match(js,/hadContent=listEl\.dataset\.loaded==='true'[\s\S]*signature!==state\.listSignatures\[kind\]/,'La actualización periódica debe conservar las tarjetas y evitar reemplazos sin cambios');
 assert.match(js,/openDetail\(state\.current\.reservation\.id,\{silent:true\}\)/,'El detalle abierto debe refrescarse sin mostrar una pantalla de carga');
 assert.match(js,/channel\.subscribe\(status=>[\s\S]*startRealtimeFallback\(error\)/,'Un fallo al abrir Realtime no debe impedir entrar al módulo');
-assert.match(page,/reservas\.css\?v=6[\s\S]*reserva-engine\.js\?v=3[\s\S]*reservas\.js\?v=12/,'El enlace posterior a la creación debe invalidar la caché anterior');
+assert.match(page,/reservas\.css\?v=7[\s\S]*reserva-engine\.js\?v=3[\s\S]*reservas\.js\?v=13/,'El enlace posterior a la creación debe invalidar la caché anterior');
 assert.match(lookupPage,/consulta\.css\?v=2[\s\S]*qrcodejs@1\.0\.0[\s\S]*reserva-engine\.js\?v=3[\s\S]*consulta\.js\?v=6/,'La reimpresión pública debe cargar el generador QR e invalidar la caché');
 assert.match(lookup,/number=r\.number\?\?r\.code/,'La consulta QR debe mostrar el número consecutivo cuando existe');
 assert.match(lookupPage,/id="lookup-print"[^>]*>Imprimir etiqueta/,'El enlace público debe ofrecer la reimpresión de la etiqueta');

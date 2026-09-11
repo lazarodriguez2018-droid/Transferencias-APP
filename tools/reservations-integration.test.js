@@ -105,6 +105,8 @@ async function main(){
   data=await scalar("select op_reserva_finalizar($1,'retiro_cliente',$2::jsonb,null)",[local.id,JSON.stringify([{id:localItem.id,cantidad:1}])]);
   check(data.reservation.estado,'parcial','A partial delivery remains open');
   check(data.items.find(i=>i.id===localItem.id).cantidad_entregada,1,'Delivered units are recorded');
+  await fails(()=>scalar("select op_reserva_corregir_cierre($1,$2::jsonb,'Entrega cargada por error')",[local.id,JSON.stringify([{id:localItem.id,cantidad:0}])]),/Solo un administrador/);
+  await login('supervisor');
   data=await scalar("select op_reserva_corregir_cierre($1,$2::jsonb,'Entrega cargada por error')",[local.id,JSON.stringify([{id:localItem.id,cantidad:0}])]);
   check(data.items.find(i=>i.id===localItem.id).cantidad_local,1,'Undo restores wrongly delivered units to local tracking');
 
@@ -125,6 +127,8 @@ async function main(){
   const cancelledItem=(await detail(cancelled.id)).items[0];let cancelledData=await scalar("select op_reserva_cancelar($1,'Cliente desistió')",[cancelled.id]);
   check(cancelledData.reservation.estado,'cancelado','Cancellation closes the reservation with a reason');
   check(cancelledData.items[0].cantidad_local,0,'Cancellation releases separated goods for sale');
+  await fails(()=>scalar("select op_reserva_corregir_cierre($1,$2::jsonb,'Cancelación realizada por error')",[cancelled.id,JSON.stringify([{id:cancelledItem.id,cantidad:0}])]),/Solo un administrador/);
+  await login('supervisor');
   cancelledData=await scalar("select op_reserva_corregir_cierre($1,$2::jsonb,'Cancelación realizada por error')",[cancelled.id,JSON.stringify([{id:cancelledItem.id,cantidad:0}])]);
   check(cancelledData.items[0].cantidad_local,2,'Undoing cancellation restores the previously separated quantity');
   check(cancelledData.reservation.estado,'listo','Undoing cancellation restores the operational state');
@@ -144,14 +148,22 @@ async function main(){
   check(edited.reservation.referencia_externa,'REF-DESPUES','Editing updates reservation metadata');
   check(edited.items[0].cantidad,3,'Editing updates product quantities');
   check(edited.events[0].accion,'editar','Editing leaves an audit event');
-  const removed=await scalar("select op_reserva_eliminar($1,$2,'Carga de prueba eliminada')",[editable.id,String(editable.number)]);
+  await fails(()=>scalar("select op_reserva_eliminar($1,$2,'Carga de prueba eliminada')",[editable.id,String(editable.number)]),/Solo un administrador/);
+  await login('supervisor');const removed=await scalar("select op_reserva_eliminar($1,$2,'Carga de prueba eliminada')",[editable.id,String(editable.number)]);
   check(removed.ok,true,'A newly created reservation can be deleted with its consecutive number');
   await admin();check(await scalar('select count(*)::int from op_reservas where id=$1',[editable.id]),0,'Deleted reservation disappears from operational data');
   check(await scalar('select count(*)::int from op_reserva_eliminaciones where reserva_id=$1',[editable.id]),1,'Deletion preserves an audit snapshot');
 
+  await login();const closedDelete=await create({local:'Maldonado',finalidad:'reparto',responsable:'Empleado Prueba',cliente:{nombre:'Prueba cerrada',direccion:'Dirección de prueba'},items:[{codigo:'DELETE-CLOSED',nombre:'Reserva completada para borrar',cantidad:1,cantidad_local:1,procedencia:'local'}]});
+  const closedDeleteItem=(await detail(closedDelete.id)).items[0];await scalar("select op_reserva_finalizar($1,'reparto',$2::jsonb,'Prueba de cierre')",[closedDelete.id,JSON.stringify([{id:closedDeleteItem.id,cantidad:1}])]);
+  await fails(()=>scalar("select op_reserva_eliminar($1,$2,'Intento sin permiso')",[closedDelete.id,String(closedDelete.number)]),/Solo un administrador/);
+  await login('supervisor');const removedClosed=await scalar("select op_reserva_eliminar($1,$2,'Prueba administrativa de reserva cerrada')",[closedDelete.id,String(closedDelete.number)]);
+  check(removedClosed.ok,true,'An administrator can delete a completed reservation with deliveries');
+  await admin();check(await scalar("select (snapshot#>>'{deleted_by_admin}')::boolean from op_reserva_eliminaciones where reserva_id=$1",[closedDelete.id]),true,'Completed deletion keeps an administrative audit snapshot');
+
   await login();const generatedDelete=await create({local:'Maldonado',motivo_id:await motive('Pedido a otro local'),pedido_local_gestion:'crear',pedido_local_origen:'Punta del Este',responsable:'Empleado Prueba',items:[{codigo:'DELETE-MOVE',nombre:'Pedido generado para borrar',cantidad:1,cantidad_local:0,procedencia:'pedido_local'}]});
   await admin();const generatedOrder=await scalar('select id from pedidos where reserva_id=$1',[generatedDelete.id]);
-  await login();await scalar("select op_reserva_eliminar($1,$2,'Prueba de eliminación segura')",[generatedDelete.id,String(generatedDelete.number)]);
+  await login('supervisor');await scalar("select op_reserva_eliminar($1,$2,'Prueba de eliminación segura')",[generatedDelete.id,String(generatedDelete.number)]);
   await admin();check(await scalar('select count(*)::int from pedidos where id=$1',[generatedOrder]),0,'Deleting a reservation removes only its still-pending generated order');
 
   await login();const external=await create({local:'Maldonado',motivo_id:await motive('Pedido a otro local'),pedido_local_gestion:'externo',pedido_local_origen:'Punta del Este',responsable:'Empleado Prueba',items:[{codigo:'WHATSAPP-1',nombre:'Pedido por WhatsApp',cantidad:1,cantidad_local:0,procedencia:'pedido_local'}]});
@@ -164,7 +176,7 @@ async function main(){
   await login();const linkedExisting=await create({local:'Maldonado',motivo_id:await motive('Pedido a otro local'),pedido_local_gestion:'existente',pedido_local_origen:'Punta del Este',pedido_existente_id:existingOrder,responsable:'Empleado Prueba',items:[{codigo:'EXIST-1',nombre:'Producto ya solicitado',cantidad:2,cantidad_local:0,procedencia:'pedido_local'}]});
   await admin();check(await scalar('select reserva_id from pedidos where id=$1',[existingOrder]),linkedExisting.id,'Choosing an existing order links it instead of creating another');
   check(await scalar("select count(*)::int from pedidos p join pedido_productos pp on pp.pedido_id=p.id where pp.codigo='EXIST-1'"),1,'Existing-order creation does not duplicate the order');
-  await login();await scalar("select op_reserva_eliminar($1,$2,'Prueba de desvinculación')",[linkedExisting.id,String(linkedExisting.number)]);
+  await login('supervisor');await scalar("select op_reserva_eliminar($1,$2,'Prueba de desvinculación')",[linkedExisting.id,String(linkedExisting.number)]);
   await admin();check(await scalar('select count(*)::int from pedidos where id=$1',[existingOrder]),1,'Deleting the reservation never deletes a pre-existing order');
   check(await scalar('select reserva_id is null from pedidos where id=$1',[existingOrder]),true,'Deleting the reservation unlinks the pre-existing order');
 
