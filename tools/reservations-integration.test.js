@@ -61,7 +61,7 @@ async function main(){
   check(mixedQr.reservation.items.find(i=>i.codigo==='MIX-EXT').tracking_actual,'TRACK-1','Public QR exposes third-party transfer tracking');
 
   await login();
-  const local=await create({local:'Maldonado',motivo_id:await motive('Ya estaba en local'),responsable:'Empleado Prueba',cliente:{nombre:'Ana',apellido:'Reserva',telefono:'099 111 222',direccion:'Dirección de prueba'},items:[
+  const local=await create({local:'Maldonado',motivo_id:await motive('Ya estaba en local'),motivo_comentario:'Entregar únicamente a Ana',responsable:'Empleado Prueba',cliente:{nombre:'Ana',apellido:'Reserva',telefono:'099 111 222',direccion:'Dirección de prueba'},items:[
     {codigo:'LOCAL-1',nombre:'Bolsa disponible',cantidad:2,cantidad_local:2,procedencia:'local',fecha_estimada:'2026-09-20',remito_numero:'NO-CORRESPONDE'}
   ]});
   check(local.number,2,'The next reservation receives the next number without depending on its shop');
@@ -93,6 +93,7 @@ async function main(){
   await fails(()=>scalar("select op_agenda_guardar_cliente(null,'{\"nombre\":\"Sin permiso\"}'::jsonb)"),/permission denied/);
   const publicQr=await scalar('select op_reserva_qr_detalle($1)',[local.qr_token]);
   check(publicQr.ok,true,'Public QR is read-only and resolvable');
+  check(publicQr.reservation.observations,'Entregar únicamente a Ana','Public QR preserves the main observations needed to reprint the label');
   check(publicQr.reservation.items.length,1,'QR contains every product');
   await fails(()=>detail(local.id),/permission denied|Iniciá sesión|disponible/);
   await login('other');await fails(()=>detail(local.id),/acceso/);
