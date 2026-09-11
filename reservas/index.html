@@ -50,7 +50,7 @@
         <div class="page-head"><div><span class="eyebrow">NUEVA RESERVA</span><h1 id="form-title">Crear reserva</h1><p id="form-subtitle">Completá los datos del destinatario y agregá toda la mercadería reservada.</p></div></div>
         <form class="builder" id="reservation-form">
           <article class="panel step-panel"><div class="step-number">1</div><div class="panel-head"><h2>Local y responsable</h2><p>Seleccioná el local y la persona encargada del seguimiento.</p></div>
-            <div class="form-grid"><label class="field"><span>Local</span><select class="input" id="new-local" required></select></label><label class="field"><span>Responsable *</span><input class="input" id="new-responsible" maxlength="80" required></label><label class="field full"><span>Referencia (opcional)</span><input class="input" id="new-reference" maxlength="120" placeholder="Pedido web, ticket o comprobante"></label><label class="field full"><span>Observaciones</span><textarea class="input" id="new-reason-comment" maxlength="1000" placeholder="Información útil para el equipo"></textarea></label></div>
+            <div class="form-grid"><label class="field"><span>Local que entregará o recibirá</span><select class="input" id="new-local" required></select></label><label class="field"><span>Responsable *</span><input class="input" id="new-responsible" maxlength="80" required></label><label class="field"><span>¿Para qué se separa? *</span><select class="input" id="new-purpose" required><option value="retiro_cliente">Retiro del cliente en el local</option><option value="reparto">Reparto del local</option><option value="pedido_web">Pedido web</option><option value="traslado_interno">Traslado interno entre locales</option><option value="otro">Otro destino</option></select></label><label class="field" id="web-delivery-field" hidden><span>Entrega del pedido web *</span><select class="input" id="new-web-delivery"><option value="retiro_local">Retiro en el local</option><option value="reparto_local">Reparto del local</option><option value="agencia">Agencia o correo</option></select></label><label class="field full" id="reference-field"><span id="reference-label">Referencia (opcional)</span><input class="input" id="new-reference" maxlength="120" placeholder="Ticket, comprobante o referencia interna"></label><p class="flow-hint full" id="purpose-hint"></p><label class="field full"><span>Observaciones</span><textarea class="input" id="new-reason-comment" maxlength="1000" placeholder="Información útil para el equipo"></textarea></label></div>
           </article>
           <article class="panel step-panel"><div class="step-number">2</div><div class="panel-head"><h2>Cliente o destinatario</h2><p>Buscá un cliente existente o completá los datos necesarios para identificarlo.</p></div>
             <div class="customer-search"><input class="input" id="customer-search" type="search" placeholder="Buscar cliente por nombre o teléfono…"><div class="floating-results" id="customer-results" hidden></div></div>
@@ -85,7 +85,7 @@
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.12.3/dist/JsBarcode.all.min.js"></script>
   <script src="/operaciones/cloud-config.js"></script>
-  <script src="/reservas/reserva-engine.js?v=2"></script>
-  <script src="/reservas/reservas.js?v=11"></script>
+  <script src="/reservas/reserva-engine.js?v=3"></script>
+  <script src="/reservas/reservas.js?v=12"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 const fs=require('fs'),assert=require('assert');
-const sql=fs.readFileSync('supabase/migrations/20260909010000_control_reservas.sql','utf8'),changes=fs.readFileSync('supabase/migrations/20260910010000_reservas_edicion_eliminacion.sql','utf8'),unaccentFix=fs.readFileSync('supabase/migrations/20260910020000_reservas_unaccent_listado.sql','utf8'),itemOrigins=fs.readFileSync('supabase/migrations/20260910030000_reservas_origen_por_producto.sql','utf8'),createOnly=fs.readFileSync('supabase/migrations/20260910040000_reservas_enlace_solo_creacion.sql','utf8');
+const sql=fs.readFileSync('supabase/migrations/20260909010000_control_reservas.sql','utf8'),changes=fs.readFileSync('supabase/migrations/20260910010000_reservas_edicion_eliminacion.sql','utf8'),unaccentFix=fs.readFileSync('supabase/migrations/20260910020000_reservas_unaccent_listado.sql','utf8'),itemOrigins=fs.readFileSync('supabase/migrations/20260910030000_reservas_origen_por_producto.sql','utf8'),createOnly=fs.readFileSync('supabase/migrations/20260910040000_reservas_enlace_solo_creacion.sql','utf8'),logistics=fs.readFileSync('supabase/migrations/20260910050000_reservas_flujos_logisticos.sql','utf8');
 for(const table of ['op_reservas','op_reserva_items','op_reserva_motivos','op_reserva_comentarios','op_reserva_eventos','op_reserva_enlaces','op_reserva_invitados','op_recepcion_reservas'])assert.match(sql,new RegExp(`create table if not exists public\\.${table}\\b`),`Falta ${table}`);
 for(const fn of ['op_reserva_crear','op_reserva_listar','op_reserva_detalle','op_reserva_actualizar_item','op_reserva_pedidos_disponibles','op_reserva_vincular_pedido','op_reserva_cambiar_estado','op_reserva_finalizar','op_reserva_cancelar','op_reserva_corregir_cierre','op_reserva_excepcion','op_reserva_qr_detalle','op_reserva_invitado_entrar','op_recepcion_reservas_datos','op_recepcion_confirmar_reserva','op_agenda_guardar_cliente'])assert.match(sql,new RegExp(`function public\\.${fn}\\(`),`Falta ${fn}`);
 assert.match(sql,/make_interval\(hours=>v_horas\)/,'El vencimiento debe usar las horas configuradas');
@@ -53,4 +53,13 @@ assert.match(createOnly,/'number',r\.numero,'code',r\.codigo,'local',r\.local_no
 assert.match(createOnly,/revoke execute on function public\.op_reserva_listar\(jsonb,text\) from anon/,'Anónimos no pueden listar reservas aunque tengan el enlace');
 assert.match(createOnly,/revoke execute on function public\.op_reserva_editar\(uuid,jsonb,text\) from anon/,'Anónimos no pueden editar reservas');
 assert.match(createOnly,/grant execute on function public\.op_reserva_crear_v2\(jsonb,text\) to anon,authenticated/,'El enlace conserva permiso únicamente para crear');
+assert.match(logistics,/finalidad in \('retiro_cliente','reparto','pedido_web','traslado_interno','otro'\)/,'El destino operativo de la reserva debe ser independiente del origen');
+assert.match(logistics,/entrega_tipo in \('retiro_local','reparto_local','agencia'\)/,'Los pedidos web deben conservar su forma de entrega');
+assert.match(logistics,/traslado_tipo is null or traslado_tipo in \('reposicion','agencia','propio','coordinar'\)/,'Cada línea entre locales conserva su plan de traslado');
+assert.match(logistics,/cantidad_origen between 0 and cantidad/,'La mercadería preparada en origen se controla separadamente');
+assert.match(logistics,/procedencia='local' then null[\s\S]*fecha_estimada/,'La base debe descartar fechas estimadas para mercadería ya disponible');
+assert.match(logistics,/group by i\.origen_local,i\.traslado_tipo/,'Recorridos distintos desde un mismo local deben generar pedidos separados');
+assert.match(logistics,/finalidad='pedido_web'[\s\S]*Ingresá el número del pedido web/,'Un pedido web requiere referencia');
+assert.match(logistics,/cantidad_preparada_origen[\s\S]*cantidad_preparada/,'El detalle integra la preparación del módulo Pedidos');
+assert.match(logistics,/'purpose',r\.finalidad,'delivery',r\.entrega_tipo/,'El QR debe explicar el destino y la entrega final');
 console.log('reservations sql contract ok');

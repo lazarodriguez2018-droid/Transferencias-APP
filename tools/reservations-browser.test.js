@@ -66,24 +66,23 @@ const db={
     if(name==='op_reserva_buscar_productos')return {data:[{codigo:'010031110010408',nombre:'CORREA ZEE DOG - SELVA - XS',marca:'ZEE DOG'}],error:null};
     if(name==='op_reserva_buscar_clientes')return {data:[],error:null};
     if(name==='op_reserva_crear_v2'){
-      const input=args.p_datos,now=new Date().toISOString();
-      const sources=[...new Set(input.items.map(item=>item.procedencia))],motiveName=sources.length>1?'Origen mixto':sources[0]==='local'?'Ya estaba en local':sources[0]==='pedido_local'?'Pedido a otro local':'Esperando proveedor';
-      reservation={id:'44444444-4444-4444-8444-444444444444',numero:1,codigo:'SUCAN001',local_nombre:'PDE',local_almacen:'01',motivo_id:null,motivo_nombre:motiveName,motivo_comentario:input.motivo_comentario,responsable_nombre:input.responsable,cliente_id:input.cliente.id,cliente_nombre:input.cliente.nombre,cliente_apellido:input.cliente.apellido,cliente_telefono:input.cliente.telefono,cliente_direccion:input.cliente.direccion,cliente_documento:input.cliente.documento,referencia_externa:input.referencia_externa,estado:'buscando',created_at:now,updated_at:now,mercaderia_local_at:null,vencimiento_at:null,qr_token:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'};
-      items=input.items.map((item,index)=>({id:'55555555-5555-4555-8555-55555555555'+index,reserva_id:reservation.id,codigo:item.codigo,nombre:item.nombre,cantidad:item.cantidad,cantidad_local:item.cantidad_local,cantidad_entregada:0,procedencia:item.procedencia,origen_local:item.origen_local,proveedor_nombre:item.proveedor_nombre,pedido_local_gestion:item.pedido_local_gestion,pedido_id:item.pedido_existente_id||null,fecha_estimada:item.fecha_estimada,remito_numero:item.remito_numero,comentario:item.comentario,estado:item.cantidad_local?'separado':'pendiente',created_at:now}));
+      const input=args.p_datos,now=new Date().toISOString(),purposeNames={retiro_cliente:'Retiro en tienda',reparto:'Reparto',pedido_web:'Pedido web',traslado_interno:'Traslado interno',otro:'Otro destino'},motiveName=purposeNames[input.finalidad]||'Retiro en tienda';
+      reservation={id:'44444444-4444-4444-8444-444444444444',numero:1,codigo:'SUCAN001',local_nombre:'PDE',local_almacen:'01',motivo_id:null,motivo_nombre:motiveName,finalidad:input.finalidad||'retiro_cliente',entrega_tipo:input.entrega_tipo||'retiro_local',motivo_comentario:input.motivo_comentario,responsable_nombre:input.responsable,cliente_id:input.cliente.id,cliente_nombre:input.cliente.nombre,cliente_apellido:input.cliente.apellido,cliente_telefono:input.cliente.telefono,cliente_direccion:input.cliente.direccion,cliente_documento:input.cliente.documento,referencia_externa:input.referencia_externa,estado:'buscando',created_at:now,updated_at:now,mercaderia_local_at:null,vencimiento_at:null,qr_token:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'};
+      items=input.items.map((item,index)=>({id:'55555555-5555-4555-8555-55555555555'+index,reserva_id:reservation.id,codigo:item.codigo,nombre:item.nombre,cantidad:item.cantidad,cantidad_local:item.cantidad_local,cantidad_origen:item.cantidad_origen||0,cantidad_preparada_origen:item.cantidad_origen||0,cantidad_entregada:0,procedencia:item.procedencia,origen_local:item.origen_local,proveedor_nombre:item.proveedor_nombre,pedido_local_gestion:item.pedido_local_gestion,pedido_id:item.pedido_existente_id||null,traslado_tipo:item.traslado_tipo,traslado_detalle:item.traslado_detalle,tracking:item.tracking,fecha_estimada:item.procedencia==='local'?'':item.fecha_estimada,remito_numero:item.procedencia==='local'?'':item.remito_numero,comentario:item.comentario,estado:item.cantidad_local?'separado':item.cantidad_origen?'preparado_origen':'pendiente',created_at:now}));
       comments=[];events=[{id:1,accion:'crear',estado:'buscando',detalle:{},autor_nombre:'Empleado prueba',created_at:now}];recalculate();
       return {data:{ok:true,id:reservation.id,number:reservation.numero,code:reservation.codigo,state:reservation.estado,qr_token:reservation.qr_token,label:{...reservation}},error:null};
     }
     if(name==='op_reserva_editar'){
-      const input=args.p_datos,now=new Date().toISOString(),sources=[...new Set(input.items.map(item=>item.procedencia))],motiveName=sources.length>1?'Origen mixto':sources[0]==='local'?'Ya estaba en local':sources[0]==='pedido_local'?'Pedido a otro local':'Esperando proveedor';
-      Object.assign(reservation,{motivo_id:null,motivo_nombre:motiveName,motivo_comentario:input.motivo_comentario,responsable_nombre:input.responsable,cliente_id:input.cliente.id,cliente_nombre:input.cliente.nombre,cliente_apellido:input.cliente.apellido,cliente_telefono:input.cliente.telefono,cliente_direccion:input.cliente.direccion,cliente_documento:input.cliente.documento,referencia_externa:input.referencia_externa,estado:'buscando',updated_at:now});
-      items=input.items.map((item,index)=>({id:item.id||'55555555-5555-4555-8555-55555555555'+index,reserva_id:reservation.id,codigo:item.codigo,nombre:item.nombre,cantidad:item.cantidad,cantidad_local:item.cantidad_local,cantidad_entregada:0,procedencia:item.procedencia,origen_local:item.origen_local,proveedor_nombre:item.proveedor_nombre,pedido_local_gestion:item.pedido_local_gestion,pedido_id:item.pedido_existente_id||null,fecha_estimada:item.fecha_estimada,remito_numero:item.remito_numero,comentario:item.comentario,estado:item.cantidad_local?'separado':'pendiente',created_at:now}));
+      const input=args.p_datos,now=new Date().toISOString(),purposeNames={retiro_cliente:'Retiro en tienda',reparto:'Reparto',pedido_web:'Pedido web',traslado_interno:'Traslado interno',otro:'Otro destino'},motiveName=purposeNames[input.finalidad]||'Retiro en tienda';
+      Object.assign(reservation,{motivo_id:null,motivo_nombre:motiveName,finalidad:input.finalidad||'retiro_cliente',entrega_tipo:input.entrega_tipo||'retiro_local',motivo_comentario:input.motivo_comentario,responsable_nombre:input.responsable,cliente_id:input.cliente.id,cliente_nombre:input.cliente.nombre,cliente_apellido:input.cliente.apellido,cliente_telefono:input.cliente.telefono,cliente_direccion:input.cliente.direccion,cliente_documento:input.cliente.documento,referencia_externa:input.referencia_externa,estado:'buscando',updated_at:now});
+      items=input.items.map((item,index)=>({id:item.id||'55555555-5555-4555-8555-55555555555'+index,reserva_id:reservation.id,codigo:item.codigo,nombre:item.nombre,cantidad:item.cantidad,cantidad_local:item.cantidad_local,cantidad_origen:item.cantidad_origen||0,cantidad_preparada_origen:item.cantidad_origen||0,cantidad_entregada:0,procedencia:item.procedencia,origen_local:item.origen_local,proveedor_nombre:item.proveedor_nombre,pedido_local_gestion:item.pedido_local_gestion,pedido_id:item.pedido_existente_id||null,traslado_tipo:item.traslado_tipo,traslado_detalle:item.traslado_detalle,tracking:item.tracking,fecha_estimada:item.procedencia==='local'?'':item.fecha_estimada,remito_numero:item.procedencia==='local'?'':item.remito_numero,comentario:item.comentario,estado:item.cantidad_local?'separado':item.cantidad_origen?'preparado_origen':'pendiente',created_at:now}));
       recalculate();events.unshift({id:events.length+1,accion:'editar',estado:reservation.estado,detalle:{},autor_nombre:'Empleado prueba',created_at:now});return {data:detail(),error:null};
     }
     if(name==='op_reserva_eliminar'){const result={ok:true,id:reservation.id,code:reservation.codigo};reservation=null;items=[];comments=[];events=[];return {data:result,error:null};}
     if(name==='op_reserva_detalle')return {data:detail(),error:null};
     if(name==='op_reserva_actualizar_item'){
       const item=items.find(row=>row.id===args.p_item),before=item.cantidad_local;
-      item.cantidad_local=args.p_datos.cantidad_local;item.estado=args.p_datos.estado;item.fecha_estimada=args.p_datos.fecha_estimada===undefined?item.fecha_estimada:args.p_datos.fecha_estimada;item.remito_numero=args.p_datos.remito_numero===undefined?item.remito_numero:args.p_datos.remito_numero;item.comentario=args.p_datos.comentario===undefined?item.comentario:args.p_datos.comentario;
+      item.cantidad_local=args.p_datos.cantidad_local;item.cantidad_origen=args.p_datos.cantidad_origen===undefined?item.cantidad_origen:args.p_datos.cantidad_origen;item.cantidad_preparada_origen=item.cantidad_origen;item.estado=args.p_datos.estado;item.fecha_estimada=args.p_datos.fecha_estimada===undefined?item.fecha_estimada:args.p_datos.fecha_estimada;item.remito_numero=args.p_datos.remito_numero===undefined?item.remito_numero:args.p_datos.remito_numero;item.traslado_tipo=args.p_datos.traslado_tipo===undefined?item.traslado_tipo:args.p_datos.traslado_tipo;item.traslado_detalle=args.p_datos.traslado_detalle===undefined?item.traslado_detalle:args.p_datos.traslado_detalle;item.tracking=args.p_datos.tracking===undefined?item.tracking:args.p_datos.tracking;item.comentario=args.p_datos.comentario===undefined?item.comentario:args.p_datos.comentario;
       if(before===0&&item.cantidad_local>0){reservation.mercaderia_local_at=new Date().toISOString();reservation.vencimiento_at=new Date(Date.now()+48*3600000).toISOString();}
       recalculate();events.unshift({id:events.length+1,accion:'actualizar_producto',estado:item.estado,detalle:{},autor_nombre:'Empleado prueba',created_at:new Date().toISOString()});return {data:detail(),error:null};
     }
@@ -148,6 +147,8 @@ window.supabase={createClient:()=>db};
     await page.locator('button[data-view="new"]').click();
     assert.equal(await page.locator('#new-reason').count(),0,'La reserva no debe imponer un único motivo general');
     assert.match(await page.locator('#view-new').innerText(),/seleccioná el origen de cada uno[\s\S]*Dividir origen/,'La creación debe explicar el origen por producto y las cantidades divididas');
+    await page.locator('#new-purpose').selectOption('pedido_web');await page.locator('#new-web-delivery').selectOption('agencia');
+    assert.match(await page.locator('#purpose-hint').innerText(),/identificar con el número web[\s\S]*Agencia o correo/i,'El pedido web debe mostrar su proceso y forma de entrega');
     await page.locator('#customer-name').fill('Ana');
     await page.locator('#customer-surname').fill('Suárez');
     await page.locator('#customer-phone').fill('099 123 456');
@@ -157,6 +158,8 @@ window.supabase={createClient:()=>db};
     await page.locator('#product-search').fill('CORREA ZEE');
     await page.waitForSelector('#product-results [data-product-index="0"]');
     await page.locator('#product-results [data-product-index="0"]').click();
+    assert.equal(await page.locator('.item-editor').first().getByText(/Fecha estimada/).count(),0,'La mercadería disponible no debe pedir fecha estimada');
+    assert.equal(await page.locator('.item-editor').first().getByText(/Remito/).count(),0,'La mercadería disponible no debe pedir remito');
     const quantity=page.locator('[data-item-field="cantidad"]');
     await quantity.fill('3');await quantity.press('Tab');
     await page.locator('[data-split-item="0"]').click();await page.locator('[data-split-item="0"]').click();
@@ -167,7 +170,10 @@ window.supabase={createClient:()=>db};
     await page.locator('[data-item-field="procedencia"]').nth(2).selectOption('pedido_local');
     await page.locator('[data-item-field="origen_local"]').selectOption('CDM');
     await page.locator('[data-item-field="pedido_local_gestion"]').selectOption('externo');
-    assert.match(await page.locator('.item-editor').nth(2).innerText(),/Días habituales de recepción desde CDM:[\s\S]*martes/,'El calendario del local de origen debe orientar ese producto');
+    await page.locator('[data-item-field="traslado_tipo"]').selectOption('agencia');
+    await page.locator('[data-item-field="traslado_detalle"]').fill('Agencia de prueba');
+    await page.locator('[data-item-field="cantidad_origen"]').evaluate(input=>{input.value='1';input.dispatchEvent(new Event('change',{bubbles:true}));});
+    assert.match(await page.locator('.item-editor').nth(2).innerText(),/Agencia o transporte tercero[\s\S]*Días habituales desde CDM:[\s\S]*martes/,'El calendario y la ruta del local de origen deben orientar ese producto');
     await page.locator('[data-item-field="comentario"]').nth(1).fill('Llega con el próximo proveedor');
     if(process.env.RESERVATIONS_UI_SCREENSHOT)await page.screenshot({path:process.env.RESERVATIONS_UI_SCREENSHOT,fullPage:true});
     await page.evaluate(()=>{window.__createClicks=0;window.__createSubmits=0;document.querySelector('#create-button').addEventListener('click',()=>window.__createClicks++);document.querySelector('#reservation-form').addEventListener('submit',()=>window.__createSubmits++);});
@@ -184,6 +190,10 @@ window.supabase={createClient:()=>db};
     assert.equal(createPayload.items[1].proveedor_nombre,'Distribuidora X','El proveedor debe viajar con su producto');
     assert.equal(createPayload.items[2].origen_local,'CDM','El local de origen debe viajar con su producto');
     assert.equal(createPayload.items[2].pedido_local_gestion,'externo','La gestión por fuera debe registrarse por producto');
+    assert.equal(createPayload.items[2].traslado_tipo,'agencia','La forma de traslado debe registrarse por producto');
+    assert.equal(createPayload.items[2].cantidad_origen,1,'La mercadería separada en origen no debe contarse como recibida');
+    assert.equal(createPayload.finalidad,'pedido_web','El destino de la reserva no debe derivarse del origen de los productos');
+    assert.equal(createPayload.entrega_tipo,'agencia','El pedido web debe conservar su forma de entrega');
     assert.equal(createPayload.items.reduce((sum,item)=>sum+item.cantidad_local,0),0,'No debe marcarse mercadería que todavía no se separó');
     await page.getByRole('button',{name:'Continuar sin imprimir'}).click();
 
@@ -196,7 +206,7 @@ window.supabase={createClient:()=>db};
     await page.locator('#active-list [data-reservation-id]').click();
     assert.equal(await page.locator('.print-shortcut [data-detail-action="print"]').isVisible(),true,'Imprimir etiqueta debe estar visible en cualquier estado');
     assert.match(await page.locator('.print-shortcut').innerText(),/Imprimila cuando necesites identificar la mercadería[\s\S]*unidades disponibles[\s\S]*pendientes/,'La impresión permanente debe explicar que el QR muestra el avance actual');
-    assert.match(await page.locator('#detail-content').innerText(),/Origen mixto[\s\S]*Disponible en el local[\s\S]*Esperando proveedor · Distribuidora X[\s\S]*Pedido a otro local · Desde CDM[\s\S]*Coordinado fuera del sistema/i,'El detalle debe explicar el origen independiente de cada producto');
+    assert.match(await page.locator('#detail-content').innerText(),/Pedido web[\s\S]*Agencia o correo[\s\S]*Disponible en el local[\s\S]*Esperando proveedor · Distribuidora X[\s\S]*Pedido a otro local · Desde CDM[\s\S]*Agencia de prueba/i,'El detalle debe explicar el destino y el recorrido independiente de cada producto');
 
     await page.locator('.more-actions summary').click();
     await page.locator('[data-detail-action="edit"]').click();
@@ -268,7 +278,7 @@ window.supabase={createClient:()=>db};
     await page.locator('#correct-close-reason').fill('Se marcó una unidad de más por error');
     await page.locator('#correct-close-form button[type="submit"]').click();
     await page.waitForFunction(()=>document.querySelector('#action-modal')?.hidden);
-    assert.match(await page.locator('#detail-content').innerText(),/Avisar al cliente[\s\S]*Solicitadas[\s\S]*1[\s\S]*Ya entregadas[\s\S]*0/i,'La corrección debe reabrir el seguimiento sin entregas antes de eliminarlo');
+    assert.match(await page.locator('#detail-content').innerText(),/Despachar el pedido web[\s\S]*Solicitadas[\s\S]*1[\s\S]*Ya entregadas[\s\S]*0/i,'La corrección debe reabrir el seguimiento web sin entregas antes de eliminarlo');
     await page.locator('.more-actions summary').click();
     await page.locator('[data-detail-action="delete"]').click();
     await page.locator('#delete-code').fill('1');
@@ -339,13 +349,14 @@ window.supabase={createClient:()=>db};
     await publicPage.close();
 
     const lookupPage=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
-    const lookupStub=`window.supabase={createClient:()=>({auth:{getSession:async()=>({data:{session:null}})},rpc:async()=>({data:{ok:true,reservation:{number:1,code:'SUCAN001',local:'PDE',warehouse:'01',reason:'Origen mixto',customer:'Ana Suárez',phone:'099 123 456',responsible:'Empleado prueba',state:'listo',created_at:new Date().toISOString(),merchandise_at:new Date().toISOString(),expires_at:new Date(Date.now()+86400000).toISOString(),reference:'WEB-1001',location:'Estante de pruebas',items:[{codigo:'010031110010408',nombre:'CORREA ZEE DOG - SELVA - XS',cantidad:3,cantidad_local:3,cantidad_entregada:0,procedencia:'local'}]}},error:null})})};`;
+    const lookupStub=`window.supabase={createClient:()=>({auth:{getSession:async()=>({data:{session:null}})},rpc:async()=>({data:{ok:true,reservation:{number:1,code:'SUCAN001',local:'PDE',warehouse:'01',reason:'Pedido web',purpose:'pedido_web',delivery:'agencia',customer:'Ana Suárez',phone:'099 123 456',responsible:'Empleado prueba',state:'listo',created_at:new Date().toISOString(),merchandise_at:new Date().toISOString(),expires_at:new Date(Date.now()+86400000).toISOString(),reference:'WEB-1001',location:'Estante de pruebas',items:[{codigo:'010031110010408',nombre:'CORREA ZEE DOG - SELVA - XS',cantidad:3,cantidad_local:3,cantidad_entregada:0,procedencia:'local'}]}},error:null})})};`;
     await lookupPage.route('**/npm/@supabase/supabase-js@2**',route=>route.fulfill({contentType:'application/javascript',body:lookupStub}));
     await lookupPage.route('**/npm/qrcodejs@1.0.0/**',route=>route.fulfill({contentType:'application/javascript',body:`window.QRCode=function(box,options){const canvas=document.createElement('canvas');canvas.width=options.width;canvas.height=options.height;box.appendChild(canvas);};QRCode.CorrectLevel={M:0};`}));
     await lookupPage.route('https://fonts.googleapis.com/**',route=>route.fulfill({contentType:'text/css',body:''}));
     const lookupTarget=target.replace(/\/reservas\/$/,'/reserva.html')+'#'+'a'.repeat(64);
     await lookupPage.goto(lookupTarget,{waitUntil:'domcontentloaded'});await lookupPage.waitForSelector('#lookup-content:not([hidden])');
     assert.match(await lookupPage.locator('#lookup-code').innerText(),/RESERVA #1/,'El enlace público debe mostrar el correlativo');
+    assert.match(await lookupPage.locator('#lookup-reason').innerText(),/Pedido web[\s\S]*Agencia o correo/,'El enlace público debe explicar el destino del pedido web');
     assert.equal(await lookupPage.locator('#lookup-print').isVisible(),true,'El enlace público debe permitir imprimir la etiqueta');
     await lookupPage.evaluate(()=>{const nativeOpen=window.open.bind(window);window.open=(...args)=>{const popup=nativeOpen(...args);popup.print=()=>{};popup.close=()=>{};return popup;};});
     const lookupPopupPromise=lookupPage.waitForEvent('popup');await lookupPage.locator('#lookup-print').click();const lookupPopup=await lookupPopupPromise;await lookupPopup.waitForSelector('.label');

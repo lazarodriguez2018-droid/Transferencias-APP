@@ -39,21 +39,30 @@ async function main(){
   check(mixed.number,1,'The first reservation after enabling the sequence receives number one');
   const mixedData=await detail(mixed.id);
   check(mixedData.reservation.numero,1,'The consecutive number remains available in reservation details');
-  check(mixedData.reservation.motivo_nombre,'Origen mixto','Mixed item sources derive the reservation header automatically');
+  check(mixedData.reservation.finalidad,'retiro_cliente','The reservation purpose is independent from its mixed product origins');
+  check(mixedData.reservation.motivo_nombre,'Retiro en tienda','The header explains what the goods are reserved for');
   check(mixedData.items.find(i=>i.procedencia==='proveedor').proveedor_nombre,'Distribuidora Prueba','Supplier is retained on its product line');
   check(mixedData.items.find(i=>i.codigo==='MIX-EXT').pedido_local_gestion,'externo','External inter-shop handling is retained on its product line');
   check(mixedData.items.find(i=>i.codigo==='MIX-EXT').pedido_id,null,'External handling does not create a duplicate inter-shop order');
+  check(mixedData.items.find(i=>i.codigo==='MIX-EXT').traslado_tipo,'coordinar','Older clients receive a safe transfer-plan default');
   truth(mixedData.items.find(i=>i.codigo==='MIX-CREATE').pedido_id,'Only the configured product line creates and links an inter-shop order');
   check(await scalar('select count(*)::int from pedidos where reserva_id=$1',[mixed.id]),1,'Mixed reservation creates exactly the required inter-shop order');
+  const mixedExternal=mixedData.items.find(i=>i.codigo==='MIX-EXT');
+  await scalar('select op_reserva_actualizar_item($1,$2::jsonb)',[mixedExternal.id,JSON.stringify({cantidad_local:0,cantidad_origen:1,estado:'en_transito',traslado_tipo:'agencia',traslado_detalle:'Agencia Prueba',tracking:'TRACK-1',fecha_estimada:'2026-09-12',remito_numero:'INT-1'})]);
+  const externalTracked=(await detail(mixed.id)).items.find(i=>i.codigo==='MIX-EXT');
+  check(externalTracked.cantidad_preparada_origen,1,'External coordination distinguishes goods separated at the origin shop');
+  check(externalTracked.cantidad_local,0,'Goods prepared at origin are not counted as received at destination');
+  check(externalTracked.estado,'en_transito','External coordination can record the actual dispatch');
   const mixedQr=await scalar('select op_reserva_qr_detalle($1)',[mixed.qr_token]);
   check(mixedQr.reservation.number,1,'Public QR exposes the same consecutive number as the label');
-  check(mixedQr.reservation.reason,'Origen mixto','Public QR exposes the derived mixed origin');
+  check(mixedQr.reservation.purpose,'retiro_cliente','Public QR exposes the reservation purpose separately from each origin');
   check(mixedQr.reservation.items.find(i=>i.procedencia==='proveedor').proveedor_nombre,'Distribuidora Prueba','Public QR identifies the supplier for each product');
   check(mixedQr.reservation.items.find(i=>i.codigo==='MIX-EXT').pedido_local_gestion,'externo','Public QR identifies external inter-shop handling');
+  check(mixedQr.reservation.items.find(i=>i.codigo==='MIX-EXT').tracking_actual,'TRACK-1','Public QR exposes third-party transfer tracking');
 
   await login();
   const local=await create({local:'Maldonado',motivo_id:await motive('Ya estaba en local'),responsable:'Empleado Prueba',cliente:{nombre:'Ana',apellido:'Reserva',telefono:'099 111 222',direccion:'Dirección de prueba'},items:[
-    {codigo:'LOCAL-1',nombre:'Bolsa disponible',cantidad:2,cantidad_local:2,procedencia:'local'}
+    {codigo:'LOCAL-1',nombre:'Bolsa disponible',cantidad:2,cantidad_local:2,procedencia:'local',fecha_estimada:'2026-09-20',remito_numero:'NO-CORRESPONDE'}
   ]});
   check(local.number,2,'The next reservation receives the next number without depending on its shop');
   truth(local.qr_token,'Creation returns a stable QR token');
@@ -61,6 +70,14 @@ async function main(){
   check(r.estado,'listo','Goods already in the shop start ready');
   truth(r.mercaderia_local_at&&r.vencimiento_at,'The 48-hour clock starts when goods are local');
   check(Math.round((new Date(r.vencimiento_at)-new Date(r.mercaderia_local_at))/3600000),48,'Deadline is exactly 48 hours');
+  check(data.items[0].fecha_estimada,null,'Goods already in the shop never retain an estimated-arrival date');
+  check(data.items[0].remito_numero,null,'Goods already in the shop never retain an arrival receipt');
+  await fails(()=>create({local:'Maldonado',finalidad:'pedido_web',entrega_tipo:'agencia',responsable:'Empleado Prueba',cliente:{direccion:'Dirección web'},items:[{codigo:'WEB-FAIL',nombre:'Sin referencia',cantidad:1,cantidad_local:1,procedencia:'local'}]}),/número del pedido web/);
+  await fails(()=>create({local:'Maldonado',finalidad:'pedido_web',entrega_tipo:'agencia',referencia_externa:'WEB-SIN-DIRECCION',responsable:'Empleado Prueba',items:[{codigo:'WEB-FAIL-2',nombre:'Sin dirección',cantidad:1,cantidad_local:1,procedencia:'local'}]}),/dirección de entrega/);
+  const web=await create({local:'Maldonado',finalidad:'pedido_web',entrega_tipo:'agencia',referencia_externa:'WEB-1001',responsable:'Empleado Prueba',cliente:{nombre:'Cliente Web',direccion:'Ruta 10'},items:[{codigo:'WEB-1',nombre:'Pedido web exclusivo',cantidad:1,cantidad_local:1,procedencia:'local'}]});
+  const webData=await detail(web.id);check(webData.reservation.finalidad,'pedido_web','Web orders have their own explicit purpose');
+  check(webData.reservation.entrega_tipo,'agencia','Web orders retain their final delivery method');
+  check(webData.reservation.referencia_externa,'WEB-1001','Web orders require and retain their external number');
   check((await scalar("select count(*)::int from clientes_agenda where regexp_replace(telefono,'\\D','','g')='099111222'")),1,'Customer is stored in the agenda');
   await create({local:'Maldonado',motivo_id:await motive(),responsable:'Empleado Prueba',cliente:{telefono:'099111222',apellido:'Actualizada'},items:[{codigo:'DUP',nombre:'Duplicado',cantidad:1,cantidad_local:0,procedencia:'proveedor'}]});
   check((await scalar("select count(*)::int from clientes_agenda where regexp_replace(telefono,'\\D','','g')='099111222'")),1,'Phone deduplicates the agenda');
@@ -112,8 +129,10 @@ async function main(){
   check(cancelledData.items[0].cantidad_local,2,'Undoing cancellation restores the previously separated quantity');
   check(cancelledData.reservation.estado,'listo','Undoing cancellation restores the operational state');
 
-  await login();const inter=await create({local:'Maldonado',motivo_id:await motive('Pedido a otro local'),pedido_local_gestion:'crear',pedido_local_origen:'Punta del Este',responsable:'Empleado Prueba',items:[{codigo:'MOVE-1',nombre:'Producto entre locales',cantidad:2,cantidad_local:0,procedencia:'pedido_local',origen_local:'Punta del Este'}]});
+  await login();const inter=await create({local:'Maldonado',finalidad:'traslado_interno',pedido_local_gestion:'crear',pedido_local_origen:'Punta del Este',responsable:'Empleado Prueba',items:[{codigo:'MOVE-1',nombre:'Producto entre locales',cantidad:2,cantidad_local:0,procedencia:'pedido_local',origen_local:'Punta del Este',traslado_tipo:'reposicion'}]});
   await admin();const orderId=await scalar('select id from pedidos where reserva_id=$1',[inter.id]);truth(orderId,'Inter-store source creates a linked order');
+  check(await scalar('select traslado_tipo from op_reserva_items where reserva_id=$1',[inter.id]),'reposicion','The route records that goods should leave with the next replenishment');
+  truth((await scalar('select notas from pedidos where id=$1',[orderId])).includes('próxima reposición'),'The linked order tells the origin shop which route was planned');
   check(await scalar('select count(*)::int from pedido_productos where pedido_id=$1 and codigo=$2 and cantidad=2',[orderId,'MOVE-1']),1,'Linked order receives the requested product');
   await q("update pedidos set estado='transito' where id=$1",[orderId]);check(await scalar('select estado from op_reservas where id=$1',[inter.id]),'en_transito','Order transit synchronizes into the reservation');
   await q('update pedido_productos set cantidad_recibida=2 where pedido_id=$1',[orderId]);await q("update pedidos set estado='llegado' where id=$1",[orderId]);

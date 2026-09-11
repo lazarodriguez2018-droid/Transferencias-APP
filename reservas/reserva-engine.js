@@ -6,7 +6,10 @@
   'use strict';
   const labels={buscando:'Buscando mercadería',en_transito:'En tránsito',recibido:'Recibida',separando:'Separando',listo:'Lista para entregar',avisado:'Cliente avisado',parcial:'Entrega parcial',vencido:'Más de 48 horas',completado:'Completada',cancelado:'Cancelada'};
   const sources={local:'Disponible en el local',proveedor:'Esperando proveedor',pedido_local:'Pedido a otro local',reposicion:'Próxima reposición',remito:'Remito',otro:'Otra procedencia'};
-  const outcomes={retiro_cliente:'Retiró el cliente',reparto:'Enviado por reparto',envio_otro_local:'Enviado a otro local',uso_interno:'Utilizado internamente',no_retirado:'No fue retirado; volvió a exhibición',otro:'Otro resultado'};
+  const purposes={retiro_cliente:'Retiro del cliente en el local',reparto:'Reparto del local',pedido_web:'Pedido web',traslado_interno:'Traslado interno entre locales',otro:'Otro destino'};
+  const deliveries={retiro_local:'Retiro en el local',reparto_local:'Reparto del local',agencia:'Agencia o correo'};
+  const transports={reposicion:'Próxima reposición',agencia:'Agencia o transporte tercero',propio:'Traslado propio',coordinar:'A definir'};
+  const outcomes={retiro_cliente:'Retiró el cliente',reparto:'Despachado por reparto, agencia o correo',envio_otro_local:'Enviado a otro local',uso_interno:'Utilizado internamente',no_retirado:'No fue retirado; volvió a exhibición',otro:'Otro resultado'};
   function n(value){const x=Number(value);return Number.isFinite(x)?x:0;}
   function customer(row){return [row?.cliente_nombre,row?.cliente_apellido].filter(Boolean).join(' ').trim()||'Sin cliente';}
   function progress(row){const total=Math.max(0,n(row?.unidades));const done=Math.max(0,n(row?.unidades_local)+n(row?.unidades_entregadas));return total?Math.min(100,Math.round(done*100/total)):0;}
@@ -32,5 +35,5 @@
   function needsCorrectionReason(before,after){return n(after)<n(before);}
   function canMarkReady(items){return (items||[]).length>0&&(items||[]).every(x=>n(x.cantidad_local)+n(x.cantidad_entregada)>=n(x.cantidad));}
   function cleanText(value,max=1000){return String(value==null?'':value).trim().slice(0,max);}
-  return {labels,sources,outcomes,customer,progress,isTerminal,deadlineInfo,derive,needsCorrectionReason,canMarkReady,cleanText};
+  return {labels,sources,purposes,deliveries,transports,outcomes,customer,progress,isTerminal,deadlineInfo,derive,needsCorrectionReason,canMarkReady,cleanText};
 });
