@@ -28,10 +28,13 @@ despachoTab: 'pendientes',
 activeView: 'hub',
 navigationReady: false,
 navigationRequestId: 0,
+dashboardRequestId: 0,
+dashboardFilterTimer: null,
 spinnerSequence: 0,
 realtimeChannels: [],
 publicOrderLink: {localId:null,status:null,token:null},
 orderTrackingSecrets: {},
+analytics360Controllers: {},
 idle: {
 intervalId: null,
 warned: false,
@@ -148,6 +151,16 @@ if(!userId) return;
 localStorage.removeItem(getActivityStorageKey(userId));
 }
 
+function destroyAnalytics360Controllers(){
+Object.values(appState.analytics360Controllers||{}).forEach(controller=>{
+  try{ controller?.destroy?.(); }catch(_error){}
+});
+appState.analytics360Controllers={};
+appState.dashboardRequestId++;
+clearTimeout(appState.dashboardFilterTimer);
+appState.dashboardFilterTimer=null;
+}
+
 function recordActivity(force=false){
 if(!appState.currentUser?.id) return;
 if(isExpiredByInactivity(appState.currentUser.id)){
@@ -169,6 +182,7 @@ appState.idle.warned = false;
 async function forceIdleLogout(){
 stopIdleWatcher();
 teardownRealtime();
+destroyAnalytics360Controllers();
 try{ await db.auth.signOut(); }catch(_e){}
 clearLastActivityMs(appState.currentUser?.id);
 appState.currentUser=null;
@@ -436,6 +450,7 @@ async function doLogout(){
 await db.auth.signOut();
 stopIdleWatcher();
 teardownRealtime();
+destroyAnalytics360Controllers();
 clearLastActivityMs(appState.currentUser?.id);
 appState.currentUser=null; appState.currentPerfil=null;
 appState.activeView='hub';
@@ -586,7 +601,7 @@ return;
 }
 const requestedView=queryParams.get('view');
 const pendingManageToken=publicManagementTokenFromHash();
-const validViews=['hub','dashboard','misPedidos','paraEnviar','historial','misConsultas','chats','agenda','perfil','usuarios','sugerencias','config'];
+const validViews=['hub','vision360','dashboard','misPedidos','paraEnviar','historial','misConsultas','chats','agenda','perfil','usuarios','sugerencias','config'];
 const initialView=pendingManageToken ? 'misPedidos' : validViews.includes(requestedView)
   ? requestedView
   : requestedModule==='pedidos' ? 'misPedidos' : 'hub';
@@ -788,9 +803,9 @@ return url.pathname+(url.searchParams.toString()?'?'+url.searchParams.toString()
 }
 
 function navigateTo(view,options={}){
-const validViews=['hub','dashboard','misPedidos','paraEnviar','historial','misConsultas','chats','agenda','perfil','usuarios','sugerencias','config'];
+const validViews=['hub','vision360','dashboard','misPedidos','paraEnviar','historial','misConsultas','chats','agenda','perfil','usuarios','sugerencias','config'];
 if(!validViews.includes(view)) view='hub';
-if(['dashboard','usuarios','sugerencias','config'].includes(view)&&!isAdminUser()) view='hub';
+if(['usuarios','sugerencias','config'].includes(view)&&!isAdminUser()) view='hub';
 const historyMode=options.history||'push';
 if(historyMode!=='none'){
   const state={sucaneitorView:view};
@@ -814,7 +829,7 @@ document.querySelectorAll('[id^="view-"]').forEach(v=>v.style.display='none');
 const ve=el('view-'+view); if(ve) ve.style.display='block';
 const ni=el('nav-'+view); if(ni) ni.classList.add('active');
 const titles={
-hub:'Módulos',dashboard:'Resumen de pedidos',misPedidos:'Pedidos de mi local',paraEnviar:'Pedidos a despachar',
+hub:'Módulos',vision360:'Visión 360',dashboard:'Análisis de pedidos',misPedidos:'Pedidos de mi local',paraEnviar:'Pedidos a despachar',
 historial:'Historial',misConsultas:'Mis Consultas',chats:'Chats',agenda:'Agenda',
 perfil:'Mi Perfil',usuarios:'Usuarios',sugerencias:'Sugerencias',config:'Configuración'
 };
@@ -822,7 +837,7 @@ safeSet('mobile-title', titles[view]||view);
 el('fab-btn').style.display=['misPedidos','paraEnviar','historial','dashboard'].includes(view)?'flex':'none';
 updateBadges();
 
-const _rm={dashboard:renderDashboard,misPedidos:renderMisPedidos,paraEnviar:renderParaEnviar,
+const _rm={vision360:renderVision360,dashboard:renderDashboard,misPedidos:renderMisPedidos,paraEnviar:renderParaEnviar,
 historial:renderHistorial,misConsultas:renderMisConsultas,chats:renderChats,agenda:renderAgendaClientes,
 perfil:renderPerfil,usuarios:renderUsuarios,sugerencias:renderSugerencias,config:renderConfig};
 closeSidebar();
@@ -1001,16 +1016,44 @@ e.innerHTML=pedidos.map(o=>orderCard(o)).join('');
 //  DASHBOARD
 // ═══════════════════════════════════════════
 async function renderDashboard(){
-return renderDashboardControl();
-safeSet('dash-subtitle','Resumen de '+appState.currentPerfil.local_nombre+' ('+appState.currentPerfil.almacen+')');
-await updateBadges();
-const local=appState.currentPerfil.local_nombre;
-const {data}=await db.from('pedidos').select('*,pedido_productos(*)')
-.or('origen_local.eq.'+local+',destino_local.eq.'+local)
-.order('updated_at',{ascending:false}).limit(6);
-const e=el('dash-recent');
-e.innerHTML=(data&&data.length)?data.map(o=>orderCard(o)).join('')
-:'<div class="empty-state"><div class="icon">📦</div><p>No hay actividad reciente</p></div>';
+await Promise.all([
+  renderDashboardControl(),
+  renderAnalytics360('pedidos','analytics-360-pedidos','pedidos')
+]);
+}
+
+async function renderVision360(){
+return renderAnalytics360('global','analytics-360-global','global');
+}
+
+async function renderAnalytics360(key,rootId,module){
+const root=el(rootId);
+if(!root||!appState.currentPerfil) return;
+if(!window.Analytics360?.mount){
+root.innerHTML='<div class="card"><div class="empty-state"><div class="icon">▦</div><p>El panel histórico no está disponible. Actualizá la página.</p></div></div>';
+return;
+}
+const isSupervisor=isSupervisorRole(appState.currentPerfil.role);
+let controller=appState.analytics360Controllers[key];
+if(!controller){
+  controller=window.Analytics360.mount({
+    root,
+    db,
+    module,
+    local:isSupervisor?'':appState.currentPerfil.local_nombre,
+    isSupervisor,
+    locals:appState.localesCache,
+    defaultRange:'all',
+    autoload:false,
+    onError:error=>{
+      console.error(error);
+      notify('No se pudo cargar el análisis histórico.','error');
+    }
+  });
+  appState.analytics360Controllers[key]=controller;
+  return controller?.load?.();
+}
+return controller.refresh?.();
 }
 
 // ═══════════════════════════════════════════
@@ -1018,12 +1061,14 @@ e.innerHTML=(data&&data.length)?data.map(o=>orderCard(o)).join('')
 // ═══════════════════════════════════════════
 async function renderDashboardControl(){
 if(!appState.currentPerfil) return;
+const requestId=++appState.dashboardRequestId;
 const isAdmin = isSupervisorRole(appState.currentPerfil.role);
 const localPropio = appState.currentPerfil.local_nombre;
 const selectedLocal = hydrateDashboardFilters();
 safeSet('dash-subtitle', isAdmin ? 'Control general de pedidos y transferencias' : 'Resumen de '+localPropio+' ('+appState.currentPerfil.almacen+')');
 
-const orders = await fetchDashboardOrders(selectedLocal);
+const orders = await fetchDashboardOrders(selectedLocal,requestId);
+if(requestId!==appState.dashboardRequestId)return;
 const productText = el('dash-filter-producto')?.value || '';
 const tokens = tokenizeSearch(productText);
 const filtered = tokens.length ? orders.filter(o=>orderMatchesTokens(o,tokens)) : orders;
@@ -1032,7 +1077,7 @@ const analytics = buildDashboardAnalytics(filtered, selectedLocal || localPropio
 safeSet('stat-pendientes', analytics.activeOrders);
 safeSet('stat-activos', analytics.totalUnits);
 safeSet('stat-listos', analytics.completedOrders);
-safeSet('stat-completados', analytics.riskOrders.length + analytics.incompleteOrders);
+safeSet('stat-completados', analytics.riskCount);
 
 renderDashboardProducts(analytics.topProducts);
 renderDashboardLocales(analytics.localDemand);
@@ -1045,45 +1090,85 @@ e.innerHTML = recent.length ? recent.map(o=>orderCard(o)).join('') : '<div class
 window.__dashboardLastRows = analytics.exportRows;
 }
 
+function scheduleDashboardProductFilter(){
+clearTimeout(appState.dashboardFilterTimer);
+appState.dashboardFilterTimer=setTimeout(()=>{
+  appState.dashboardFilterTimer=null;
+  renderDashboardControl();
+},260);
+}
+
 function hydrateDashboardFilters(){
 const localSelect = el('dash-filter-local');
 if(localSelect){
 const current = localSelect.value;
-localSelect.innerHTML = '<option value="">Todos los locales</option>' +
-appState.localesCache.map(l=>'<option value="'+escAttr(l.nombre)+'">'+escHtml(l.nombre)+'</option>').join('');
-localSelect.value = current;
+const isSupervisor=isSupervisorRole(appState.currentPerfil?.role);
+if(isSupervisor){
+  localSelect.innerHTML = '<option value="">Todos los locales</option>' +
+  appState.localesCache.map(l=>'<option value="'+escAttr(l.nombre)+'">'+escHtml(l.nombre)+'</option>').join('');
+  localSelect.value = current;
+  localSelect.disabled=false;
+}else{
+  const ownLocal=appState.currentPerfil?.local_nombre||'';
+  localSelect.innerHTML='<option value="'+escAttr(ownLocal)+'">'+escHtml(ownLocal)+'</option>';
+  localSelect.value=ownLocal;
+  localSelect.disabled=true;
 }
-const today = new Date();
-const from = new Date();
-from.setDate(today.getDate()-30);
-if(el('dash-filter-desde') && !el('dash-filter-desde').value) el('dash-filter-desde').value = from.toISOString().slice(0,10);
-if(el('dash-filter-hasta') && !el('dash-filter-hasta').value) el('dash-filter-hasta').value = today.toISOString().slice(0,10);
+}
+const today = dashboardMontevideoDate();
+const from = dashboardShiftDate(today,-29);
+if(el('dash-filter-desde') && !el('dash-filter-desde').value) el('dash-filter-desde').value = from;
+if(el('dash-filter-hasta') && !el('dash-filter-hasta').value) el('dash-filter-hasta').value = today;
 return localSelect?.value || '';
 }
 
-async function fetchDashboardOrders(selectedLocal){
-let q = db.from('pedidos').select('*,pedido_productos(*)').order('created_at',{ascending:false});
+function dashboardMontevideoDate(date=new Date()){
+const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/Montevideo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date);
+const values=Object.fromEntries(parts.filter(part=>part.type!=='literal').map(part=>[part.type,part.value]));
+return `${values.year}-${values.month}-${values.day}`;
+}
+
+function dashboardShiftDate(value,days){
+const match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value||''));
+if(!match)return '';
+return new Date(Date.UTC(Number(match[1]),Number(match[2])-1,Number(match[3])+Number(days||0))).toISOString().slice(0,10);
+}
+
+function dashboardDateBoundary(value,nextDay=false){
+const date=nextDay?dashboardShiftDate(value,1):String(value||'');
+return date?`${date}T00:00:00-03:00`:'';
+}
+
+async function fetchDashboardOrders(selectedLocal,requestId){
 const desde = el('dash-filter-desde')?.value;
 const hasta = el('dash-filter-hasta')?.value;
-if(desde) q = q.gte('created_at', desde+'T00:00:00');
-if(hasta) q = q.lte('created_at', hasta+'T23:59:59');
-if(selectedLocal){
-q = q.or('origen_local.eq.'+selectedLocal+',destino_local.eq.'+selectedLocal);
-} else if(!isSupervisorRole(appState.currentPerfil.role)){
-const local = appState.currentPerfil.local_nombre;
-q = q.or('origen_local.eq.'+local+',destino_local.eq.'+local);
+const pageSize=1000;
+const rows=[];
+for(let from=0;;from+=pageSize){
+  if(requestId&&requestId!==appState.dashboardRequestId)return [];
+  let q=db.from('pedidos').select('*,pedido_productos(*)').order('created_at',{ascending:false});
+  if(desde)q=q.gte('created_at',dashboardDateBoundary(desde));
+  if(hasta)q=q.lt('created_at',dashboardDateBoundary(hasta,true));
+  if(selectedLocal){
+    q=q.or('origen_local.eq.'+selectedLocal+',destino_local.eq.'+selectedLocal);
+  }else if(!isSupervisorRole(appState.currentPerfil.role)){
+    const local=appState.currentPerfil.local_nombre;
+    q=q.or('origen_local.eq.'+local+',destino_local.eq.'+local);
+  }
+  const {data,error}=await q.range(from,from+pageSize-1);
+  if(error){
+    if(!requestId||requestId===appState.dashboardRequestId)notify('No se pudo cargar el resumen de pedidos: '+error.message,'error');
+    return [];
+  }
+  const page=data||[];
+  rows.push(...page);
+  if(page.length<pageSize)break;
 }
-const {data,error}=await q.limit(2000);
-if(error){
-notify('No se pudo cargar el resumen de pedidos: '+error.message,'error');
-return [];
-}
-return data || [];
+return rows;
 }
 
 function buildDashboardAnalytics(orders, bufferLocal){
 const activeStates = ['pendiente','aceptado','listo','transito','transito_escala','en_escala','listo_escala','llegado'];
-const doneStates = ['completo','incompleto'];
 const now = Date.now();
 const products = new Map();
 const localDemandMap = new Map();
@@ -1098,7 +1183,7 @@ const items = o.pedido_productos || [];
 const orderUnits = items.reduce((s,p)=>s+(Number(p.cantidad)||0),0);
 totalUnits += orderUnits;
 if(activeStates.includes(o.estado)) activeOrders++;
-if(doneStates.includes(o.estado)) completedOrders++;
+if(o.estado==='completo') completedOrders++;
 if(o.estado==='incompleto' || String(o.faltantes||'').trim()) incompleteOrders++;
 const ageHours = (now - new Date(o.created_at || now).getTime())/3600000;
 if((activeStates.includes(o.estado) && ageHours > 24) || o.estado==='incompleto' || String(o.faltantes||'').trim()){
@@ -1136,19 +1221,20 @@ const suggested = Math.max(1, Math.ceil(daily * 10));
 const level = p.selectedUnits >= 20 || daily >= 2 ? 'high' : (p.selectedUnits >= 8 || daily >= 0.8 ? 'medium' : 'low');
 return {...p,daily,suggested,level};
 });
-const exportRows = topProducts.flatMap(p=>p.exportRows.map(r=>({
+const riskCount = riskOrders.length;
+const exportRows = Array.from(products.values()).flatMap(p=>p.exportRows.map(r=>({
 codigo:p.codigo,nombre:p.nombre,marca:p.marca,local:r.local,cantidad:r.qty,estado:r.estado,fecha:r.fecha,pedido:r.orderId
 })));
-return {activeOrders,completedOrders,incompleteOrders,totalUnits,riskOrders:riskOrders.sort((a,b)=>(b._riskAge||0)-(a._riskAge||0)).slice(0,10),topProducts,localDemand,bufferRecommendations,exportRows};
+return {activeOrders,completedOrders,incompleteOrders,riskCount,totalUnits,riskOrders:riskOrders.sort((a,b)=>(b._riskAge||0)-(a._riskAge||0)).slice(0,10),topProducts,localDemand,bufferRecommendations,exportRows};
 }
 
 function daysBetweenFilters(){
 const desde = el('dash-filter-desde')?.value;
 const hasta = el('dash-filter-hasta')?.value;
 if(!desde || !hasta) return 30;
-const start = new Date(desde+'T00:00:00');
-const end = new Date(hasta+'T23:59:59');
-return Math.ceil((end-start)/86400000) || 1;
+const start = Date.parse(desde+'T00:00:00Z');
+const end = Date.parse(hasta+'T00:00:00Z');
+return Math.max(1,Math.floor((end-start)/86400000)+1);
 }
 
 function renderMetricList(targetId, rows){
@@ -2191,6 +2277,7 @@ function refreshView(){
 const active=Array.from(document.querySelectorAll('[id^="view-"]')).find(e=>e.style.display!=='none');
 if(!active) return;
 const v=active.id.replace('view-','');
+if(v==='vision360')   renderVision360();
 if(v==='dashboard')   renderDashboard();
 if(v==='misPedidos')  renderMisPedidos();
 if(v==='paraEnviar')  renderParaEnviar();
@@ -3694,8 +3781,8 @@ el('filter-para-busqueda')?.addEventListener('input', renderParaEnviar);
 .forEach(id=>el(id)?.addEventListener('change', renderHistorial));
 el('filter-hist-busqueda')?.addEventListener('input', renderHistorial);
 ['dash-filter-local','dash-filter-desde','dash-filter-hasta']
-.forEach(id=>el(id)?.addEventListener('change', renderDashboard));
-el('dash-filter-producto')?.addEventListener('input', renderDashboard);
+.forEach(id=>el(id)?.addEventListener('change', renderDashboardControl));
+el('dash-filter-producto')?.addEventListener('input', scheduleDashboardProductFilter);
 el('btn-dash-export')?.addEventListener('click', exportDashboardCSV);
 
 // Restaurar el acceso de empresa si ya fue validado en esta pestaña.

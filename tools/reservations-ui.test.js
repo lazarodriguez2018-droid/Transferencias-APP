@@ -28,7 +28,10 @@ assert.match(js,/state\.publicCreate\?'':state\.actor\?\.name/,'El responsable s
 assert.match(js,/responsable:responsible/,'La creación debe enviar el nombre del responsable sin provocar un error de variable');
 assert.match(js,/const sourceLabels=\{local:'Disponible en el local',proveedor:'Esperando proveedor',pedido_local:'Pedido a otro local'\}/,'La interfaz ofrece los tres orígenes en cada producto');
 assert.match(page,/class="tab admin-only"[\s\S]*data-view="settings"[\s\S]*hidden>Configuración/,'La pestaña de configuración comienza oculta');
-assert.match(page,/class="view admin-only" id="view-settings" hidden/,'La vista completa de configuración comienza oculta');
+assert.match(page,/class="view admin-only" id="view-settings"[^>]*hidden/,'La vista completa de configuración comienza oculta');
+assert.match(page,/class="tabs" role="tablist"[\s\S]*role="tab" aria-selected="true"[\s\S]*role="tabpanel" aria-labelledby="tab-active"/,'Las pestañas deben exponer su estado y relación con cada panel');
+assert.match(js,/x\.setAttribute\('aria-selected',String\(active\)\);x\.tabIndex=active\?0:-1/,'Al cambiar de pestaña se actualiza el estado accesible');
+assert.match(js,/function onTabKeydown\(event\)[\s\S]*ArrowLeft[\s\S]*ArrowRight[\s\S]*Home[\s\S]*End[\s\S]*showView\(next\.dataset\.view\);next\.focus\(\)/,'Las pestañas con foco único deben admitir navegación completa por teclado');
 assert.match(js,/function isAdmin\(\)\{return state\.actor\?\.supervisor===true;\}/,'El acceso administrativo requiere un valor booleano explícito');
 assert.match(js,/function adminActionsMarkup\(r\)[\s\S]*Reabrir o corregir entrega[\s\S]*Retroceder o corregir estado[\s\S]*Eliminar reserva/,'El administrador debe tener acciones visibles para reabrir, retroceder y eliminar');
 assert.match(js,/function actionDelete\(\)\{if\(!isAdmin\(\)\)/,'La interfaz debe bloquear la eliminación para usuarios no administradores');
@@ -88,7 +91,7 @@ assert.match(js,/function startRealtimeFallback\(error\)[\s\S]*setInterval\(refr
 assert.match(js,/hadContent=listEl\.dataset\.loaded==='true'[\s\S]*signature!==state\.listSignatures\[kind\]/,'La actualización periódica debe conservar las tarjetas y evitar reemplazos sin cambios');
 assert.match(js,/openDetail\(state\.current\.reservation\.id,\{silent:true\}\)/,'El detalle abierto debe refrescarse sin mostrar una pantalla de carga');
 assert.match(js,/channel\.subscribe\(status=>[\s\S]*startRealtimeFallback\(error\)/,'Un fallo al abrir Realtime no debe impedir entrar al módulo');
-assert.match(page,/reservas\.css\?v=8[\s\S]*search-engine\.js\?v=search-fast-v6[\s\S]*reserva-engine\.js\?v=3[\s\S]*reservas\.js\?v=16/,'El enlace posterior a la creación debe invalidar la caché anterior');
+assert.match(page,/analytics-360\.css\?v=1[\s\S]*reservas\.css\?v=8[\s\S]*search-engine\.js\?v=search-fast-v6[\s\S]*reserva-engine\.js\?v=3[\s\S]*analytics-360\.js\?v=1[\s\S]*reservas\.js\?v=17/,'Reservas debe invalidar la caché y cargar el panel histórico compartido');
 assert.match(lookupPage,/consulta\.css\?v=3[\s\S]*qrcodejs@1\.0\.0[\s\S]*reserva-engine\.js\?v=3[\s\S]*consulta\.js\?v=8/,'La reimpresión pública debe cargar el generador QR e invalidar la caché');
 assert.match(lookup,/number=r\.number\?\?r\.code/,'La consulta QR debe mostrar el número consecutivo cuando existe');
 assert.match(lookupPage,/Motivo y observaciones generales[\s\S]*id="lookup-purpose"[\s\S]*id="lookup-observations"/,'El QR debe reservar un espacio visible para el motivo y las observaciones generales');

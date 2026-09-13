@@ -28,7 +28,7 @@ let receiptSearchItemsSource = null;
 const receiptProductSearchTimers = new Map();
 
 function receiptApi(path, options) { return fetch(`${serverUrl}${path}`, options); }
-function receiptEncode(value) { return encodeURIComponent(String(value || '')); }
+function receiptEncode(value) { return encodeOperationsInlineValue(value); }
 function receiptDecode(value) { return decodeURIComponent(String(value || '')); }
 function receiptCanEdit() { return !!receiptState && receiptState.can_edit !== false && receiptState.estado === 'en_control'; }
 function requireReceiptEditable() { if (receiptCanEdit()) return true; toast('Esta recepción está cerrada o pertenece a otro local.','w'); return false; }
@@ -50,7 +50,7 @@ async function receiptClaimProduct(code,options={}){
 }
 async function receiptEnsureClaim(item,options={}){if(!item||!receiptCanEdit())return false;if(receiptItemOwnedByMe(item))return true;const claimed=await receiptClaimProduct(item.codigo,options);return !!claimed&&receiptItemOwnedByMe(claimed);}
 async function receiptReleaseAssignment(code=null){if(!sessionId||!window.SucanCloud)return;try{await receiptApi('/api/recepcion/release',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reception_id:sessionId,codigo:code||null}),keepalive:true});}catch(_){}}
-async function receiptHeartbeat(){if(!sessionId||!receiptState||document.visibilityState==='hidden')return;try{const response=await receiptApi('/api/recepcion/heartbeat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reception_id:sessionId})});if(!response.ok)throw new Error('heartbeat');setSyncStatus('online');}catch(_){setSyncStatus('offline');}}
+async function receiptHeartbeat(){if(!sessionId||currentModule!=='recepcion'||document.visibilityState==='hidden')return;try{const response=await receiptApi('/api/recepcion/heartbeat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reception_id:sessionId})});if(!response.ok)throw new Error('heartbeat');setSyncStatus('online');}catch(_){if(receiptState?.estado==='en_control')setSyncStatus('offline');}}
 
 function receiptLocation(value) {
   const raw=String(value||'').trim(),normalized=raw.toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\b(bloqueo|almacen|sucursal|local|entrada|salida)\b/g,' ').replace(/\s+/g,' ').trim();
@@ -93,7 +93,9 @@ async function joinReception(rid, nombre, url, usuario, initialReceipt, options=
     serverUrl=url; serverOnline=true; sessionId=rid; sessionNombre=nombre; usuarioNombre=usuario||'Usuario'; localStorage.setItem('sc_usuario',usuarioNombre);
     let loaded=initialReceipt;
     if(!loaded){const response=await fetchWithTimeout(`${url}/api/recepcion/state?rid=${encodeURIComponent(rid)}`,{},8000),data=await response.json().catch(()=>({}));if(!response.ok||!data.ok)throw new Error(data.error||'No se pudo abrir la recepción');loaded=data.receipt;}
-    receiptState=loaded; receiptCurrentCode=receiptState.items.find(receiptItemOwnedByMe)?.codigo||'';
+    receiptState=loaded;
+    if(receiptCanEdit())await receiptHeartbeat();
+    receiptCurrentCode=receiptState.items.find(receiptItemOwnedByMe)?.codigo||'';
     await loadBarcodeAssignments(); enterReceptionApp(options); connectReceptionRealtime(); toast(`Remito ${receiptState.document_number} abierto`,'s');
   } catch(error){serverOnline=false;showSessionError(error.message||'No se pudo abrir la recepción');}
 }
@@ -113,7 +115,7 @@ function showReceiptTab(name,options={}) {
   if(name!=='control')document.getElementById('receipt-search-results')?.style.setProperty('display','none');
   document.querySelectorAll('.page').forEach(page=>page.classList.remove('active')); document.querySelectorAll('.tab').forEach(tab=>tab.classList.remove('active'));
   const page=document.getElementById(`receipt-page-${name}`),tab=document.getElementById(`receipt-tab-${name}`); if(!page||!tab)return; page.classList.add('active');tab.classList.add('active');window.scrollTo({top:0,behavior:'auto'});
-  if(name==='pedidos'){renderReceiptOrders();refreshReceptionState(true);} if(name==='lista')renderReceiptList(); if(name==='extras')renderReceiptExtras(); if(name==='resumen')renderReceiptSummary(); if(name==='control'&&options.focus!==false)setTimeout(()=>document.getElementById('receipt-search-input')?.focus({preventScroll:true}),80);
+  if(name==='pedidos'){renderReceiptOrders();refreshReceptionState(true);} if(name==='lista')renderReceiptList(); if(name==='extras')renderReceiptExtras(); if(name==='resumen')renderReceiptSummary(); if(name==='analisis'&&typeof loadOperationsAnalytics==='function')loadOperationsAnalytics('recepcion'); if(name==='control'&&options.focus!==false)setTimeout(()=>document.getElementById('receipt-search-input')?.focus({preventScroll:true}),80);
   if(sessionId&&currentModule==='recepcion')updateOperationsHistory(options.history||'push','workspace',name);
 }
 
@@ -128,7 +130,55 @@ function disconnectReceptionRealtime(clearState=true) {
 function connectReceptionRealtime() {
   disconnectReceptionRealtime(false);
   const rid=sessionId; if(!rid)return;
-  refreshReceptionState(false).then(()=>{receiptRealtimeChannel=window.SucanCloud?.watchReception?.(rid,()=>{clearTimeout(receiptRefreshTimer);receiptRefreshTimer=setTimeout(()=>refreshReceptionState(true),180);},receiptState?.destination)||null;clearInterval(receiptHeartbeatTimer);receiptHeartbeatTimer=setInterval(()=>{receiptHeartbeat();if(document.visibilityState==='visible')refreshReceptionState(true);},15000);});
+  receiptRealtimeChannel=window.SucanCloud?.watchReception?.(rid,handleReceiptRealtimeChange,receiptState?.destination)||null;
+  refreshReceptionState(false);
+  clearInterval(receiptHeartbeatTimer);
+  receiptHeartbeatTimer=setInterval(()=>{receiptHeartbeat();if(document.visibilityState==='visible')refreshReceptionState(true);},15000);
+}
+
+function scheduleReceiptStateRefresh() {
+  clearTimeout(receiptRefreshTimer);
+  receiptRefreshTimer=setTimeout(()=>refreshReceptionState(true),180);
+}
+
+function receiptDeviceKey(person) {
+  return String(person?.cliente_id || person?.id || '');
+}
+
+function applyReceiptPresenceChange(change) {
+  if(!receiptState)return;
+  const row=change?.row||change?.old;
+  const key=receiptDeviceKey(row);
+  if(!key)return;
+  const participants=[...(receiptState.participantes||[])];
+  const index=participants.findIndex(person=>receiptDeviceKey(person)===key);
+  if(change.event==='DELETE') {
+    if(index>=0)participants.splice(index,1);
+  } else if(change.row) {
+    const next={...change.row,joined:change.row.joined||change.row.last_seen};
+    if(index>=0)participants[index]=next;else participants.push(next);
+  }
+  receiptState.participantes=participants;
+  renderOperationsParticipants('receipt-participants',participants);
+}
+
+function handleReceiptRealtimeChange(change) {
+  if(!change||!receiptState)return;
+  if(change.kind==='status') {
+    const online=change.status==='SUBSCRIBED';
+    setSyncStatus(online?'online':'offline');
+    if(online)scheduleReceiptStateRefresh();
+    return;
+  }
+  if(change.kind==='device') {
+    applyReceiptPresenceChange(change);
+    return;
+  }
+  // La tabla histórica de participantes también actualiza last_seen. El panel
+  // de presencia se alimenta de dispositivos, así que este evento no requiere
+  // volver a leer el estado ni debe retroalimentar el canal en tiempo real.
+  if(change.kind==='participant')return;
+  scheduleReceiptStateRefresh();
 }
 
 async function refreshReceptionState(render=true) {
@@ -142,7 +192,7 @@ function receiptStatus(item) { return SucaneitorReception.status(item); }
 function receiptStatusLabel(status) { return {pendiente:'Pendiente de verificación',parcial:'Recepción parcial',exacto:'Recepción confirmada',sobrante:'Excedente recibido',no_recibido:'No recibido'}[status]||status; }
 function receiptStatusClass(status) { return status==='exacto'?'exact':status==='sobrante'?'over':status==='no_recibido'?'missing':'short'; }
 function receiptQuantityText(value) { const quantity=Math.max(0,Number(value)||0);return `${quantity} ${quantity===1?'unidad':'unidades'}`; }
-async function receiptWaitForDialogHistory() { for(let attempt=0;attempt<12&&history.state?.operationsOverlay==='app-dialog-overlay';attempt+=1)await new Promise(resolve=>setTimeout(resolve,25)); }
+async function receiptWaitForDialogHistory() { return waitForOperationsDialogHistory(); }
 
 function renderReceiptAll() {
   if(!receiptState)return;
@@ -320,7 +370,7 @@ function renderReceiptSummary() {
   if(!receiptState)return;const summary=SucaneitorReception.summary(receiptState),status=document.getElementById('receipt-summary-status'),detail=document.getElementById('receipt-summary-detail'),participants=document.getElementById('receipt-participants');
   if(status)status.textContent=receiptState.estado==='cerrado'?(summary.tiene_diferencias?'Cerrado con diferencias':'Cerrado conforme'):(summary.productos_pendientes?'Control en curso':'Listo para cerrar');
   if(detail){const verificationCount=(receiptState.items||[]).filter(item=>item.requiere_verificacion).length;detail.innerHTML=`Remito <strong>${esc(receiptState.document_number)}</strong> · ${esc(receiptState.date)}<br>${summary.exactos} productos exactos · ${summary.unidades_faltantes} unidades faltantes · ${summary.unidades_sobrantes} sobrantes · ${summary.extras_unidades} extras.${verificationCount?`<br><strong>${verificationCount} producto${verificationCount===1?'':'s'} con cantidad múltiple pendiente${verificationCount===1?'':'s'} de control final.</strong>`:''}`;}
-  if(participants)participants.innerHTML=(receiptState.participantes||[]).map(person=>`<span class="user-pill">👤 ${esc(person.nombre)}</span>`).join('');
+  if(participants)renderOperationsParticipants(participants,receiptState.participantes||[]);
   const close=document.getElementById('receipt-close-card');if(close)close.style.display=receiptState.estado==='en_control'&&receiptCanEdit()?'':'none';renderReceiptOrders();
 }
 
@@ -340,7 +390,7 @@ async function closeReceptionFlow() {
   showOperationsLoading('Cerrando recepción y actualizando pedidos…');try{const response=await receiptApi('/api/recepcion/close',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reception_id:sessionId,observations})}),data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'No se pudo cerrar');receiptState=data.receipt;renderReceiptAll();showReceiptTab('resumen');const result=data.result||{};toast(`Recepción cerrada · ${result.pedidos_completos||0} pedidos completados`,'s');}catch(error){toast(error.message||'No se pudo cerrar la recepción','e');}finally{finishOperationsBoot();}
 }
 
-function renderReceiptConfig() {const node=document.getElementById('receipt-config-session');if(!node||!receiptState)return;node.innerHTML=`<strong>${esc(receiptState.nombre)}</strong><div class="tm mt2">Remito ${esc(receiptState.document_number)} · ${esc(receiptState.date)}<br>${esc(receiptState.origin)} → ${esc(receiptState.destination)} · ${receiptState.estado==='cerrado'?'Cerrado':'En control'}</div>`;}
+function renderReceiptConfig() {const node=document.getElementById('receipt-config-session');if(!node||!receiptState)return;const html=`<strong>${esc(receiptState.nombre)}</strong><div class="tm mt2">Remito ${esc(receiptState.document_number)} · ${esc(receiptState.date)}<br>${esc(receiptState.origin)} → ${esc(receiptState.destination)} · ${receiptState.estado==='cerrado'?'Cerrado':'En control'}</div>`;setOperationsStableHtml(node,html);}
 async function downloadReceptionOriginal(){try{const response=await fetch(`/api/recepcion/original?rid=${encodeURIComponent(sessionId)}`),data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'No disponible');await window.SucanDownloads.openRemote(data.url,data.filename||receiptState?.original_filename||'Remito_original.xls');}catch(error){toast(error.message||'No se pudo descargar','e');}}
 
 async function downloadReceptionReport() {

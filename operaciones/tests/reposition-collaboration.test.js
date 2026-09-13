@@ -7,6 +7,7 @@ const read = file => fs.readFileSync(path.join(root,file),'utf8');
 const migration = read('supabase/migrations/20260824010000_reposicion_colaborativa_tiempo_real.sql');
 const fixMigration = read('supabase/migrations/20260824020000_reposicion_colaborativa_fix.sql');
 const lifecycleMigration = read('supabase/migrations/20260824130000_reposicion_cierre_eliminacion_pedidos_listos.sql');
+const partialMigration = read('supabase/migrations/20260912020000_reposicion_cierre_parcial.sql');
 const cloud = read('operaciones/cloud-api.js');
 const app = read('operaciones/reposition-app.js');
 const html = read('operaciones/index.html');
@@ -45,8 +46,8 @@ assert.match(cloud,/itemsByRepo\.get\(row\.id\)\|\|\[\]\)\.map\(item=>repoItem\(
   'El listado no debe pasar el índice de Array.map como si fuera el padrón');
 assert.match(cloud,/typeof catalogByCode\?\.get === 'function'/,
   'El enriquecimiento debe tolerar llamadas sin un índice de padrón');
-assert.match(html,/cloud-api\.js\?v=expected-v1/);
-assert.match(html,/reposition-app\.js\?v=repo-orders-v1/);
+assert.match(html,/cloud-api\.js\?v=presence-nav-v2/);
+assert.match(html,/reposition-app\.js\?v=partial-close-v1/);
 assert.doesNotMatch(html,/repo-dispatch-card|Marcar todo como enviado|Confirmar envío/);
 assert.match(app,/No hay productos disponibles para recoger/);
 assert.match(app,/Revisar lista de productos/);
@@ -70,6 +71,14 @@ assert.match(html,/id="repo-assignment-mode-btn"/);
 assert.match(html,/id="repo-supervision-banner"/);
 assert.match(guest,/operate\('repo_claim'/,
   'Los invitados por QR deben conservar el reparto automático de productos');
+assert.match(guest,/guestRepoCloseIncomplete/,
+  'Los invitados por QR deben poder terminar un producto con cantidad parcial');
+assert.match(partialMigration,/item\.asignado_cliente is distinct from g\.cliente_id/,
+  'El cierre parcial QR debe validar que el producto siga asignado al invitado');
+assert.match(partialMigration,/item\.preparado<=0 or item\.preparado>=item\.pedido_total/,
+  'La base debe aceptar el cierre parcial solamente para cantidades físicas incompletas');
+assert.match(partialMigration,/create trigger op_reposicion_normalizar_estado/,
+  'La base debe mantener compatibilidad con dispositivos que todavía usen el atajo anterior');
 
 // Lista unificada con filtros combinables y origen visible.
 assert.doesNotMatch(html,/id="repo-tab-extras"/,

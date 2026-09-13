@@ -4,7 +4,7 @@
   const db=window.supabase.createClient(cfg.supabaseUrl,cfg.supabaseKey);
   const E=window.ReservaEngine;
   const $=id=>document.getElementById(id);
-  const state={access:null,linkToken:null,publicCreate:false,context:null,actor:null,locals:[],reasons:[],configs:{},receptionSchedules:[],newItems:[],current:null,editingId:null,orderCandidates:[],orderCandidatesLocal:null,qrTokens:new Map(),view:'active',timer:null,channel:null,realtimeTimer:null,realtimeMode:'idle',listRequests:{active:0,history:0},listSignatures:{active:null,history:null},detailRequest:0,detailSignature:null,productCatalog:null,productCatalogPromise:null,productSearchIndex:[],productSearchType:'nombre',productSearchRequest:0};
+  const state={access:null,linkToken:null,publicCreate:false,context:null,actor:null,locals:[],reasons:[],configs:{},receptionSchedules:[],newItems:[],current:null,editingId:null,orderCandidates:[],orderCandidatesLocal:null,qrTokens:new Map(),view:'active',timer:null,channel:null,realtimeTimer:null,realtimeMode:'idle',analytics:null,listRequests:{active:0,history:0},listSignatures:{active:null,history:null},detailRequest:0,detailSignature:null,productCatalog:null,productCatalogPromise:null,productSearchIndex:[],productSearchType:'nombre',productSearchRequest:0};
   const sourceLabels={local:'Disponible en el local',proveedor:'Esperando proveedor',pedido_local:'Pedido a otro local'};
   const managementLabels={crear:'Crear pedido entre locales',existente:'Vincular un pedido existente',externo:'Coordinado fuera del sistema'};
   const purposeLabels=E.purposes||{retiro_cliente:'Retiro del cliente en el local',reparto:'Reparto del local',pedido_web:'Pedido web',traslado_interno:'Traslado interno entre locales',otro:'Otro destino'};
@@ -78,11 +78,28 @@
     }
     return days.length?`Días habituales de recepción desde ${origin}: ${days.map(d=>labels[d]).join(', ')}. La fecha estimada es opcional y puede modificarse.`:`Esperando a ${origin}. Indicá una fecha solamente si fue confirmada.`;
   }
+  function openAnalytics(){
+    if(state.publicCreate||!state.actor)return;
+    if(state.analytics)return state.analytics.refresh();
+    const root=$('reservations-analytics');
+    if(!root)return;
+    if(!window.Analytics360){root.innerHTML='<div class="empty">El panel de análisis no está disponible.</div>';return;}
+    state.analytics=window.Analytics360.mount({
+      root,db,module:'reservas',local:isAdmin()?'':state.actor.local,isSupervisor:isAdmin(),locals:state.locals,defaultRange:'all',
+      onError:error=>console.error('[Reservas] No se pudo actualizar Análisis 360.',error)
+    });
+  }
   function showView(view){
     if(state.publicCreate&&view!=='new')view='new';
     if(view==='settings'&&!isAdmin())view='active';state.view=view;
-    document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===`view-${view}`));document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.view===view));
-    if(view==='active'||view==='history')loadList(view);if(view==='settings')renderSettings();if(view==='new')setTimeout(()=>$('product-search')?.focus(),50);
+    document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===`view-${view}`));document.querySelectorAll('.tab').forEach(x=>{const active=x.dataset.view===view;x.classList.toggle('active',active);x.setAttribute('aria-selected',String(active));x.tabIndex=active?0:-1;});
+    if(view==='active'||view==='history')loadList(view);if(view==='analytics')openAnalytics();if(view==='settings')renderSettings();if(view==='new')setTimeout(()=>$('product-search')?.focus(),50);
+  }
+  function onTabKeydown(event){
+    const current=event.target.closest('[role="tab"]'),keys=['ArrowLeft','ArrowRight','Home','End'];if(!current||!keys.includes(event.key))return;
+    const tabs=[...document.querySelectorAll('.tabs [role="tab"]')].filter(tab=>!tab.hidden);if(!tabs.length)return;
+    const currentIndex=Math.max(0,tabs.indexOf(current)),nextIndex=event.key==='Home'?0:event.key==='End'?tabs.length-1:event.key==='ArrowLeft'?(currentIndex-1+tabs.length)%tabs.length:(currentIndex+1)%tabs.length,next=tabs[nextIndex];
+    event.preventDefault();if(next.dataset.view==='new'&&state.view!=='new')resetForm();showView(next.dataset.view);next.focus();
   }
 
   async function loadList(kind=state.view,{silent=false}={}){
@@ -350,7 +367,9 @@
     if(document.visibilityState==='hidden'||!state.actor)return;
     if(state.current?.reservation?.id&&!$('detail-modal').hidden)return openDetail(state.current.reservation.id,{silent:true});
     if(['active','history'].includes(state.view))return loadList(state.view,{silent:true});
+    if(state.view==='analytics')return state.analytics?.refresh();
   }
+  const refreshAnalyticsRealtime=debounce(()=>{if(state.view==='analytics')state.analytics?.refresh();},180);
   function startRealtimeFallback(error){
     if(error)console.warn('[Reservas] Realtime no disponible; se usará actualización periódica.',error);
     state.channel=null;state.realtimeMode='polling';
@@ -361,7 +380,10 @@
     let channel;
     try{
       channel=db.channel(`reservas-${state.actor.local}-${Date.now()}`)
-        .on('postgres_changes',{event:'*',schema:'public',table:'op_reservas'},()=>{if(['active','history'].includes(state.view))loadList(state.view,{silent:true});})
+        .on('postgres_changes',{event:'*',schema:'public',table:'op_reservas'},()=>{if(['active','history'].includes(state.view))loadList(state.view,{silent:true});refreshAnalyticsRealtime();})
+        .on('postgres_changes',{event:'*',schema:'public',table:'op_reserva_items'},refreshAnalyticsRealtime)
+        .on('postgres_changes',{event:'INSERT',schema:'public',table:'op_reserva_eventos'},refreshAnalyticsRealtime)
+        .on('postgres_changes',{event:'INSERT',schema:'public',table:'op_reserva_eliminaciones'},refreshAnalyticsRealtime)
         .on('postgres_changes',{event:'INSERT',schema:'public',table:'op_reserva_comentarios'},payload=>{if(state.current?.reservation?.id===payload.new.reserva_id)openDetail(payload.new.reserva_id,{silent:true});});
       state.channel=channel;
       channel.subscribe(status=>{
@@ -379,9 +401,10 @@
   function debounce(fn,delay=260){let t;return(...args)=>{clearTimeout(t);t=setTimeout(()=>fn(...args),delay);};}
 
   $('reservation-form').addEventListener('submit',createReservation);$('new-local').addEventListener('change',()=>{state.orderCandidates=[];state.orderCandidatesLocal=null;renderNewItems();});$('new-purpose').addEventListener('change',syncPurposeFields);$('new-web-delivery').addEventListener('change',syncPurposeFields);
+  document.querySelector('.tabs').addEventListener('keydown',onTabKeydown);
   $('product-search').addEventListener('input',debounce(()=>{if(state.productSearchType!=='barras')searchProducts();},90));$('product-search').addEventListener('keydown',onProductSearchKeydown);$('customer-search').addEventListener('input',debounce(searchCustomers));$('custom-product-button').addEventListener('click',customProduct);
   $('active-search').addEventListener('input',debounce(()=>loadList('active')));$('history-search').addEventListener('input',debounce(()=>loadList('history')));['active-state','active-local'].forEach(id=>$(id).addEventListener('change',()=>loadList('active')));['history-state','history-local'].forEach(id=>$(id).addEventListener('change',()=>loadList('history')));
-  $('guide-button').addEventListener('click',showGuide);$('refresh-button').addEventListener('click',async()=>{if(state.current?.reservation?.id&&!$('detail-modal').hidden)return openDetail(state.current.reservation.id,{silent:true});if(['active','history'].includes(state.view))return loadList(state.view,{silent:true});if(state.view==='settings'){await refreshContext();return renderSettings();}resetForm();});$('settings-local').addEventListener('change',()=>{fillScheduleOriginOptions();renderSettings();});$('save-settings').addEventListener('click',saveSettings);$('print-calibration').addEventListener('click',printCalibration);$('schedule-type').addEventListener('change',renderScheduleType);$('save-schedule').addEventListener('click',saveSchedule);$('cancel-schedule-edit').addEventListener('click',resetScheduleForm);
+  $('guide-button').addEventListener('click',showGuide);$('refresh-button').addEventListener('click',async()=>{if(state.current?.reservation?.id&&!$('detail-modal').hidden)return openDetail(state.current.reservation.id,{silent:true});if(['active','history'].includes(state.view))return loadList(state.view,{silent:true});if(state.view==='analytics')return state.analytics?.refresh();if(state.view==='settings'){await refreshContext();return renderSettings();}resetForm();});$('settings-local').addEventListener('change',()=>{fillScheduleOriginOptions();renderSettings();});$('save-settings').addEventListener('click',saveSettings);$('print-calibration').addEventListener('click',printCalibration);$('schedule-type').addEventListener('change',renderScheduleType);$('save-schedule').addEventListener('click',saveSchedule);$('cancel-schedule-edit').addEventListener('click',resetScheduleForm);
   document.addEventListener('click',async event=>{
     const searchType=event.target.closest('[data-product-search-type]');if(searchType)return setProductSearchType(searchType.dataset.productSearchType);
     const tab=event.target.closest('[data-view]');if(tab){if(tab.dataset.view==='new'&&state.view!=='new')resetForm();return showView(tab.dataset.view);}

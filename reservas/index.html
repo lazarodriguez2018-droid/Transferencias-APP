@@ -10,6 +10,7 @@
   <link rel="icon" type="image/svg+xml" href="/logo.svg?v=2">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="/analytics-360.css?v=1">
   <link rel="stylesheet" href="/reservas/reservas.css?v=8">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -25,28 +26,33 @@
       <a class="brand" href="/"><img src="/logo.svg?v=2" alt="Sucaneitor"><div><strong>Reservas de mercadería</strong><span id="current-local">—</span></div></a>
       <div class="top-actions"><span class="actor" id="actor-name"></span><button class="button secondary small" id="guide-button" type="button">Ayuda</button><button class="button secondary small" id="refresh-button" type="button">↻ Actualizar</button><a class="button secondary small" id="manage-link" href="/">Módulos</a></div>
     </header>
-    <nav class="tabs" aria-label="Secciones">
-      <button class="tab active" data-view="active" type="button">Activas <b id="active-count">0</b></button>
-      <button class="tab" data-view="history" type="button">Historial</button>
-      <button class="tab" data-view="new" type="button">+ Nueva reserva</button>
-      <button class="tab admin-only" data-view="settings" type="button" hidden>Configuración</button>
+    <nav class="tabs" role="tablist" aria-label="Secciones">
+      <button class="tab active" id="tab-active" data-view="active" type="button" role="tab" aria-selected="true" aria-controls="view-active">Activas <b id="active-count">0</b></button>
+      <button class="tab" id="tab-history" data-view="history" type="button" role="tab" aria-selected="false" aria-controls="view-history" tabindex="-1">Historial</button>
+      <button class="tab" id="tab-analytics" data-view="analytics" type="button" role="tab" aria-selected="false" aria-controls="view-analytics" tabindex="-1">Análisis 360</button>
+      <button class="tab" id="tab-new" data-view="new" type="button" role="tab" aria-selected="false" aria-controls="view-new" tabindex="-1">+ Nueva reserva</button>
+      <button class="tab admin-only" id="tab-settings" data-view="settings" type="button" role="tab" aria-selected="false" aria-controls="view-settings" tabindex="-1" hidden>Configuración</button>
     </nav>
 
     <main class="shell">
-      <section class="view active" id="view-active">
+      <section class="view active" id="view-active" role="tabpanel" aria-labelledby="tab-active">
         <div class="page-head"><div><span class="eyebrow">RESERVAS DEL LOCAL</span><h1>Mercadería reservada</h1><p>Buscá por cliente, producto, número o responsable y consultá el estado de cada reserva.</p></div><button class="button primary" type="button" data-open-new>+ Nueva reserva</button></div>
         <div class="stats" id="stats"></div>
         <div class="filters"><input class="input" id="active-search" type="search" placeholder="Cliente, teléfono, producto, código o responsable…"><select class="input" id="active-state"><option value="">Todos los estados</option><option value="buscando">Buscando mercadería</option><option value="en_transito">En tránsito</option><option value="separando">Separando</option><option value="listo">Lista</option><option value="avisado">Cliente avisado</option><option value="parcial">Entrega parcial</option><option value="vencido">Más de 48 h</option></select><select class="input supervisor-local" id="active-local" hidden></select></div>
         <div class="reservation-grid" id="active-list"></div>
       </section>
 
-      <section class="view" id="view-history">
+      <section class="view" id="view-history" role="tabpanel" aria-labelledby="tab-history">
         <div class="page-head"><div><span class="eyebrow">RESERVAS CERRADAS</span><h1>Historial</h1><p>Consultá las reservas completadas o canceladas y sus movimientos.</p></div></div>
         <div class="filters"><input class="input" id="history-search" type="search" placeholder="Buscar en el historial…"><select class="input" id="history-state"><option value="">Todos</option><option value="completado">Completadas</option><option value="cancelado">Canceladas</option></select><select class="input supervisor-local" id="history-local" hidden></select></div>
         <div class="reservation-grid" id="history-list"></div>
       </section>
 
-      <section class="view" id="view-new">
+      <section class="view" id="view-analytics" role="tabpanel" aria-labelledby="tab-analytics">
+        <div id="reservations-analytics" aria-label="Análisis histórico de reservas"></div>
+      </section>
+
+      <section class="view" id="view-new" role="tabpanel" aria-labelledby="tab-new">
         <div class="page-head"><div><span class="eyebrow">NUEVA RESERVA</span><h1 id="form-title">Crear reserva</h1><p id="form-subtitle">Completá los datos del destinatario y agregá toda la mercadería reservada.</p></div></div>
         <form class="builder" id="reservation-form">
           <article class="panel step-panel"><div class="step-number">1</div><div class="panel-head"><h2>Local y responsable</h2><p>Seleccioná el local y la persona encargada del seguimiento.</p></div>
@@ -69,7 +75,7 @@
         </form>
       </section>
 
-      <section class="view admin-only" id="view-settings" hidden>
+      <section class="view admin-only" id="view-settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
         <div class="page-head"><div><span class="eyebrow">ADMINISTRACIÓN</span><h1>Configuración</h1><p>Ajustes de ubicación, impresión, recepciones y accesos de los locales.</p></div></div>
         <label class="field settings-local"><span>Configurar local</span><select class="input" id="settings-local"></select></label>
         <div class="settings-grid">
@@ -91,6 +97,7 @@
   <script src="/operaciones/cloud-config.js"></script>
   <script src="/operaciones/search-engine.js?v=search-fast-v6"></script>
   <script src="/reservas/reserva-engine.js?v=3"></script>
-  <script src="/reservas/reservas.js?v=16"></script>
+  <script src="/analytics-360.js?v=1"></script>
+  <script src="/reservas/reservas.js?v=17"></script>
 </body>
 </html>

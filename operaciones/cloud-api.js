@@ -457,7 +457,6 @@
       }
       if(path==='/api/recepcion/state') {
         const rid=url.searchParams.get('rid');
-        const {error}=await cloud.db.rpc('op_recepcion_tocar',{p_recepcion:rid,p_cliente:cloud.clientId,p_usuario_nombre:cloud.displayName}); if(error)throw error;
         return json({ok:true,receipt:await receptionSnapshot(rid)});
       }
       if(path==='/api/recepcion/claim' && method==='POST') {
@@ -505,11 +504,6 @@
       }
       if(path==='/api/reposicion/state') {
         const rid=url.searchParams.get('rid');
-        const [participantResult,touchResult]=await Promise.all([
-          cloud.db.from('op_reposicion_participantes').upsert({reposicion_id:rid,usuario_id:cloud.user.id,nombre:cloud.displayName,last_seen:new Date().toISOString()},{onConflict:'reposicion_id,usuario_id'}),
-          cloud.db.rpc('op_reposicion_tocar',{p_reposicion:rid,p_cliente:cloud.clientId,p_usuario_nombre:cloud.displayName})
-        ]);
-        if(participantResult.error||touchResult.error)throw participantResult.error||touchResult.error;
         return json({ok:true,repo:await repoSnapshot(rid)});
       }
       if(path==='/api/reposicion/claim' && method==='POST') {
@@ -668,7 +662,10 @@
   cloud.markCustomerNotified = async function (orderId) {
     const {data,error}=await cloud.db.rpc('op_marcar_cliente_avisado',{p_pedido:orderId}); if(error)throw error; return data;
   };
-  cloud.goPortal = () => { location.href=config.portalUrl; };
+  cloud.goPortal = () => {
+    if(typeof window.backToModules==='function') return window.backToModules();
+    location.href=config.portalUrl;
+  };
   cloud.goPedidos = () => { location.href=config.pedidosUrl; };
 
   window.fetch = function (input, options) {

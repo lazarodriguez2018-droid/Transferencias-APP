@@ -404,7 +404,7 @@ function repoHandleRealtime(change) {
   if (!change || !repoState) return;
   if (change.kind === 'repository' && change.event === 'DELETE') {
     toast('Esta reposición fue eliminada. Volviendo a las sesiones disponibles.','w');
-    leaveOperationsWorkspace({notify:false});
+    leaveOperationsWorkspace();
     mostrarPantallaSesion(true);
     updateOperationsHistory('replace','sessions');
     return;
@@ -507,6 +507,7 @@ function showRepoTab(name, options = {}) {
   if (!page || !tab) return;
   if (options.force !== true && page.classList.contains('active') && tab.classList.contains('active')) {
     if (name === 'lista') showRepoListSection(repoListSection,{scroll:false});
+    if (name === 'analisis' && typeof loadOperationsAnalytics === 'function') loadOperationsAnalytics('reposicion');
     if (sessionId) updateOperationsHistory(options.history || 'push','workspace',name);
     return;
   }
@@ -521,6 +522,7 @@ function showRepoTab(name, options = {}) {
     renderRepoExtras();
   }
   if (name === 'resumen') renderRepoSummary();
+  if (name === 'analisis' && typeof loadOperationsAnalytics === 'function') loadOperationsAnalytics('reposicion');
   if (sessionId && currentModule === 'reposicion') updateOperationsHistory(options.history || 'push','workspace',name);
 }
 
@@ -541,7 +543,11 @@ function renderRepositionAll() {
   renderRepoExtras();
   renderRepoSummary();
   const config = document.getElementById('repo-config-session');
-  if (config) config.innerHTML = `<strong>${esc(repoState.nombre)}</strong><div class="tm mt2">${esc(repoState.origin)} → ${esc(repoState.destination)} · Usuario: ${esc(usuarioNombre)} · ID ${esc(sessionId)}</div>`;
+  if (config) {
+    const configHtml = `<strong>${esc(repoState.nombre)}</strong><div class="tm mt2">${esc(repoState.origin)} → ${esc(repoState.destination)} · Usuario: ${esc(usuarioNombre)} · ID ${esc(sessionId)}</div>`;
+    if (typeof setOperationsStableHtml === 'function') setOperationsStableHtml(config,configHtml,`repo-config:${repoState.nombre}|${repoState.origin}|${repoState.destination}|${usuarioNombre}|${sessionId}`);
+    else config.innerHTML = configHtml;
+  }
   const padronStatus = document.getElementById('repo-padron-status');
   if (padronStatus) padronStatus.textContent = `${padron.length} productos disponibles en el padrón`;
 }
@@ -549,7 +555,7 @@ function renderRepositionAll() {
 function renderRepoKpis() {
   const summary = SucaneitorReposition.summary(repoState);
   const html = `
-    <div class="repo-kpi"><span>Productos listos</span><strong>${summary.completos + summary.excedidos}/${summary.productos}</strong></div>
+    <div class="repo-kpi"><span>Productos controlados</span><strong>${summary.completos + summary.excedidos + summary.cerrados_incompletos + summary.no_encontrados}/${summary.productos}</strong></div>
     <div class="repo-kpi"><span>Unidades juntadas</span><strong>${summary.preparados}/${summary.pedidos}</strong></div>
     <div class="repo-kpi"><span>Unidades faltantes</span><strong>${summary.faltantes}</strong></div>
     <div class="repo-kpi"><span>Extras separados</span><strong>${summary.extras_unidades}</strong></div>`;
@@ -559,7 +565,7 @@ function renderRepoKpis() {
   });
 }
 
-function repoEncoded(code) { return encodeURIComponent(String(code || '')); }
+function repoEncoded(code) { return encodeOperationsInlineValue(code); }
 function repoDecoded(code) { try { return decodeURIComponent(code); } catch (error) { return String(code || ''); } }
 function repoCanEdit() { return repoState?.estado === 'preparando' && repoState?.can_edit !== false; }
 function renderRepoAssignmentMode() {
@@ -618,10 +624,19 @@ function renderRepoCurrent() {
   const sourceHtml = (Number(item.pedido_clientes) > 0 || Number(item.pedido_reposicion) > 0) ? `<div class="repo-order-coverage"><div><span>Reposición automática</span><strong>${Number(item.pedido_reposicion)||0}</strong></div><div><span>Pedido de ${esc(repoState.destination || 'destino')}</span><strong>${Number(item.pedido_clientes)||0}</strong></div><div><span>Total a juntar</span><strong>${Number(item.pedido)||0}</strong></div></div>${orders.length ? `<div class="repo-client-orders"><strong>Pedidos de clientes:</strong> ${orders.map(order=>`${esc(order.cliente || 'Sin nombre')} ×${Number(order.cantidad)||0}${order.urgente?' · URGENTE':''}`).join(' · ')}</div>` : ''}` : '';
   const verificationHtml = item.requiere_verificacion ? `<div class="repo-status-banner warn" style="margin-top:10px"><strong>Control final pendiente</strong><br>Hay más de una unidad registrada. Antes del envío se pedirá confirmar la cantidad física.</div>` : '';
   const sourceDetails = sourceHtml ? `<details class="repo-context-details"><summary>Ver desglose de la solicitud</summary><div class="repo-context-details-body">${sourceHtml}</div></details>` : '';
+  const prepared = Math.max(0,Number(item.preparado)||0);
+  const requested = Math.max(0,Number(item.pedido)||0);
+  const partialDecision = prepared > 0 && prepared < requested
+    ? item.cerrado_incompleto
+      ? `<button class="btn repo-decision" type="button" disabled style="border-color:color-mix(in srgb,var(--yellow) 55%,var(--border));color:var(--yellow)">✓ Se enviarán ${prepared}</button>`
+      : `<button class="btn repo-decision" type="button" onclick="repoMark('${code}','cerrado_incompleto')" style="border-color:color-mix(in srgb,var(--yellow) 55%,var(--border));background:color-mix(in srgb,var(--yellow) 9%,var(--surface));color:var(--yellow)">Enviar ${prepared} y terminar</button>`
+    : prepared === 0
+      ? `<button class="btn repo-decision repo-decision-missing" onclick="repoMark('${code}','no_encontrado')">No encontrado</button>`
+      : `<button class="btn repo-decision" type="button" disabled>✓ Cantidad lista</button>`;
   const controls = repoShouldAutoAssign() ? `
     <div class="repo-primary-decisions" aria-label="Acciones para este producto">
       <button class="btn repo-decision repo-decision-found" onclick="repoFound('${code}')">✓ Encontrado</button>
-      <button class="btn repo-decision repo-decision-missing" onclick="repoMark('${code}','no_encontrado')">No encontrado</button>
+      ${partialDecision}
       <button class="btn repo-decision repo-decision-scan" onclick="openRepoScanner('requested',true)">▣ Escanear para comprobación</button>
     </div>`
     : repoIsSupervising()
@@ -716,8 +731,8 @@ async function repoUpdateQuantity(encodedCode, change, source) {
     const confirmed = await appConfirm({
       title: 'Cantidad mayor a la solicitada',
       subtitle: item.nombre,
-      tone: 'warning', icon: '!', confirmText: 'Guardar igualmente',
-      bodyHtml: `<div class="app-dialog-product"><strong>${esc(item.nombre)}</strong><span>Código ${esc(item.codigo)}</span></div><p class="app-dialog-message">Vas a registrar <strong>${qty}</strong> unidades, aunque el archivo solicita <strong>${item.pedido}</strong>. Quedará marcado como excedido y podrás corregirlo desde la lista.</p>`
+      tone: 'warning', icon: '!', confirmText: `Registrar ${qty} unidades`,
+      bodyHtml: `<div class="app-dialog-product"><strong>${esc(item.nombre)}</strong><span>Código ${esc(item.codigo)}</span></div><p class="app-dialog-message">Vas a registrar <strong>${qty}</strong> unidades, aunque el archivo solicita <strong>${item.pedido}</strong>. Si continuás, quedará marcado como excedido y podrás corregirlo desde la lista. El remito y la planilla usarán estas <strong>${qty}</strong> unidades físicas, y la cantidad quedará pendiente del control final.</p>`
     });
     if (!confirmed) { renderRepositionAll(); return false; }
   }
@@ -807,7 +822,7 @@ async function repoRequestIncompleteDetails(item) {
     multiline: true, maxLength: 500,
     tone: 'warning', icon: '!', confirmText: 'Cerrar incompleto'
   });
-  if (comment === null) return null;
+  if (comment === false || comment == null) return null;
   return {
     motivo_codigo: 'cantidad_incompleta', motivo_label: 'Cantidad incompleta',
     motivo_otro: '', comentario: comment,
@@ -820,6 +835,16 @@ async function repoMark(encodedCode, field) {
   const code = repoDecoded(encodedCode);
   const item = repoState.items.find(row => String(row.codigo) === code);
   if (!item) return;
+  const prepared = Math.max(0,Number(item.preparado)||0);
+  const requested = Math.max(0,Number(item.pedido)||0);
+  if (field === 'no_encontrado' && prepared > 0) {
+    toast(`Ya hay ${prepared} ${prepared===1?'unidad juntada':'unidades juntadas'}. Usá “Enviar ${prepared} y terminar”.`, 'w');
+    return;
+  }
+  if (field === 'cerrado_incompleto' && !(prepared > 0 && prepared < requested)) {
+    toast('El cierre parcial se usa cuando juntaste una cantidad menor a la solicitada.', 'w');
+    return;
+  }
   if (!await repoEnsureClaim(item)) return;
   const details = field === 'no_encontrado'
     ? await repoRequestNotFoundDetails(item)
@@ -920,7 +945,8 @@ function renderRepoList() {
     const code = repoEncoded(item.codigo);
     const reason = item.motivo_label || item.motivo || '';
     const source = Number(item.pedido_clientes) > 0 ? ` · Repo ${Number(item.pedido_reposicion)||0} · Clientes ${Number(item.pedido_clientes)||0}` : '';
-    const actions=repoShouldAutoAssign()?`<div class="repo-row-actions"><button class="btn btn-s" onclick="repoChangeQty('${code}',-1,'lista')">−</button><input class="input repo-qty-input" type="number" min="0" inputmode="numeric" value="${item.preparado}" onchange="repoSetAbsolute('${code}',this.value,'lista')"><button class="btn btn-s" onclick="repoChangeQty('${code}',1,'lista')">+</button></div>`:`<strong>${item.preparado}/${item.pedido}</strong>`;
+    const canClosePartial=Number(item.preparado)>0&&Number(item.preparado)<Number(item.pedido)&&!item.cerrado_incompleto;
+    const actions=repoShouldAutoAssign()?`<div class="repo-row-actions"><button class="btn btn-s" onclick="repoChangeQty('${code}',-1,'lista')">−</button><input class="input repo-qty-input" type="number" min="0" inputmode="numeric" value="${item.preparado}" onchange="repoSetAbsolute('${code}',this.value,'lista')"><button class="btn btn-s" onclick="repoChangeQty('${code}',1,'lista')">+</button>${canClosePartial?`<button class="btn btn-s" type="button" onclick="repoMark('${code}','cerrado_incompleto')">Terminar con ${Number(item.preparado)||0}</button>`:''}</div>`:`<strong>${item.preparado}/${item.pedido}</strong>`;
     return `<article class="repo-row ${rowClass}"><div onclick="repoOpenItem('${code}')" style="cursor:pointer"><h3>${esc(item.nombre)}</h3><div class="repo-row-meta">Código ${esc(item.codigo)}${item.barras ? ` · Barras ${esc(item.barras)}` : ''} · Cantidad solicitada ${Number(item.pedido)||0} · Cantidad juntada ${Number(item.preparado)||0}${source} · ${esc(status.replaceAll('_',' '))}${reason ? ` · ${esc(reason)}` : ''}${item.updated_by ? ` · Último cambio: ${esc(item.updated_by)}` : ''}</div></div>${actions}</article>`;
   }).join('') + (rows.length > visibleRows.length ? `<button class="btn btn-s btn-full" onclick="repoShowMoreItems()">Mostrar ${Math.min(200,rows.length-visibleRows.length)} más · quedan ${rows.length-visibleRows.length}</button>` : '') : '<div class="repo-empty">No hay productos para este filtro.</div>';
 }
@@ -1051,15 +1077,22 @@ function renderRepoExtras() {
 function renderRepoSummary() {
   if (!repoState) return;
   const summary = SucaneitorReposition.summary(repoState);
+  const pickup = SucaneitorReposition.pickupState(repoState);
   const status = document.getElementById('repo-summary-status');
   const detail = document.getElementById('repo-summary-detail');
-  if (status) status.textContent = summary.faltantes ? `Quedan ${summary.faltantes} unidades` : 'Reposición completa';
+  if (status) status.textContent = pickup.completed && summary.faltantes
+    ? `Control terminado · ${summary.faltantes} unidades no se enviarán`
+    : summary.faltantes ? `Quedan ${summary.faltantes} unidades por controlar` : 'Reposición completa';
   if (detail) {
-    const verificationCount=(repoState.items||[]).filter(item=>item.requiere_verificacion).length;
-    detail.textContent = `${summary.completos} productos completos, ${summary.parciales} parciales, ${summary.pendientes} pendientes, ${summary.excedidos} excedidos y ${summary.no_encontrados} no encontrados.${verificationCount?` ${verificationCount} producto${verificationCount===1?'':'s'} con más de una unidad requiere${verificationCount===1?'':'n'} control final.`:''}`;
+    const verificationCount=repoVerificationItems().length;
+    const description = `${summary.completos} productos completos, ${summary.cerrados_incompletos} cerrados con envío parcial, ${summary.parciales} parciales, ${summary.pendientes} pendientes, ${summary.excedidos} excedidos y ${summary.no_encontrados} no encontrados.${verificationCount?` ${verificationCount} producto${verificationCount===1?'':'s'} con más de una unidad requiere${verificationCount===1?'':'n'} control final.`:''}`;
+    detail.innerHTML = `<span>${esc(description)}</span>${verificationCount&&repoCanEdit()?`<button class="btn btn-s mt2" type="button" onclick="openRepoQuantityVerification()">Controlar ${verificationCount} ${verificationCount===1?'cantidad':'cantidades'} ahora</button>`:''}`;
   }
   const participants = document.getElementById('repo-participants');
-  if (participants) participants.innerHTML = (repoState.participantes || []).map(item => `<span class="user-pill">${esc(item.nombre)}</span>`).join('');
+  if (participants) {
+    if (typeof renderOperationsParticipants === 'function') renderOperationsParticipants(participants,repoState.participantes || [],{icon:false});
+    else participants.innerHTML = (repoState.participantes || []).map(item => `<span class="user-pill">${esc(item.nombre)}</span>`).join('');
+  }
   const missing = SucaneitorReposition.missingRows(repoState);
   const list = document.getElementById('repo-missing-list');
   if (list) list.innerHTML = missing.length ? missing.map(item => {
@@ -1385,6 +1418,7 @@ function repoVerificationItems() {
 }
 
 function openRepoQuantityVerification(continuation) {
+  if(!requireRepoEditable())return;
   if(typeof continuation==='function')repoVerificationContinuation=continuation;
   const pending=repoVerificationItems();
   if(!pending.length){const next=repoVerificationContinuation;repoVerificationContinuation=null;closeModal();if(next)setTimeout(next,30);return;}
@@ -1397,7 +1431,7 @@ function openRepoQuantityVerification(continuation) {
     <p class="app-dialog-message">Hay más de una unidad registrada. Mirá la mercadería separada y confirmá cuántas unidades físicas viajarán.</p>
     <div class="receipt-confirm-quantities"><div><span>Solicitado</span><strong>${item.pedido}</strong></div><div><span>Registrado</span><strong>${item.preparado}</strong></div><div class="final"><span>A confirmar</span><strong id="repo-verification-preview">${item.preparado}</strong></div></div>
     <label class="il" for="repo-verification-qty">Cantidad física comprobada</label>
-    <div class="qty-stepper"><button class="qty-step" onclick="stepRepoVerification(-1)">−</button><input id="repo-verification-qty" class="input" type="number" min="0" inputmode="numeric" value="${item.preparado}" oninput="updateRepoVerificationPreview()" style="text-align:center;font-size:20px"><button class="qty-step" onclick="stepRepoVerification(1)">+</button></div>`;
+    <div class="qty-stepper"><button class="qty-step" onclick="stepRepoVerification(-1)">−</button><input id="repo-verification-qty" class="input" type="number" min="0" max="999999" inputmode="numeric" value="${item.preparado}" oninput="updateRepoVerificationPreview()" style="text-align:center;font-size:20px"><button class="qty-step" onclick="stepRepoVerification(1)">+</button></div>`;
   document.getElementById('modal-actions').innerHTML='<button class="btn btn-s" onclick="closeModal()">Revisar después</button><button class="btn btn-p" onclick="confirmRepoQuantityVerification()">Confirmar y continuar</button>';
   document.getElementById('modal-overlay').classList.add('show');
   setTimeout(()=>document.getElementById('repo-verification-qty')?.select(),60);
@@ -1408,7 +1442,17 @@ function stepRepoVerification(delta){const input=document.getElementById('repo-v
 
 async function confirmRepoQuantityVerification() {
   const code=repoDecoded(window._repoVerificationCode||''),quantity=Number.parseInt(document.getElementById('repo-verification-qty')?.value,10);
-  if(!code||!Number.isInteger(quantity)||quantity<0){toast('Ingresá una cantidad válida','e');return;}
+  const item=repoState?.items?.find(row=>String(row.codigo)===code),requested=Math.max(0,Number(item?.pedido)||0);
+  if(!code||!item||!Number.isInteger(quantity)||quantity<0||quantity>999999){toast('Ingresá una cantidad válida','e');return;}
+  if(quantity>requested){
+    const excess=quantity-requested,confirmed=await appConfirm({
+      title:'Cantidad mayor a la solicitada',subtitle:item.nombre,tone:'warning',icon:'!',
+      confirmText:`Enviar ${quantity} unidades`,
+      bodyHtml:`<div class="app-dialog-product"><strong>${esc(item.nombre)}</strong><span>Código ${esc(item.codigo)}</span></div><p class="app-dialog-message">La reposición solicita <strong>${requested}</strong>, pero confirmaste <strong>${quantity}</strong> (${excess} ${excess===1?'unidad extra':'unidades extra'}). Si continuás, quedará marcado como excedido y el remito y la planilla usarán la cantidad física real.</p>`
+    });
+    await waitForOperationsDialogHistory();
+    if(!confirmed)return;
+  }
   const button=document.querySelector('#modal-actions .btn-p');if(button){button.disabled=true;button.textContent='Guardando…';}
   try{
     const response=await repoApi('/api/reposicion/verify_qty',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reposition_id:sessionId,codigo:code,cantidad:quantity})}),data=await response.json().catch(()=>({}));

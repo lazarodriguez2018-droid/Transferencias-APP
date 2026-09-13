@@ -28,26 +28,31 @@ function testStatusesAndExports() {
   const repo = {
     items:[
       {codigo:'001',nombre:'Uno',pedido:2,preparado:2},
-      {codigo:'002',nombre:'Dos',pedido:5,preparado:3},
+      {codigo:'002',nombre:'Dos',pedido:5,preparado:3,cerrado_incompleto:true},
       {codigo:'003',nombre:'Tres',pedido:1,preparado:2},
-      {codigo:'004',nombre:'Cuatro',pedido:4,preparado:0,no_encontrado:true,motivo_codigo:'stock_insuficiente',motivo_label:'Stock insuficiente',comentario:'Se revisó depósito'}
+      {codigo:'004',nombre:'Cuatro',pedido:4,preparado:0,no_encontrado:true,motivo_codigo:'stock_insuficiente',motivo_label:'Stock insuficiente',comentario:'Se revisó depósito'},
+      {codigo:'005',nombre:'Cinco',pedido:3,preparado:1}
     ],
     extras:[{codigo:'001',nombre:'Uno',cantidad:4},{codigo:'005',nombre:'Cinco',cantidad:0}]
   };
   assert.strictEqual(engine.status(repo.items[0]),'completo');
-  assert.strictEqual(engine.status(repo.items[1]),'parcial');
+  assert.strictEqual(engine.status(repo.items[1]),'incompleto');
   assert.strictEqual(engine.status(repo.items[2]),'excedido');
   assert.strictEqual(engine.status(repo.items[3]),'no_encontrado');
-  assert.deepStrictEqual(engine.mainTransferRows(repo),[['001',2],['002',3],['003',2]]);
+  assert.strictEqual(engine.status(repo.items[4]),'parcial');
+  assert.deepStrictEqual(engine.mainTransferRows(repo),[['001',2],['002',3],['003',2],['005',1]],
+    'El remito debe conservar tanto los parciales cerrados como los excedentes confirmados');
   assert.deepStrictEqual(engine.extraTransferRows(repo),[['001',4]]);
-  assert.strictEqual(engine.missingRows(repo).reduce((sum,row)=>sum+row.faltante,0),6);
+  assert.strictEqual(engine.missingRows(repo).reduce((sum,row)=>sum+row.faltante,0),8);
   const notFound = engine.missingRows(repo).find(row => row.codigo === '004');
   assert.strictEqual(notFound.motivo_codigo,'stock_insuficiente');
   assert.strictEqual(notFound.motivo_label,'Stock insuficiente');
   assert.strictEqual(notFound.comentario,'Se revisó depósito');
-  assert.deepStrictEqual(engine.pickupState(repo),{total:4,remaining:1,assigned:0,completed:false});
-  repo.items[1].preparado = 5;
-  assert.deepStrictEqual(engine.pickupState(repo),{total:4,remaining:0,assigned:0,completed:true});
+  assert.deepStrictEqual(engine.pickupState(repo),{total:5,remaining:1,assigned:0,completed:false},
+    'Un parcial abierto debe seguir disponible para controlar');
+  repo.items[4].cerrado_incompleto = true;
+  assert.deepStrictEqual(engine.pickupState(repo),{total:5,remaining:0,assigned:0,completed:true},
+    'Cerrar explícitamente un parcial debe terminar el control sin alterar su cantidad');
 }
 
 function testSpanishFillrateHeaders() {

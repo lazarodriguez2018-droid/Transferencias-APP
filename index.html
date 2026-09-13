@@ -18,8 +18,9 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="style.css?v=compact-hub-v1">
+<link rel="stylesheet" href="style.css?v=analytics-360-v1">
 <link rel="stylesheet" href="landing.css?v=company-only-v1">
+<link rel="stylesheet" href="/analytics-360.css?v=historico-v1">
 <style>
 .conv-list { display:flex; flex-direction:column; }
 .conv-item { position:relative; display:flex; align-items:center; gap:10px; padding:12px 14px; cursor:pointer; border-bottom:1px solid var(--border); transition:background .15s; }
@@ -328,6 +329,9 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         <div class="nav-item" id="nav-historial" data-nav="historial">
           <span class="icon">📋</span> Historial
         </div>
+        <div class="nav-item" id="nav-dashboard" data-nav="dashboard">
+          <span class="icon">▦</span> Análisis de pedidos
+        </div>
         <div class="nav-item" id="nav-misConsultas" data-nav="misConsultas">
           <span class="icon">💡</span> Mis Consultas
           <span class="nav-badge" id="badge-misConsultas" style="display:none">0</span>
@@ -343,11 +347,14 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
           <span class="icon">👤</span> Mi Perfil
         </div>
       </div>
+      <div class="nav-section">
+        <div class="nav-label">Análisis</div>
+        <div class="nav-item" id="nav-vision360" data-nav="vision360">
+          <span class="icon">◎</span> Visión 360
+        </div>
+      </div>
       <div class="nav-section" id="admin-nav" style="display:none">
         <div class="nav-label">Administración</div>
-        <div class="nav-item" id="nav-dashboard" data-nav="dashboard">
-          <span class="icon">🏠</span> Resumen de pedidos
-        </div>
         <div class="nav-item" id="nav-usuarios" data-nav="usuarios">
           <span class="icon">👥</span> Usuarios
           <span class="nav-badge" id="badge-usuarios" style="display:none">0</span>
@@ -421,14 +428,15 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         <a class="operations-card reception" href="/operaciones?module=recepcion"><span class="operations-icon" aria-hidden="true">⌕</span><div><h2>Control de remitos</h2><p>Controlá lo recibido y registrá las diferencias del remito.</p><strong>Abrir Control de remitos →</strong></div></a>
         <button class="operations-card orders" type="button" onclick="navigateTo('misPedidos')"><span class="operations-icon" aria-hidden="true">📦</span><div><h2>Pedidos entre locales</h2><p>Solicitá productos y seguí cada pedido hasta su llegada.</p><strong>Abrir Pedidos entre locales →</strong></div></button>
         <a class="operations-card reservations" href="/reservas"><span class="operations-icon" aria-hidden="true">▣</span><div><h2>Control de reservas</h2><p>Identificá la mercadería separada y seguí cada pedido hasta su destino final.</p><strong>Abrir Control de reservas →</strong></div></a>
+        <button class="operations-card analytics" type="button" onclick="navigateTo('vision360')"><span class="operations-icon" aria-hidden="true">◎</span><div><h2>Visión 360</h2><p>Cruzá el historial de pedidos, inventarios, reposiciones, remitos y reservas.</p><strong>Abrir análisis global →</strong></div></button>
       </div>
       <p class="operations-home-help">Para trabajar en otro módulo, volvé a Inicio.</p>
     </div>
 
-    <!-- DASHBOARD (admin only) -->
+    <!-- DASHBOARD DE PEDIDOS -->
     <div id="view-dashboard" style="display:none">
       <div class="page-header"><div>
-        <h1>Resumen de pedidos</h1>
+        <h1>Análisis de pedidos</h1>
         <p id="dash-subtitle">Consultá los pedidos por local, fecha y producto.</p>
       </div>
       <button class="btn btn-ghost btn-sm" id="btn-dash-export">Exportar CSV</button>
@@ -491,6 +499,23 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         </div>
       </div>
       </div>
+      <section class="analytics-embedded-section" aria-labelledby="orders-history-title">
+        <div class="analytics-embedded-heading">
+          <span>HISTÓRICO COMPLETO</span>
+          <h2 id="orders-history-title">Pedidos en el tiempo</h2>
+          <p>Analizá evolución, cumplimiento, productos, rutas y actividad sobre todo el historial disponible.</p>
+        </div>
+        <div id="analytics-360-pedidos"></div>
+      </section>
+    </div>
+
+    <!-- VISIÓN 360 -->
+    <div id="view-vision360" style="display:none">
+      <div class="page-header"><div>
+        <h1>Visión 360</h1>
+        <p>Una lectura conjunta de pedidos, inventarios, reposiciones, remitos y reservas.</p>
+      </div></div>
+      <div id="analytics-360-global"></div>
     </div>
 
     <!-- MIS PEDIDOS -->
@@ -1236,7 +1261,8 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <link rel="stylesheet" href="/downloads.css?v=user-copy-v1">
 <script src="/downloads.js?v=user-copy-v1"></script>
-<script src="app.js?v=expected-v1"></script>
+<script src="/analytics-360.js?v=historico-v1"></script>
+<script src="app.js?v=analytics-360-v1"></script>
 </body>
 </html>
 

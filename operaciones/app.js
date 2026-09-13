@@ -47,6 +47,62 @@ let catalogRefreshTimer = null;
 let suppressOperationsOverlayHistory = false;
 let operationsBootHideTimer = null;
 
+function operationsElement(target) {
+  return typeof target === 'string' ? document.getElementById(target) : target;
+}
+
+// Inline handlers are still used by a few dynamically rendered product actions.
+// encodeURIComponent deliberately leaves !'()* untouched, so escape those too
+// before placing an encoded value inside a quoted HTML attribute.
+function encodeOperationsInlineValue(value) {
+  return encodeURIComponent(String(value ?? '')).replace(/[!'()*]/g, character =>
+    `%${character.charCodeAt(0).toString(16).toUpperCase()}`
+  );
+}
+
+function setOperationsStableHtml(target, html, signature = html) {
+  const node = operationsElement(target);
+  if (!node) return false;
+  const nextSignature = String(signature ?? '');
+  if (node.__sucanRenderSignature === nextSignature) return false;
+  node.innerHTML = String(html ?? '');
+  node.__sucanRenderSignature = nextSignature;
+  return true;
+}
+
+function operationsParticipantIdentity(person) {
+  const row = person || {};
+  if (row.usuario_id) return `user:${row.usuario_id}`;
+  if (row.invitado_id) return `guest:${row.invitado_id}`;
+  if (row.cliente_id) return `device:${row.cliente_id}`;
+  return `name:${String(row.nombre || 'Usuario').trim().toLocaleLowerCase('es')}`;
+}
+
+function normalizeOperationsParticipants(participants) {
+  const unique = new Map();
+  (participants || []).forEach(person => {
+    const nombre = String(person?.nombre || 'Usuario').trim() || 'Usuario';
+    const key = operationsParticipantIdentity({...person,nombre});
+    const previous = unique.get(key);
+    if (!previous || String(person?.last_seen || '') > String(previous.last_seen || '')) {
+      unique.set(key,{...person,nombre,_renderKey:key});
+    }
+  });
+  return [...unique.values()].sort((left,right) =>
+    left.nombre.localeCompare(right.nombre,'es',{sensitivity:'base'}) ||
+    left._renderKey.localeCompare(right._renderKey)
+  );
+}
+
+function renderOperationsParticipants(target, participants, options = {}) {
+  const rows = normalizeOperationsParticipants(participants);
+  const icon = options.icon === false ? '' : '👤 ';
+  const signature = rows.map(person => `${person._renderKey}\u0000${person.nombre}`).join('\u0001');
+  const html = rows.map(person => `<span class="user-pill">${icon}${esc(person.nombre)}</span>`).join('');
+  setOperationsStableHtml(target,html,`participants:${signature}`);
+  return rows;
+}
+
 function showOperationsLoading(message = 'Cargando...') {
   const boot = document.getElementById('operations-boot');
   const text = document.getElementById('operations-boot-text');
@@ -283,20 +339,41 @@ function operationsRouteIsCurrent(state) {
   return !state.tab || activeOperationsTab() === state.tab;
 }
 
-function leaveOperationsWorkspace({notify = true} = {}) {
+function releaseActiveOperationsAssignment() {
+  if (!sessionId) return Promise.resolve([]);
+  const releases = [];
+  if (currentModule === 'inventario') {
+    releases.push(fetch(`${serverUrl}/api/sesion/salir`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({session_id:sessionId}),
+      keepalive:true
+    }).catch(() => null));
+  }
+  if (currentModule === 'reposicion' && typeof repoReleaseAssignment === 'function') {
+    releases.push(Promise.resolve(repoReleaseAssignment(null,{silent:true})));
+  }
+  if (currentModule === 'recepcion' && typeof receiptReleaseAssignment === 'function') {
+    releases.push(Promise.resolve(receiptReleaseAssignment(null)));
+  }
+  if (!releases.length) return Promise.resolve([]);
+  return Promise.race([
+    Promise.allSettled(releases),
+    new Promise(resolve => setTimeout(() => resolve([]),1200))
+  ]);
+}
+
+function leaveOperationsWorkspace({releaseAssignment = true} = {}) {
   document.getElementById('session-invite-fab')?.classList.remove('show');
   if (scanActive) stopScanner();
   if (typeof stopRepoUrgentWatcher === 'function') stopRepoUrgentWatcher();
-  if (currentModule === 'reposicion' && sessionId && typeof repoReleaseAssignment === 'function') repoReleaseAssignment();
+  if (releaseAssignment) releaseActiveOperationsAssignment();
   if (repoSSE) { repoSSE.close(); repoSSE = null; }
   if (serverSSE) { serverSSE.close(); serverSSE = null; }
   clearTimeout(clientCountTimer); clientCountTimer = null;
   closeRepoScanner();
   if (typeof closeReceiptScanner === 'function') closeReceiptScanner();
   if (typeof disconnectReceptionRealtime === 'function') disconnectReceptionRealtime();
-  if (notify && currentModule === 'inventario' && serverOnline && sessionId) {
-    fetch(`${serverUrl}/api/sesion/salir`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId})}).catch(()=>{});
-  }
   sessionId = ''; sessionNombre = ''; repoState = null; repoExhausted = false;
   serverOnline = true;
   document.getElementById('main-nav').style.display = 'none';
@@ -362,22 +439,28 @@ function setupOperationsOverlayHistory() {
   });
 }
 
-function backToModules() {
-  document.getElementById('session-invite-fab')?.classList.remove('show');
-  if (typeof stopRepoUrgentWatcher === 'function') stopRepoUrgentWatcher();
-  if (currentModule === 'reposicion' && sessionId && typeof repoReleaseAssignment === 'function') repoReleaseAssignment();
-  if (repoSSE) { repoSSE.close(); repoSSE = null; }
-  if (serverSSE) { serverSSE.close(); serverSSE = null; }
-  closeRepoScanner();
-  if (typeof closeReceiptScanner === 'function') closeReceiptScanner();
-  if (typeof disconnectReceptionRealtime === 'function') disconnectReceptionRealtime();
+function waitForOperationsDialogHistory(timeoutMs = 900) {
+  if (history.state?.operationsOverlay !== 'app-dialog-overlay') return Promise.resolve();
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      window.removeEventListener('popstate',onPopState);
+      resolve();
+    };
+    const onPopState = () => finish();
+    const timer = setTimeout(finish,timeoutMs);
+    window.addEventListener('popstate',onPopState);
+  });
+}
+
+async function backToModules() {
+  await releaseActiveOperationsAssignment();
+  leaveOperationsWorkspace({releaseAssignment:false});
   currentModule = '';
-  sessionId = ''; sessionNombre = ''; repoState = null;
   document.getElementById('session-screen').style.display = 'none';
-  document.getElementById('main-nav').style.display = 'none';
-  document.getElementById('main-tabs').style.display = 'none';
-  document.getElementById('repo-tabs').style.display = 'none';
-  document.getElementById('receipt-tabs').style.display = 'none';
   document.querySelectorAll('.page,.repo-page').forEach(page => page.classList.remove('active'));
   location.href = '/';
 }
@@ -1324,7 +1407,7 @@ function openAppDialog(options = {}) {
   error.textContent = '';
   error.style.display = 'none';
   const secondaryButton = options.secondaryText
-    ? `<button class="btn btn-s" type="button" onclick="resolveAppDialog(false,decodeURIComponent('${encodeURIComponent(String(options.secondaryValue || 'secondary'))}'))">${esc(options.secondaryText)}</button>`
+    ? `<button class="btn btn-s" type="button" onclick="resolveAppDialog(false,decodeURIComponent('${encodeOperationsInlineValue(options.secondaryValue || 'secondary')}'))">${esc(options.secondaryText)}</button>`
     : '';
   actions.innerHTML = `
     <button class="btn btn-s" type="button" onclick="resolveAppDialog(false)">${esc(options.cancelText || 'Cancelar')}</button>
@@ -2977,6 +3060,7 @@ function showTab(name, options = {}) {
   if (name === 'lista') { renderCountTable(); updateStats(); }
   if (name === 'dashboard') { updateStats(); loadBarcodeAssignments(); if (balanceData) refreshReport(); }
   if (name === 'analisis' && balanceData) refreshReport();
+  if (name === 'historico' && typeof loadOperationsAnalytics === 'function') loadOperationsAnalytics('inventario');
   if (name === 'scanner') resetScannerResult();
   if (sessionId && currentModule === 'inventario') updateOperationsHistory(options.history || 'push','workspace',name);
 }
@@ -3225,11 +3309,24 @@ async function cambiarSesion() {
       : 'El conteo guardado no se elimina. Volverás a la pantalla de acceso.',
     icon: '←', confirmText: 'Salir de la sesión'
   });
-  if (confirmed) {
-    leaveOperationsWorkspace();
-    mostrarPantallaSesion();
-    updateOperationsHistory('push','sessions');
-  }
+  if (!confirmed) return;
+  await waitForOperationsDialogHistory();
+  await releaseActiveOperationsAssignment();
+  leaveOperationsWorkspace({releaseAssignment:false});
+  mostrarPantallaSesion();
+  updateOperationsHistory('push','sessions');
+}
+
+async function cambiarModulo() {
+  const confirmed = await appConfirm({
+    title: 'Cambiar de módulo',
+    subtitle: sessionNombre || 'Trabajo actual',
+    message: 'Los avances ya sincronizados quedarán guardados. Volverás al inicio para elegir otro módulo.',
+    icon: '←', confirmText: 'Volver al inicio'
+  });
+  if (!confirmed) return;
+  await waitForOperationsDialogHistory();
+  await backToModules();
 }
 
 function updateSessionCard() {
@@ -3238,11 +3335,11 @@ function updateSessionCard() {
   if (!card) return;
   if (sessionNombre) {
     card.style.display = 'block';
-    info.innerHTML = `
+    setOperationsStableHtml(info,`
       <div style="font-weight:700;font-size:15px;color:var(--accent2)">${esc(sessionNombre)}</div>
       <div style="font-size:12px;color:var(--muted);margin-top:4px">Usuario: ${esc(usuarioNombre)}</div>
       <div style="font-size:12px;color:var(--muted)">ID: ${esc(sessionId)}</div>
-    `;
+    `);
   } else {
     card.style.display = 'none';
   }

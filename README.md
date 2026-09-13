@@ -24,6 +24,16 @@ Al crear una reposición se incorporan de forma atómica los pedidos aceptados d
 
 Los pedidos urgentes aceptados después de iniciar la preparación requieren aprobación de un supervisor. Al confirmar la salida se generan las asignaciones por cliente, los pedidos con unidades pasan a tránsito y los que no pudieron cubrirse quedan aceptados para una preparación futura.
 
+Una línea puede cerrarse explícitamente con menos unidades que las pedidas mediante **Enviar N y terminar**. Queda registrada como parcial, sin utilizar el estado «No encontrado», y el remito y la planilla procesada conservan la cantidad física preparada y su marca de diferencia. Si después aumenta la demanda por un pedido urgente, esa decisión se reabre para que el producto vuelva a controlarse.
+
+Preparar más unidades que las pedidas está permitido únicamente después de una confirmación explícita. La línea queda como **Excedida**, se exporta la cantidad física real y sigue sujeta al control final cuando corresponde; la cantidad puede corregirse antes de confirmar la salida.
+
+## Análisis 360
+
+Cada módulo incorpora un panel histórico con filtros de período, local y producto. Los perfiles administrador y supervisor pueden comparar locales; un empleado queda limitado a su local. El panel global cruza inventarios, reposiciones, recepciones, pedidos y reservas, mientras que cada módulo muestra sus propios indicadores, tendencias, diferencias, productos críticos y registros recientes.
+
+El análisis consulta la historia ya guardada en Supabase, por lo que también cubre operaciones anteriores a esta versión. Los supervisores pueden filtrar incluso locales eliminados o renombrados, identificados como históricos. En reservas reconstruye cierres y eliminaciones a partir de la auditoría disponible. No inventa datos que nunca se hayan persistido y distingue explícitamente los períodos o métricas sin información.
+
 ## Recepción de remitos
 
 El local destino importa el XLS completo, aunque contenga varias hojas. El control prioriza la búsqueda por nombre o SKU, permite sumar cantidades manualmente y ofrece la cámara como opción adicional. Todos los participantes ven las cantidades en tiempo real, pueden registrar productos sobrantes y cerrar con diferencias mediante una confirmación explícita.
@@ -34,14 +44,23 @@ Al cerrar, los pedidos entre locales vinculados se comparan contra las unidades 
 
 Las migraciones son aditivas. La base operativa está en `supabase/migrations/20260822010000_sucaneitor_operaciones.sql`, el control de remitos en `supabase/migrations/20260824170000_recepcion_remitos.sql` y Control de reservas en `supabase/migrations/20260909010000_control_reservas.sql`. Esta última requiere habilitar Supabase Cron (`pg_cron`) para ejecutar el vencimiento automático.
 
+Para esta versión deben aplicarse, en orden, `supabase/migrations/20260912010000_analytics_360.sql` y `supabase/migrations/20260912020000_reposicion_cierre_parcial.sql`. La primera expone el análisis histórico con permisos por rol y local. La segunda agrega el cierre parcial, normaliza los registros históricos creados con el antiguo atajo «Encontrado → No encontrado» y protege las transiciones cuando cambia la demanda.
+
 ## Pruebas
 
 ```powershell
 node operaciones/tests/search-engine.test.js
 node operaciones/tests/reposition-engine.test.js
 node operaciones/tests/reposition-export.test.js
+node operaciones/tests/reposition-verification.test.js
 node operaciones/tests/reception-engine.test.js
 node operaciones/tests/ui-dialogs.test.js
+node operaciones/tests/presence-navigation.test.js
+node operaciones/tests/analytics-integration.test.js
+node operaciones/tests/inline-handler-safety.test.js
+node tools/analytics-360.test.js
+node tools/analytics-360-sql.test.js
+node tools/dashboard-analytics.test.js
 node tools/reception-workflow.test.js
 node tools/reservations.test.js
 node tools/reservations-sql.test.js

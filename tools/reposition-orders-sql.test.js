@@ -85,6 +85,48 @@ async function main(){
  check((await detail('TEST-4')).orders.length,0,'Unlinked pending order not exposed');
  await fails(()=>scalar('select op_invitado_pedidos_producto($1,$2)',['invalid',pending.sku]),/invitación/);
  const guestOp=(action,sku,qty=null)=>scalar('select op_invitado_operar($1,$2,$3,$4)',[access,action,sku,qty]);
+ // Partial closure is explicit for both current and cached guest clients.
+ const partialSku='PARTIAL-CLOSE-1';
+ await admin();await q(`insert into op_reposicion_items(reposicion_id,codigo,nombre,pedido_reposicion,preparado)
+   values($1,$2,'Producto parcial de prueba',3,2)`,[repo,partialSku]);
+ await login(null,'anon');await guestOp('repo_claim',partialSku);
+ await scalar('select op_invitado_reposicion_cerrar_incompleto($1,$2,$3::jsonb)',[access,partialSku,JSON.stringify({comment:'Solo había dos'})]);
+ await admin();let partialItem=(await q('select preparado,no_encontrado,cerrado_incompleto,motivo_codigo from op_reposicion_items where reposicion_id=$1 and codigo=$2',[repo,partialSku]))[0];
+ check(partialItem,{preparado:2,no_encontrado:false,cerrado_incompleto:true,motivo_codigo:'cantidad_incompleta'},'Guest explicitly closes a partial quantity');
+ await login(null,'anon');await guestOp('repo_claim',partialSku);await guestOp('repo_not_found',partialSku);
+ await admin();partialItem=(await q('select preparado,no_encontrado,cerrado_incompleto,motivo_codigo from op_reposicion_items where reposicion_id=$1 and codigo=$2',[repo,partialSku]))[0];
+ check(partialItem,{preparado:2,no_encontrado:false,cerrado_incompleto:true,motivo_codigo:'cantidad_incompleta'},'Cached guest shortcut is normalized without losing physical units');
+ // A decision made before new physical demand cannot silently resolve an urgent
+ // order added afterwards. Exercise the legacy RPC still used by the UI.
+ const urgentPartialSku='URGENT-REOPEN-PARTIAL';
+ const urgentPartial=await order({status:'aceptado',sku:urgentPartialSku,qty:4});
+ await admin();
+ await q(`insert into op_reposicion_items(reposicion_id,codigo,nombre,pedido_reposicion,preparado,cerrado_incompleto,motivo_codigo,motivo_label)
+   values($1,$2,'Producto parcial con demanda nueva',3,2,true,'cantidad_incompleta','Cantidad incompleta')`,[repo,urgentPartialSku]);
+ await q("update pedidos set urgente=true,updated_at=now()+interval '1 second' where id=$1",[urgentPartial.id]);
+ await login(supervisor);check(await scalar('select op_agregar_pedido_urgente($1,$2)',[repo,urgentPartial.id]),true,'Urgent order is incorporated through the production RPC');
+ await admin();let reopened=(await q('select pedido_total,preparado,no_encontrado,cerrado_incompleto,motivo_codigo from op_reposicion_items where reposicion_id=$1 and codigo=$2',[repo,urgentPartialSku]))[0];
+ check(reopened,{pedido_total:4,preparado:2,no_encontrado:false,cerrado_incompleto:false,motivo_codigo:null},'Higher urgent demand reopens an earlier partial close');
+
+ const urgentMissingSku='URGENT-REOPEN-MISSING';
+ const urgentMissing=await order({status:'aceptado',sku:urgentMissingSku,qty:4});
+ await admin();
+ await q(`insert into op_reposicion_items(reposicion_id,codigo,nombre,pedido_reposicion,preparado,no_encontrado,motivo_codigo,motivo_label)
+   values($1,$2,'Producto no encontrado con demanda nueva',3,0,true,'stock_insuficiente','Stock insuficiente')`,[repo,urgentMissingSku]);
+ await q("update pedidos set urgente=true,updated_at=now()+interval '1 second' where id=$1",[urgentMissing.id]);
+ await login(supervisor);check(await scalar('select op_agregar_pedido_urgente($1,$2)',[repo,urgentMissing.id]),true,'Second urgent order is incorporated through the production RPC');
+ await admin();reopened=(await q('select pedido_total,preparado,no_encontrado,cerrado_incompleto,motivo_codigo from op_reposicion_items where reposicion_id=$1 and codigo=$2',[repo,urgentMissingSku]))[0];
+ check(reopened,{pedido_total:4,preparado:0,no_encontrado:false,cerrado_incompleto:false,motivo_codigo:null},'Higher urgent demand reopens an earlier not-found decision');
+ // Final quantity verification must also clear a stale partial-close flag when
+ // the verified amount becomes zero, complete or exceeded.
+ await login();await scalar('select op_verificar_reposicion_cantidad($1,$2,0,$3)',[repo,partialSku,'Verificador ficticio']);
+ await admin();partialItem=(await q('select preparado,no_encontrado,cerrado_incompleto from op_reposicion_items where reposicion_id=$1 and codigo=$2',[repo,partialSku]))[0];
+ check(partialItem,{preparado:0,no_encontrado:false,cerrado_incompleto:false},'Final verification to zero reopens the product as pending');
+ await q("update op_reposicion_items set preparado=2,cerrado_incompleto=true,motivo_codigo='cantidad_incompleta' where reposicion_id=$1 and codigo=$2",[repo,partialSku]);
+ await login();await scalar('select op_verificar_reposicion_cantidad($1,$2,3,$3)',[repo,partialSku,'Verificador ficticio']);
+ await admin();partialItem=(await q('select preparado,cerrado_incompleto,motivo_codigo from op_reposicion_items where reposicion_id=$1 and codigo=$2',[repo,partialSku]))[0];
+ check(partialItem,{preparado:3,cerrado_incompleto:false,motivo_codigo:null},'Final verification to requested quantity removes the partial-close state');
+ await login(null,'anon');
  await guestOp('repo_claim',pending.sku);await guestOp('repo_set',pending.sku,1);
  check((await detail(pending.sku)).orders[0].estado,'listo','Guest count completes accepted units');
  await guestOp('repo_claim',pending.sku);await guestOp('repo_set',pending.sku,0);

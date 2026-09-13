@@ -132,7 +132,11 @@
     for(const [sourceRow,newRow] of rowMap){
       const sku=String(source[XLSX.utils.encode_cell({r:sourceRow,c:columns.sku})]?.v??'').trim();
       const item=originalItems.get(sku);
-      const highlight=Boolean(item&&!item.no_encontrado&&Number(item.preparado)>0);
+      // El remito siempre incluye lo preparado. Si una versión anterior dejó
+      // además la marca `no_encontrado`, la planilla debe representar las mismas
+      // unidades físicas y no ocultarlas por esa combinación inconsistente.
+      const hasPreparedQuantity=Boolean(item&&Number(item.preparado)>0);
+      const highlight=hasPreparedQuantity;
       if(highlight)highlightedRows.push(newRow+1);
       for(let column=range.s.c;column<=qtyDifferentColumn;column+=1){
         const sourceAddress=XLSX.utils.encode_cell({r:sourceRow,c:column});
@@ -148,7 +152,7 @@
           }else if(sourceRow>columns.rowIndex&&item){
             const requested=Math.max(0,Math.trunc(Number(item.pedido_reposicion==null?item.pedido:item.pedido_reposicion)||0));
             const actual=repositionPreparedQuantity(item);
-            const quantityEntered=!item.no_encontrado&&(Number(item.preparado)>0||quantityCodes.has(sku));
+            const quantityEntered=hasPreparedQuantity||(!item.no_encontrado&&quantityCodes.has(sku));
             if(quantityEntered&&actual!==requested){targetCell.t='n';targetCell.v=actual;targetCell.w=String(actual);targetCell.z='0';}
             else{targetCell.t='s';targetCell.v='';}
           }else{targetCell.t='s';targetCell.v='';}

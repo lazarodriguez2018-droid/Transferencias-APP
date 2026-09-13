@@ -23,7 +23,7 @@ assert.match(orders, /Esta referencia no descuenta el stock disponible/);
 
 // Navigation and instructions name the same views; internal routing IDs stay stable.
 assert.match(portal, /id="nav-dashboard" data-nav="dashboard"/);
-assert.match(portal, /Resumen de pedidos/);
+assert.match(portal, /Análisis de pedidos/);
 assert.match(operations, /id="tab-dashboard"><span class="tab-icon">▦<\/span><span>Resumen<\/span>/);
 assert.match(operations, /Cargá el balance en Resumen/);
 assert.match(operations, /estas sugerencias no cambian el conteo/);
@@ -37,6 +37,6 @@ assert.doesNotMatch(repo, /Este producto está libre para los colaboradores/);
 for (const file of ['index.html', 'operaciones/index.html']) {
   assert.match(read(file), /downloads\.js\?v=user-copy-v1/);
 }
-assert.match(read('operaciones/invitado.html'), /invitado\.js\?v=expected-v1/);
+assert.match(read('operaciones/invitado.html'), /invitado\.js\?v=partial-close-v1/);
 assert.match(operations, /session-invite\.js\?v=user-copy-v1/);
 console.log('user-copy: OK — actionable guidance, consistent labels, privacy and honest messages');

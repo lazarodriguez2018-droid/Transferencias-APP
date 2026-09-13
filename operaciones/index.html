@@ -20,6 +20,7 @@
 <link rel="apple-touch-icon" href="sucan_logo.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="stylesheet" href="/analytics-360.css?v=historico-v1">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600;700&display=swap');
 :root {
@@ -671,6 +672,14 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
       </div>
     </div>
 
+    <details class="card session-create-panel directory-analytics-panel" id="directory-analytics-panel" ontoggle="if(this.open)loadOperationsDirectoryAnalytics()">
+      <summary><span>◷</span> Ver análisis histórico del módulo</summary>
+      <div class="session-create-body">
+        <p class="tm mb2">Consultá todas las sesiones anteriores, compará locales y detectá productos o recorridos que requieren atención.</p>
+        <div id="analytics-360-directory"></div>
+      </div>
+    </details>
+
     <section class="card session-browser-card" id="session-browser" aria-labelledby="available-sessions-title">
       <div class="session-browser-head">
         <div>
@@ -750,6 +759,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
   </div>
   <div class="tab" onclick="showTab('dashboard')" id="tab-dashboard"><span class="tab-icon">▦</span><span>Resumen</span></div>
   <div class="tab" onclick="showTab('analisis')" id="tab-analisis"><span class="tab-icon">⌁</span><span>Análisis</span></div>
+  <div class="tab" onclick="showTab('historico')" id="tab-historico"><span class="tab-icon">◷</span><span>Histórico</span></div>
   <div class="tab" onclick="showTab('config')" id="tab-config"><span class="tab-icon">⚙</span><span>Config.</span></div>
 </div>
 
@@ -757,6 +767,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
   <div class="tab active" onclick="showRepoTab('preparar')" id="repo-tab-preparar"><span class="tab-icon">✓</span><span>Preparar</span></div>
   <div class="tab" onclick="showRepoTab('lista')" id="repo-tab-lista"><span class="tab-icon">☷</span><span>Lista</span><span class="tab-cnt" id="repo-list-count">0</span></div>
   <div class="tab" onclick="showRepoTab('resumen')" id="repo-tab-resumen"><span class="tab-icon">▦</span><span>Resumen</span></div>
+  <div class="tab" onclick="showRepoTab('analisis')" id="repo-tab-analisis"><span class="tab-icon">◷</span><span>Análisis</span></div>
   <div class="tab" onclick="showRepoTab('config')" id="repo-tab-config"><span class="tab-icon">⚙</span><span>Config.</span></div>
 </div>
 
@@ -766,6 +777,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
   <div class="tab" onclick="showReceiptTab('extras')" id="receipt-tab-extras"><span class="tab-icon">＋</span><span>Extras</span></div>
   <button type="button" class="tab" onclick="showReceiptTab('pedidos')" id="receipt-tab-pedidos"><span class="tab-icon" aria-hidden="true">▣</span><span class="receipt-tab-label">Pedidos y reservas</span><span class="tab-cnt" id="receipt-orders-count">0</span></button>
   <div class="tab" onclick="showReceiptTab('resumen')" id="receipt-tab-resumen"><span class="tab-icon">▦</span><span>Resumen</span></div>
+  <div class="tab" onclick="showReceiptTab('analisis')" id="receipt-tab-analisis"><span class="tab-icon">◷</span><span>Análisis</span></div>
   <div class="tab" onclick="showReceiptTab('config')" id="receipt-tab-config"><span class="tab-icon">⚙</span><span>Config.</span></div>
 </div>
 
@@ -821,10 +833,16 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
   <section class="card"><div class="panel-head compact"><div><div class="card-title">Detalle de faltantes</div><h2>Todo lo pedido que aún no se juntó</h2></div></div><div id="repo-missing-list" class="repo-list"></div></section>
 </div>
 
+<!-- ===== REPOSICIÓN: ANÁLISIS HISTÓRICO ===== -->
+<div class="page repo-page" id="repo-page-analisis">
+  <div class="page-heading"><div><span class="eyebrow">HISTÓRICO COMPLETO</span><h1>Análisis de reposiciones</h1><p>Compará cumplimiento, diferencias, productos, rutas y evolución sobre todas las reposiciones anteriores.</p></div></div>
+  <div id="analytics-360-reposicion"></div>
+</div>
+
 <!-- ===== REPOSICIÓN: CONFIG ===== -->
 <div class="page repo-page" id="repo-page-config">
   <div class="page-heading"><div><span class="eyebrow">CONFIGURACIÓN COMPARTIDA</span><h1>Configuración</h1><p>El padrón reúne los productos disponibles para todos los módulos.</p></div></div>
-  <section class="card"><div class="card-title">Sesión activa</div><div id="repo-config-session"></div><button class="btn btn-s mt2" onclick="cambiarSesion()">Cambiar sesión o módulo</button></section>
+  <section class="card"><div class="card-title">Sesión activa</div><div id="repo-config-session"></div><div class="flex gap2 mt2"><button class="btn btn-s" type="button" onclick="cambiarSesion()">Cambiar reposición</button><button class="btn btn-s" type="button" onclick="cambiarModulo()">Cambiar módulo</button></div></section>
   <section class="card" id="repo-padron-upload"><div class="card-title">Padrón de mercaderías</div><p class="tm mb2">Solo supervisores: cargá una planilla con Código, Código de Barras y Nombre. Reemplazará el padrón de todos los módulos.</p><div class="upzone" onclick="document.getElementById('repo-padron-file').click()"><div class="icon">📋</div><p><strong>Reemplazar padrón</strong><br>.xls o .xlsx</p></div><input type="file" id="repo-padron-file" accept=".xls,.xlsx" style="display:none" onchange="loadPadron(this)"><div id="repo-padron-status" class="tm mt2"></div></section>
   <section class="card"><div class="card-title">Archivo original</div><p class="tm">Descargá la planilla original, tal como se cargó al crear esta reposición.</p><button class="btn btn-s mt2" onclick="downloadRepoOriginal()">Descargar archivo original</button></section>
 </div>
@@ -889,10 +907,16 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
   <section class="card receipt-edit-only" id="receipt-close-card"><div class="panel-head"><div><div class="card-title">Finalizar</div><h2>Cerrar control del remito</h2></div><div class="panel-icon">✓</div></div><p class="panel-copy">Al cerrar se registrará la recepción de los pedidos con número de remito coincidente o vinculación confirmada. Las coincidencias por fecha y productos deben confirmarse desde Pedidos esperados.</p><button class="btn btn-p" id="receipt-close-button" onclick="closeReceptionFlow()">Cerrar recepción</button></section>
 </div>
 
+<!-- ===== RECEPCIÓN: ANÁLISIS HISTÓRICO ===== -->
+<div class="page receipt-page" id="receipt-page-analisis">
+  <div class="page-heading"><div><span class="eyebrow">HISTÓRICO COMPLETO</span><h1>Análisis de remitos</h1><p>Revisá cumplimiento de recepción, faltantes, sobrantes, extras, rutas y tiempos sobre controles anteriores.</p></div></div>
+  <div id="analytics-360-recepcion"></div>
+</div>
+
 <!-- ===== RECEPCIÓN: CONFIG ===== -->
 <div class="page receipt-page" id="receipt-page-config">
   <div class="page-heading"><div><span class="eyebrow">DATOS DEL CONTROL</span><h1>Configuración</h1><p>El padrón reúne los productos disponibles para todos los módulos.</p></div></div>
-  <section class="card"><div class="card-title">Recepción activa</div><div id="receipt-config-session"></div><button class="btn btn-s mt2" onclick="cambiarSesion()">Cambiar recepción o módulo</button></section>
+  <section class="card"><div class="card-title">Recepción activa</div><div id="receipt-config-session"></div><div class="flex gap2 mt2"><button class="btn btn-s" type="button" onclick="cambiarSesion()">Cambiar recepción</button><button class="btn btn-s" type="button" onclick="cambiarModulo()">Cambiar módulo</button></div></section>
   <section class="card" id="receipt-padron-upload"><div class="card-title">Padrón de mercaderías</div><p class="tm mb2">Solo supervisores: reemplazar el padrón actualiza los productos disponibles en todos los módulos.</p><div class="upzone" onclick="document.getElementById('receipt-padron-file').click()"><div class="icon">📋</div><p><strong>Reemplazar padrón</strong><br>.xls o .xlsx</p></div><input type="file" id="receipt-padron-file" accept=".xls,.xlsx" style="display:none" onchange="loadPadron(this)"><div id="receipt-padron-status" class="tm mt2"></div></section>
 </div>
 
@@ -1054,6 +1078,12 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
   </div>
 </div>
 
+<!-- ===== INVENTARIO: ANÁLISIS HISTÓRICO ===== -->
+<div class="page" id="page-historico">
+  <div class="page-heading"><div><span class="eyebrow">HISTÓRICO COMPLETO</span><h1>Análisis histórico de inventarios</h1><p>Compará sesiones, unidades, diferencias, exactitud, productos y actividad de todos los inventarios disponibles.</p></div></div>
+  <div id="analytics-360-inventario"></div>
+</div>
+
 <!-- ===== ESCÁNER DE CÁMARA ===== -->
 <div class="page scanner-page" id="page-scanner">
   <div class="page-heading scanner-heading">
@@ -1099,7 +1129,7 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
   <div id="sesion-activa-card" class="card" style="display:none;border-color:var(--accent2)">
     <div class="card-title">📋 Sesión Activa</div>
     <div id="sesion-activa-info"></div>
-    <button class="btn btn-s btn-sm mt2" onclick="cambiarSesion()">🚪 Cambiar sesión</button>
+    <div class="flex gap2 mt2"><button class="btn btn-s btn-sm" type="button" onclick="cambiarSesion()">Cambiar inventario</button><button class="btn btn-s btn-sm" type="button" onclick="cambiarModulo()">Cambiar módulo</button></div>
   </div>
 
   <div class="card">
@@ -1190,19 +1220,21 @@ html[data-theme="light"] .theme-btn.active { box-shadow: 0 2px 6px rgba(0,0,0,0.
 <script src="cloud-config.js"></script>
 <link rel="stylesheet" href="/downloads.css?v=user-copy-v1">
 <script src="/downloads.js?v=user-copy-v1"></script>
-<script src="cloud-api.js?v=expected-v1"></script>
+<script src="/analytics-360.js?v=historico-v1"></script>
+<script src="cloud-api.js?v=presence-nav-v2"></script>
 <script src="search-engine.js?v=search-fast-v6"></script>
 <script src="reposition-engine.js?v=fillrate-es-v1"></script>
 <script src="reception-engine.js?v=receipt-collab-v1"></script>
-<script src="reposition-export.js?v=processed-report-v4"></script>
+<script src="reposition-export.js?v=partial-close-v1"></script>
 <script src="/barcode-utils.js?v=barcode-catalog-v1"></script>
 <link rel="stylesheet" href="session-directory.css?v=compact-v2">
 <script src="session-directory.js?v=expected-v1"></script>
-<script src="app.js?v=expected-v1"></script>
-<link rel="stylesheet" href="reposition-orders.css?v=repo-orders-v1"><script src="reposition-orders.js?v=repo-orders-v1"></script><script src="reposition-app.js?v=repo-orders-v1"></script>
+<script src="app.js?v=presence-nav-v2"></script>
+<link rel="stylesheet" href="reposition-orders.css?v=repo-orders-v1"><script src="reposition-orders.js?v=repo-orders-v1"></script><script src="reposition-app.js?v=partial-close-v1"></script>
 <link rel="stylesheet" href="receipt-orders.css?v=expected-v1">
 <script src="receipt-orders.js?v=expected-v2"></script>
-<script src="reception-app.js?v=expected-v1"></script>
+<script src="reception-app.js?v=presence-nav-v2"></script>
+<script src="operations-analytics.js?v=historico-v1"></script>
 <script src="session-invite.js?v=user-copy-v1"></script>
 </body>
 </html>
