@@ -18,7 +18,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="style.css?v=analytics-360-v1">
+<link rel="stylesheet" href="style.css?v=vision360-module-v1">
 <link rel="stylesheet" href="landing.css?v=company-only-v1">
 <link rel="stylesheet" href="/analytics-360.css?v=historico-v1">
 <style>
@@ -347,12 +347,6 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
           <span class="icon">👤</span> Mi Perfil
         </div>
       </div>
-      <div class="nav-section">
-        <div class="nav-label">Análisis</div>
-        <div class="nav-item" id="nav-vision360" data-nav="vision360">
-          <span class="icon">◎</span> Visión 360
-        </div>
-      </div>
       <div class="nav-section" id="admin-nav" style="display:none">
         <div class="nav-label">Administración</div>
         <div class="nav-item" id="nav-usuarios" data-nav="usuarios">
@@ -428,7 +422,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
         <a class="operations-card reception" href="/operaciones?module=recepcion"><span class="operations-icon" aria-hidden="true">⌕</span><div><h2>Control de remitos</h2><p>Controlá lo recibido y registrá las diferencias del remito.</p><strong>Abrir Control de remitos →</strong></div></a>
         <button class="operations-card orders" type="button" onclick="navigateTo('misPedidos')"><span class="operations-icon" aria-hidden="true">📦</span><div><h2>Pedidos entre locales</h2><p>Solicitá productos y seguí cada pedido hasta su llegada.</p><strong>Abrir Pedidos entre locales →</strong></div></button>
         <a class="operations-card reservations" href="/reservas"><span class="operations-icon" aria-hidden="true">▣</span><div><h2>Control de reservas</h2><p>Identificá la mercadería separada y seguí cada pedido hasta su destino final.</p><strong>Abrir Control de reservas →</strong></div></a>
-        <button class="operations-card analytics" type="button" onclick="navigateTo('vision360')"><span class="operations-icon" aria-hidden="true">◎</span><div><h2>Visión 360</h2><p>Cruzá el historial de pedidos, inventarios, reposiciones, remitos y reservas.</p><strong>Abrir análisis global →</strong></div></button>
+        <a class="operations-card analytics" href="/?module=vision360"><span class="operations-icon" aria-hidden="true">◎</span><div><h2>Visión 360</h2><p>Cruzá el historial de pedidos, inventarios, reposiciones, remitos y reservas.</p><strong>Abrir análisis global →</strong></div></a>
       </div>
       <p class="operations-home-help">Para trabajar en otro módulo, volvé a Inicio.</p>
     </div>
@@ -511,10 +505,13 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
 
     <!-- VISIÓN 360 -->
     <div id="view-vision360" style="display:none">
-      <div class="page-header"><div>
+      <div class="page-header standalone-module-header"><div>
+        <span class="standalone-module-label">MÓDULO INDEPENDIENTE</span>
         <h1>Visión 360</h1>
         <p>Una lectura conjunta de pedidos, inventarios, reposiciones, remitos y reservas.</p>
-      </div></div>
+      </div>
+      <button class="btn btn-ghost btn-sm" type="button" onclick="navigateTo('hub')">← Volver a módulos</button>
+      </div>
       <div id="analytics-360-global"></div>
     </div>
 
@@ -1262,7 +1259,7 @@ input[type="date"].filter-select::-webkit-calendar-picker-indicator {
 <link rel="stylesheet" href="/downloads.css?v=user-copy-v1">
 <script src="/downloads.js?v=user-copy-v1"></script>
 <script src="/analytics-360.js?v=historico-v1"></script>
-<script src="app.js?v=analytics-360-v1"></script>
+<script src="app.js?v=vision360-module-v1"></script>
 </body>
 </html>
 

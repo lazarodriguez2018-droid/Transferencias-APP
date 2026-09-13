@@ -20,6 +20,12 @@ assert.match(operationsHtml, /<base href="\/operaciones\/">/,
 assert.match(portalHtml, /href="\/operaciones\?module=inventario"/);
 assert.match(portalHtml, /href="\/operaciones\?module=reposicion"/);
 assert.match(portalHtml, /href="\/operaciones\?module=recepcion"/);
+assert.match(portalHtml, /class="operations-card analytics" href="\/\?module=vision360"/,
+  'Visión 360 debe abrir como un módulo independiente desde Inicio');
+assert.doesNotMatch(portalHtml, /id="nav-vision360"/,
+  'Visión 360 no debe aparecer dentro de la barra lateral de Pedidos');
+assert.match(portalHtml, /standalone-module-label">MÓDULO INDEPENDIENTE<[\s\S]*navigateTo\('hub'\)/,
+  'El módulo global debe identificarse y ofrecer un regreso directo a Inicio');
 assert.match(operationsHtml, /href="\/"[^>]*>← Volver al inicio<\/a>/);
 assert.doesNotMatch(operationsHtml, /id="module-screen"|¿Qué vas a hacer\?|Usar sin servidor|URL del servidor|Modo Red Local/,
   'Operaciones no debe conservar el selector blanco ni opciones del servidor local');
@@ -68,6 +74,12 @@ assert.match(realtimeMigration, /'op_reposicion_items'/,
 assert.match(realtimeMigration, /'pedido_productos'/,
   'Los productos de pedidos entre locales deben actualizarse en tiempo real');
 assert.match(portalJs, /classList\.toggle\('hub-mode',view==='hub'\)/);
+assert.match(portalJs, /requestedModule==='vision360' \? 'vision360'/,
+  'La URL del módulo debe abrir directamente Visión 360');
+assert.match(portalJs, /url\.searchParams\.set\('module','vision360'\)/,
+  'La navegación de Visión 360 debe conservar su URL de módulo');
+assert.match(portalJs, /classList\.toggle\('standalone-module-mode',view==='vision360'\)/,
+  'Visión 360 debe activar el diseño independiente');
 assert.match(portalJs, /window\.addEventListener\('popstate', restoreNavigationState\)/,
   'El botón Atrás debe restaurar la sección anterior del portal');
 assert.match(portalJs, /view!==appState\.activeView\|\|!appState\.navigationReady/,
@@ -82,6 +94,8 @@ assert.match(operationsJs, /selectModule\(requestedModule,\{showSessions:!reques
   'Un enlace directo a una sesión no debe mostrar antes el selector de sesiones');
 assert.match(portalCss, /#app-page\.hub-mode \.sidebar[\s\S]*display:none !important/,
   'El selector inicial no debe mostrar la barra lateral');
+assert.match(portalCss, /#app-page\.standalone-module-mode \.sidebar[\s\S]*display:none !important/,
+  'Visión 360 no debe mostrar la barra lateral de otro módulo');
 
 console.log('navigation-routing: OK');
 

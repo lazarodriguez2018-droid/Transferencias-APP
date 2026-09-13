@@ -186,6 +186,19 @@ button { cursor:pointer; border:none; outline:none; }
 #app-page.hub-mode .mobile-header,
 #app-page.hub-mode .mobile-overlay { display:none !important; }
 #app-page.hub-mode .main-content { width:100%; max-width:1280px; margin:0 auto; padding-top:24px; padding-bottom: 80px; }
+#app-page.standalone-module-mode .sidebar,
+#app-page.standalone-module-mode .mobile-header,
+#app-page.standalone-module-mode .mobile-overlay { display:none !important; }
+#app-page.standalone-module-mode .main-content {
+  width:100%; max-width:1680px; margin:0 auto;
+  padding:24px clamp(20px,4vw,64px) 80px;
+}
+#app-page.standalone-module-mode .main-content>#view-vision360 { max-width:1600px; margin-inline:auto; }
+.standalone-module-header { align-items:center; gap:18px; }
+.standalone-module-label {
+  display:block; margin-bottom:6px; color:var(--accent); font-family:'DM Mono',monospace;
+  font-size:10px; font-weight:600; letter-spacing:.08em;
+}
 .page-header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:22px; }
 .page-header h1 { font-size:24px; font-weight:700; letter-spacing:-0.5px; }
 .page-header p { color:var(--text2); font-size:13px; margin-top:3px; }
@@ -445,6 +458,8 @@ button { cursor:pointer; border:none; outline:none; }
   .actions-bar .btn { width:100%; }
   .route-box { flex-direction:column; align-items:flex-start; }
   #app-page.hub-mode .main-content { padding:20px 14px; }
+  #app-page.standalone-module-mode .main-content { padding:20px 14px 72px; }
+  .standalone-module-header { flex-wrap:wrap; }
 }
 /* Tema Claro (Corporate Light - Variante 2) */
 :root[data-theme="light"] {
@@ -1373,6 +1388,10 @@ button { cursor:pointer; border:none; outline:none; }
 @media(min-width:1200px){#view-hub .operations-card.analytics{grid-column:1/-1;flex-direction:row;min-height:112px;padding:18px 22px}#view-hub .operations-card.analytics>div{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"title action" "description action";align-items:center}}
 @media(max-width:600px){
   #app-page.hub-mode .main-content{padding:calc(16px + env(safe-area-inset-top)) 12px calc(96px + env(safe-area-inset-bottom))}
+  #app-page.standalone-module-mode .main-content{padding:calc(16px + env(safe-area-inset-top)) 12px calc(72px + env(safe-area-inset-bottom))}
+  .standalone-module-header{align-items:flex-start}
+  .standalone-module-header>div{width:100%}
+  .standalone-module-header .btn{width:100%;justify-content:center}
   #view-hub .operations-hero{padding-bottom:14px}
   #view-hub .operations-hero h1{font-size:23px}
   #view-hub .operations-grid{grid-template-columns:1fr;gap:8px}

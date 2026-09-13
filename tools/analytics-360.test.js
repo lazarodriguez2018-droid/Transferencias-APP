@@ -8,6 +8,7 @@ const read=file=>fs.readFileSync(path.join(root,file),'utf8');
 const component=read('analytics-360.js');
 const styles=read('analytics-360.css');
 const migration=read('supabase/migrations/20260912010000_analytics_360.sql');
+const operationsPage=read('operaciones/index.html');
 const reservationsPage=read('reservas/index.html');
 const reservationsApp=read('reservas/reservas.js');
 
@@ -67,6 +68,12 @@ assert.match(component,/syncLocationOptions\(lastData\?\.scope\?\.locations\)/,'
 
 // Reservations is an authenticated-only consumer; public creation remains locked to its form.
 assert.match(reservationsPage,/data-view="analytics"[^>]*>Análisis 360/);
+assert.match(operationsPage,/id="tab-historico"[^>]*>[\s\S]*?<span>Análisis histórico<\/span>/,
+  'Inventario debe identificar claramente su análisis histórico');
+assert.match(operationsPage,/id="repo-tab-analisis"[^>]*>[\s\S]*?<span>Análisis<\/span>/,
+  'Reposición debe ofrecer su propio análisis');
+assert.match(operationsPage,/id="receipt-tab-analisis"[^>]*>[\s\S]*?<span>Análisis<\/span>/,
+  'Control de remitos debe ofrecer su propio análisis');
 assert.match(reservationsPage,/id="view-analytics"[\s\S]*id="reservations-analytics"/);
 assert.match(reservationsPage,/class="tabs" role="tablist"[\s\S]*role="tab" aria-selected="true" aria-controls="view-active"[\s\S]*role="tabpanel" aria-labelledby="tab-active"/);
 assert.match(reservationsApp,/x\.setAttribute\('aria-selected',String\(active\)\);x\.tabIndex=active\?0:-1/,'Changing reservation views must keep tab accessibility state in sync');

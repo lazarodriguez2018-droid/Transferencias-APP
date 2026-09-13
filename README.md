@@ -30,7 +30,9 @@ Preparar más unidades que las pedidas está permitido únicamente después de u
 
 ## Análisis 360
 
-Cada módulo incorpora un panel histórico con filtros de período, local y producto. Los perfiles administrador y supervisor pueden comparar locales; un empleado queda limitado a su local. El panel global cruza inventarios, reposiciones, recepciones, pedidos y reservas, mientras que cada módulo muestra sus propios indicadores, tendencias, diferencias, productos críticos y registros recientes.
+Cada módulo incorpora un panel histórico con filtros de período, local y producto. Inventario lo muestra en **Análisis histórico**, Reposición y Control de remitos en **Análisis**, Pedidos en **Análisis de pedidos** y Reservas en **Análisis 360**. Los perfiles administrador y supervisor pueden comparar locales; un empleado queda limitado a su local. Cada panel muestra sus propios indicadores, tendencias, diferencias, productos críticos y registros recientes.
+
+**Visión 360** es un módulo independiente accesible desde Inicio, sin heredar la barra lateral de Pedidos. Su panel global cruza inventarios, reposiciones, recepciones, pedidos y reservas y permite volver directamente al selector de módulos.
 
 El análisis consulta la historia ya guardada en Supabase, por lo que también cubre operaciones anteriores a esta versión. Los supervisores pueden filtrar incluso locales eliminados o renombrados, identificados como históricos. En reservas reconstruye cierres y eliminaciones a partir de la auditoría disponible. No inventa datos que nunca se hayan persistido y distingue explícitamente los períodos o métricas sin información.
 

@@ -604,7 +604,9 @@ const pendingManageToken=publicManagementTokenFromHash();
 const validViews=['hub','vision360','dashboard','misPedidos','paraEnviar','historial','misConsultas','chats','agenda','perfil','usuarios','sugerencias','config'];
 const initialView=pendingManageToken ? 'misPedidos' : validViews.includes(requestedView)
   ? requestedView
-  : requestedModule==='pedidos' ? 'misPedidos' : 'hub';
+  : requestedModule==='pedidos' ? 'misPedidos'
+  : requestedModule==='vision360' ? 'vision360'
+  : 'hub';
 await navigateTo(initialView,{history:'replace'});
 const requestedOrder=queryParams.get('pedido');
 if(requestedOrder&&/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(requestedOrder)) await openDetalle(requestedOrder);
@@ -797,8 +799,13 @@ const ESTADOS_FINAL  = ['transito','llegado','completo','incompleto'];
 // ═══════════════════════════════════════════
 function navigationUrl(view){
 const url=new URL(location.href);
-url.searchParams.delete('module');
-if(view==='hub') url.searchParams.delete('view'); else url.searchParams.set('view',view);
+if(view==='vision360'){
+  url.searchParams.delete('view');
+  url.searchParams.set('module','vision360');
+}else{
+  url.searchParams.delete('module');
+  if(view==='hub') url.searchParams.delete('view'); else url.searchParams.set('view',view);
+}
 return url.pathname+(url.searchParams.toString()?'?'+url.searchParams.toString():'');
 }
 
@@ -823,7 +830,10 @@ const requestId=++appState.navigationRequestId;
 appState.activeView=view;
 appState.navigationReady=true;
 const appPage=el('app-page');
-if(appPage) appPage.classList.toggle('hub-mode',view==='hub');
+if(appPage){
+  appPage.classList.toggle('hub-mode',view==='hub');
+  appPage.classList.toggle('standalone-module-mode',view==='vision360');
+}
 document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
 document.querySelectorAll('[id^="view-"]').forEach(v=>v.style.display='none');
 const ve=el('view-'+view); if(ve) ve.style.display='block';
@@ -860,7 +870,7 @@ document.querySelectorAll('.modal-overlay.show').forEach(modal=>{
 });
 document.body.style.overflow='';
 const params=new URLSearchParams(location.search);
-const view=event?.state?.sucaneitorView||params.get('view')||'hub';
+const view=event?.state?.sucaneitorView||(params.get('module')==='vision360'?'vision360':params.get('view'))||'hub';
 if(view!==appState.activeView||!appState.navigationReady) navigateTo(view,{history:'none'});
 if(modalId&&el(modalId)) requestAnimationFrame(()=>openModal(modalId,{history:false}));
 }
