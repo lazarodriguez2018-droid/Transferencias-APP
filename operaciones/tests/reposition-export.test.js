@@ -64,7 +64,7 @@ const sourceBytes=XLSX.write(sourceBook,{bookType:'biff8',type:'array',cellStyle
 const processedBytes=exporter.buildProcessedSource(sourceBytes,XLSX,repo,engine,'xlsx');
 const processed=XLSX.read(processedBytes,{type:'array',cellStyles:true,cellFormula:true});
 const processedSheet=processed.Sheets['Rep FR100'];
-assert.strictEqual(processedSheet['!ref'],'A1:I5','Solo deben quedar encabezado, productos que cumplieron la regla y la nueva columna');
+assert.strictEqual(processedSheet['!ref'],'A1:J5','Solo deben quedar encabezado, productos que cumplieron la regla y las columnas nuevas');
 assert.strictEqual(processedSheet.A2.v,'B2','Los productos deben ordenarse alfabéticamente por descripción');
 assert.strictEqual(processedSheet.A3.v,'C3');
 assert.strictEqual(processedSheet.A4.v,'D4');
@@ -75,6 +75,14 @@ assert.strictEqual(processedSheet.H4.f,'+G4-D4','Las fórmulas deben reindexarse
 assert.strictEqual(processedSheet.H5.f,'+G5-D5','Las fórmulas deben seguir cada producto ordenado');
 assert.strictEqual(processedSheet.H2.v,2);
 assert.strictEqual(processedSheet.I1.v,'Qty_diferente','La nueva columna debe quedar visible en el reporte');
+assert.strictEqual(processedSheet.J1.v,'Responsable');
+assert.deepStrictEqual([2,3,4,5].map(row=>processedSheet[`J${row}`].v),['Luis','Ana','Ana','Ana'],'Cada responsable debe acompañar su producto después de filtrar y ordenar');
+assert.strictEqual(processedSheet['!autofilter'].ref,'A1:J5','El filtro debe incluir al responsable');
+assert.ok(!processedSheet['!cols'][9].hidden,'Responsable debe quedar visible');
+assert.strictEqual(processedBytes.tableBounds.endColumn,9,'Los bordes deben incluir la columna final');
+const repoWithoutResponsible={...repo,items:repo.items.map(item=>({...item,updated_by:undefined}))};
+const unnamed=XLSX.read(exporter.buildProcessedSource(sourceBytes,XLSX,repoWithoutResponsible,engine,'xlsx'),{type:'array'}).Sheets['Rep FR100'];
+assert.deepStrictEqual([2,3,4,5].map(row=>unnamed[`J${row}`].v),['','','',''],'Sin responsable registrado la celda debe quedar vacía');
 assert.strictEqual(processedSheet.I2.v,'','Si se envió exactamente lo pedido, la diferencia debe quedar vacía');
 assert.strictEqual(processedSheet.I3.v,'','Un producto marcado como no encontrado debe quedar vacío en Qty_diferente');
 assert.strictEqual(processedSheet.I4.v,2,'Una fila histórica inconsistente debe mostrar la cantidad física que sí se envió');

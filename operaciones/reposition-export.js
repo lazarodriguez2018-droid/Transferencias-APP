@@ -100,6 +100,7 @@
     const name=workbook.SheetNames[0],source=workbook.Sheets[name],columns=findSourceColumns(source,XLSX,engine);
     const range=XLSX.utils.decode_range(source['!ref']||'A1:A1');
     const qtyDifferentColumn=range.e.c+1;
+    const responsibleColumn=qtyDifferentColumn+1;
     const originalItems=new Map((repo.items||[])
       .filter(item=>Number(item.pedido_reposicion==null?item.pedido:item.pedido_reposicion)>0)
       .map(item=>[String(item.codigo||'').trim(),item]));
@@ -138,12 +139,17 @@
       const hasPreparedQuantity=Boolean(item&&Number(item.preparado)>0);
       const highlight=hasPreparedQuantity;
       if(highlight)highlightedRows.push(newRow+1);
-      for(let column=range.s.c;column<=qtyDifferentColumn;column+=1){
+      for(let column=range.s.c;column<=responsibleColumn;column+=1){
         const sourceAddress=XLSX.utils.encode_cell({r:sourceRow,c:column});
         const sourceCell=source[sourceAddress];
         const targetAddress=XLSX.utils.encode_cell({r:newRow,c:column});
         let targetCell=cloneCell(sourceCell)||{t:'s',v:''};
-        if(column===qtyDifferentColumn){
+        if(column===responsibleColumn){
+          targetCell=cloneCell(source[XLSX.utils.encode_cell({r:sourceRow,c:columns.qty})])||{};
+          delete targetCell.f;delete targetCell.w;
+          targetCell.t='s';targetCell.z='@';
+          targetCell.v=sourceRow===columns.rowIndex?'Responsable':sourceRow>columns.rowIndex?String(item?.updated_by||'').trim():'';
+        }else if(column===qtyDifferentColumn){
           const templateCell=cloneCell(source[XLSX.utils.encode_cell({r:sourceRow,c:columns.qty})]);
           targetCell=templateCell||{t:'s',v:''};
           delete targetCell.f;delete targetCell.w;
@@ -168,14 +174,15 @@
       }
     }
 
-    target['!ref']=XLSX.utils.encode_range({s:range.s,e:{r:targetRow-1,c:qtyDifferentColumn}});
-    target['!autofilter']={ref:XLSX.utils.encode_range({s:{r:columns.rowIndex,c:range.s.c},e:{r:targetRow-1,c:qtyDifferentColumn}})};
+    target['!ref']=XLSX.utils.encode_range({s:range.s,e:{r:targetRow-1,c:responsibleColumn}});
+    target['!autofilter']={ref:XLSX.utils.encode_range({s:{r:columns.rowIndex,c:range.s.c},e:{r:targetRow-1,c:responsibleColumn}})};
     target['!cols']=(source['!cols']||[]).map(column=>column?{...column}:column);
     [1,4,5,columns.stock].filter((index,position,list)=>index<=range.e.c&&list.indexOf(index)===position).forEach(index=>{
       target['!cols'][index]={...(target['!cols'][index]||{}),hidden:true,level:1,outlineLevel:1};
     });
     target['!cols'][columns.calculation]={...(target['!cols'][columns.calculation]||{}),wch:Math.max(Number(target['!cols'][columns.calculation]?.wch)||0,16)};
     target['!cols'][qtyDifferentColumn]={...(target['!cols'][qtyDifferentColumn]||{}),wch:16};
+    target['!cols'][responsibleColumn]={wch:28,hidden:false};
     target['!rows']=[];
     for(const [sourceRow,newRow] of rowMap){
       if(source['!rows']?.[sourceRow])target['!rows'][newRow]={...source['!rows'][sourceRow]};
@@ -183,7 +190,7 @@
     workbook.Sheets[name]=target;
     const output=XLSX.write(workbook,{bookType:outputType,type:'array',cellStyles:true});
     output.highlightedRows=highlightedRows;
-    output.tableBounds={startRow:range.s.r+1,endRow:targetRow,startColumn:range.s.c,endColumn:qtyDifferentColumn};
+    output.tableBounds={startRow:range.s.r+1,endRow:targetRow,startColumn:range.s.c,endColumn:responsibleColumn};
     return output;
   }
 
