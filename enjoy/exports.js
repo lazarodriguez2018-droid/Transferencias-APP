@@ -1,6 +1,7 @@
 (function (root) {
   "use strict";
-  const C = root.EnjoyCore;
+  const C = root.EnjoyCore,
+    P = root.EnjoyParticipants;
   const xml = (s) =>
     String(s ?? "").replace(
       /[<>&"']/g,
@@ -38,9 +39,13 @@
       Lote: r.lot,
       Unidad: r.unit,
       "Stock MB52": r.stock ?? null,
-      Responsable:
-        r.entries.find((c) => c.actor === "responsable")?.quantity ?? null,
-      Auditor: r.entries.find((c) => c.actor === "auditor")?.quantity ?? null,
+      ...Object.fromEntries(
+        P.columns(pkg).map((a, k) => [
+          `Conteo ${k + 1} · ${P.name(a)} · ${P.roles[a.actor] || a.actor}`,
+          r.entries.find((c) => c.user_id === a.user_id && c.actor === a.actor)
+            ?.quantity ?? null,
+        ]),
+      ),
       "Cantidad autorizada": r.approved,
       "Dif. autorizada - stock": r.diff,
       "Valor MB52": r.value ?? null,
@@ -55,6 +60,19 @@
       wb,
       XLSX.utils.json_to_sheet(comparisonRows(pkg)),
       "Justificaciones",
+    );
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(
+        pkg.inventory.assignments.map((a) => ({
+          Nombre: P.name(a),
+          Rol: P.roles[a.actor] || a.actor,
+          Participación: P.state(pkg, a),
+          Usuario: a.user_id,
+          Entrega: pkg.submissions[P.key(a)]?.at || null,
+        })),
+      ),
+      "Participantes",
     );
     if (pkg.report?.rows)
       XLSX.utils.book_append_sheet(
@@ -131,9 +149,12 @@
       table([
         ["Función", "Nombre", "Entrega"],
         ...inv.assignments.map((a) => [
-          a.actor,
-          names[a.user_id] || a.user_id,
-          pkg.submissions[a.user_id + ":" + a.actor]?.at || "Pendiente",
+          P.roles[a.actor] || a.actor,
+          a.name || names[a.user_id] || a.user_id,
+          P.state(pkg, a) +
+            (pkg.submissions[P.key(a)]?.at
+              ? " · " + pkg.submissions[P.key(a)].at
+              : ""),
         ]),
       ]) +
       p("Indicadores sobre cantidades autorizadas", true) +
@@ -203,8 +224,17 @@
       p("Observaciones de cierre", true) +
       p(inv.management_notes || "Sin observaciones adicionales.") +
       p("Firmas", true) +
-      p("Responsable: ____________________    Auditor: ____________________") +
-      p("Supervisor: ____________________    Finanzas: ____________________");
+      table([
+        ["Participante", "Función", "Firma"],
+        ...inv.assignments
+          .filter((a) => !a.absent)
+          .map((a) => [
+            a.name || names[a.user_id] || a.user_id,
+            P.roles[a.actor] || a.actor,
+            "____________________",
+          ]),
+      ]) +
+      p("Conformidad de Finanzas / Supervisor: ____________________");
     const zip = new JSZip();
     zip.file(
       "[Content_Types].xml",

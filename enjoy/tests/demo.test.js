@@ -17,7 +17,13 @@ test("review demo has fictional data, separate browser storage and no GPS permis
       throw Error("Demo must not request location");
     },
   };
-  for (const file of ["core.js", "demo-client.js", "store.js", "gps.js"])
+  for (const file of [
+    "core.js",
+    "participants.js",
+    "demo-client.js",
+    "store.js",
+    "gps.js",
+  ])
     w.eval(fs.readFileSync(require.resolve("../" + file), "utf8"));
   const { data: profile } = await w.EnjoyDemo.client.rpc("enjoy_api", {
     p_action: "profile",

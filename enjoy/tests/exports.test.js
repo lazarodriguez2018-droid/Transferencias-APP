@@ -7,6 +7,7 @@ test("Excel preserves separate lots and Word is a real OOXML document with escap
   const dom = new JSDOM("<body></body>", { runScripts: "outside-only" }),
     w = dom.window;
   w.EnjoyCore = C;
+  w.EnjoyParticipants = require("../participants");
   w.JSZip = require("../vendor/jszip-3.10.1.js");
   w.XLSX = require("../../operaciones/xlsx.full.min.js");
   w.Blob = Blob;
@@ -22,9 +23,28 @@ test("Excel preserves separate lots and Word is a real OOXML document with escap
       warehouse: "AL04",
       scheduled_date: "2026-10-21",
       status: "closed",
-      assignments: [],
+      assignments: [
+        { user_id: "a", name: "Ana", actor: "contador" },
+        { user_id: "b", name: "Ana", actor: "contador" },
+        {
+          user_id: "c",
+          name: "Diego",
+          actor: "responsable",
+          counts_enabled: false,
+        },
+        {
+          user_id: "d",
+          name: "Sofía",
+          actor: "auditor",
+          counts_enabled: false,
+          absent: true,
+        },
+      ],
     },
-    counts: [],
+    counts: [
+      { user_id: "a", actor: "contador", item_id: "N", quantity: 9.952 },
+      { user_id: "b", actor: "contador", item_id: "N", quantity: 7 },
+    ],
     reference: { N: { stock: 2, value: 20 }, I: { stock: 1, value: 30 } },
     approvals: {
       N: { quantity: 2, reason: "Cuadra", comment: "A & B" },
@@ -52,6 +72,10 @@ test("Excel preserves separate lots and Word is a real OOXML document with escap
   assert.equal(rows.length, 2);
   assert.notEqual(rows[0].Lote, rows[1].Lote);
   assert.equal(rows[1]["Cantidad autorizada"], 0);
+  assert.equal(rows[0]["Conteo 1 · Ana · Participante"], 9.952);
+  assert.equal(rows[0]["Conteo 2 · Ana · Participante"], 7);
+  assert.equal(rows[1]["Conteo 1 · Ana · Participante"], undefined);
+  assert(book.Sheets.Participantes);
   const doc = await w.EnjoyExports.acta(pkg),
     zip = await w.JSZip.loadAsync(await doc.arrayBuffer()),
     xml = await zip.file("word/document.xml").async("string");

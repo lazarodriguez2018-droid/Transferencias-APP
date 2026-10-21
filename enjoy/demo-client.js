@@ -2,7 +2,7 @@
 (function (root) {
   "use strict";
   const C = root.EnjoyCore,
-    KEY = "enjoy_demo_data";
+    KEY = "enjoy_demo_data_v2";
   let state;
   try {
     state = JSON.parse(localStorage.getItem(KEY));
@@ -11,6 +11,9 @@
   if (!state) {
     const uid = crypto.randomUUID(),
       id = crypto.randomUUID(),
+      second = crypto.randomUUID(),
+      responsible = crypto.randomUUID(),
+      auditor = crypto.randomUUID(),
       now = new Date().toISOString(),
       items = [
         [
@@ -70,14 +73,44 @@
         items,
         management_notes: "Ejemplo para revisar el recorrido de las pantallas.",
         assignments: [
-          { user_id: uid, actor: "responsable", see_stock: false },
-          { user_id: uid, actor: "auditor", see_stock: true },
+          {
+            user_id: uid,
+            name: "Equipo de demostración",
+            actor: "contador",
+            counts_enabled: true,
+            absent: false,
+            see_stock: false,
+          },
+          {
+            user_id: second,
+            name: "Ana · Ejemplo",
+            actor: "contador",
+            counts_enabled: true,
+            absent: false,
+            see_stock: false,
+          },
+          {
+            user_id: responsible,
+            name: "Diego · Ejemplo",
+            actor: "responsable",
+            counts_enabled: false,
+            absent: false,
+            see_stock: false,
+          },
+          {
+            user_id: auditor,
+            name: "Sofía · Ejemplo",
+            actor: "auditor",
+            counts_enabled: false,
+            absent: true,
+            see_stock: true,
+          },
         ],
       },
       counts: items.map((i) => ({
-        user_id: uid,
+        user_id: second,
         item_id: i.id,
-        actor: "auditor",
+        actor: "contador",
         quantity: reference[i.id].stock,
         version: 1,
       })),
@@ -93,7 +126,8 @@
         },
       ],
       adjustments: [],
-      submissions: { [uid + ":auditor"]: { submitted: true, at: now } },
+      submissions: { [second + ":contador"]: { submitted: true, at: now } },
+      invitation: { token: crypto.randomUUID(), enabled: true },
       manager: true,
       see_stock: true,
       downloaded_at: now,
@@ -108,6 +142,29 @@
         can_manage: true,
         warehouses: C.MAIN,
       },
+      members: [
+        {
+          user_id: second,
+          name: "Ana · Ejemplo",
+          role: "contador",
+          approved: true,
+          warehouses: ["AL04"],
+        },
+        {
+          user_id: responsible,
+          name: "Diego · Ejemplo",
+          role: "responsable",
+          approved: true,
+          warehouses: ["AL04"],
+        },
+        {
+          user_id: auditor,
+          name: "Sofía · Ejemplo",
+          role: "auditor",
+          approved: true,
+          warehouses: ["AL04"],
+        },
+      ],
       inventories: [pkg],
       events: [],
     };
@@ -125,10 +182,37 @@
   async function api(action, p) {
     if (action === "profile" || action === "request_access")
       return clone(state.profile);
-    if (action === "members") return [clone(state.profile)];
+    if (action === "members") return clone([state.profile, ...state.members]);
     if (action === "list")
       return state.inventories.map((p) => clone(p.inventory));
     if (action === "save_member") return { ok: true };
+    if (action === "join") {
+      const x = state.inventories.find((x) => x.invitation?.token === p.token);
+      if (
+        !x ||
+        !x.invitation.enabled ||
+        x.inventory.status === "closed" ||
+        x.inventory.status === "draft"
+      )
+        throw Error("El enlace no está disponible");
+      if (p.confirm) {
+        if (!x.inventory.assignments.some((a) => a.user_id === state.uid)) {
+          x.inventory.assignments.push({
+            user_id: state.uid,
+            name: state.profile.name,
+            actor: "contador",
+            counts_enabled: true,
+            absent: false,
+            see_stock: false,
+          });
+          x.inventory.version++;
+          save();
+        }
+        return clone(x);
+      }
+      const { id, title, warehouse, scheduled_date } = x.inventory;
+      return { id, title, warehouse, scheduled_date };
+    }
     if (action === "save_inventory") {
       let x = p.inventory.id ? find(p.inventory.id) : null;
       if (!p.inventory.title.trim()) throw Error("Completá el nombre");
@@ -143,8 +227,17 @@
           submissions: {},
           manager: true,
           see_stock: true,
+          invitation: { enabled: false, token: crypto.randomUUID() },
         };
         state.inventories.push(x);
+      }
+      if (
+        x.inventory.assignments &&
+        JSON.stringify(x.inventory.assignments) !==
+          JSON.stringify(p.inventory.assignments)
+      ) {
+        x.approvals = {};
+        x.report = null;
       }
       x.inventory = {
         ...clone(p.inventory),
@@ -175,8 +268,16 @@
         throw Error("El inventario no admite movimientos");
       if (x.submissions[state.uid + ":" + e.actor]?.submitted)
         throw Error("Conteo entregado");
+      const assignment = x.inventory.assignments.find(
+        (a) => a.user_id === state.uid && a.actor === e.actor,
+      );
+      if (!root.EnjoyParticipants.counts(assignment))
+        throw Error("Tu participación no incluye conteo");
       let row = x.counts.find(
-        (c) => c.item_id === e.item_id && c.actor === e.actor,
+        (c) =>
+          c.user_id === state.uid &&
+          c.item_id === e.item_id &&
+          c.actor === e.actor,
       );
       const before = row?.quantity ?? null;
       if (["add", "subtract", "set"].includes(e.action)) {
@@ -197,15 +298,15 @@
       }
       if (e.action === "finish") {
         if (
-          x.counts.filter((c) => c.actor === e.actor).length !==
-          x.inventory.items.length
+          !x.counts.some((c) => c.user_id === state.uid && c.actor === e.actor)
         )
-          throw Error("Hay productos pendientes");
+          throw Error("Registrá al menos un producto");
         x.submissions[state.uid + ":" + e.actor] = {
           submitted: true,
           at: new Date().toISOString(),
         };
       }
+      x.started = true;
       state.events.push({
         ...clone(e),
         inventory_id: p.inventory_id,
@@ -231,13 +332,15 @@
       save();
       return { ok: true };
     }
-    if (["approve", "approve_many"].includes(action)) {
-      if (
-        x.inventory.assignments.some(
-          (a) => !x.submissions[a.user_id + ":" + a.actor]?.submitted,
-        )
-      )
+    if (action === "invitation") {
+      if (p.enabled && (Object.keys(x.approvals).length || x.report))
+        throw Error("La revisión de cantidades ya comenzó");
+      x.invitation.enabled = !!p.enabled;
+      if (p.rotate) x.invitation.token = crypto.randomUUID();
+    } else if (["approve", "approve_many"].includes(action)) {
+      if (!root.EnjoyParticipants.delivered(x))
         throw Error("Primero deben entregarse los conteos");
+      x.invitation.enabled = false;
       for (const a of action === "approve" ? [p] : p.approvals)
         x.approvals[a.item_id] = {
           quantity: C.number(a.quantity),
@@ -260,6 +363,9 @@
         throw Error("Faltan cantidades autorizadas");
       if (x.inventory.procedure === "principal" && !x.report)
         throw Error("Falta incorporar el Reporte SAP");
+      if (!root.EnjoyParticipants.delivered(x))
+        throw Error("Faltan conteos entregados");
+      x.invitation.enabled = false;
       x.inventory.status = "closed";
       x.inventory.closed_at = new Date().toISOString();
     } else throw Error("Acción no disponible");

@@ -2,6 +2,7 @@
 (function () {
   "use strict";
   const C = EnjoyCore,
+    P = EnjoyParticipants,
     S = EnjoyStore,
     Y = EnjoySync,
     E = EnjoyExports,
@@ -136,7 +137,15 @@
           const { data, error } = await db.auth.signUp({
             email: f.get("email"),
             password: f.get("password"),
-            options: { data: { company: "ENJOY", name: f.get("name") } },
+            options: {
+              data: { company: "ENJOY", name: f.get("name") },
+              emailRedirectTo:
+                location.origin +
+                location.pathname +
+                (location.hash.startsWith("#unirse/")
+                  ? "?unirse=" + encodeURIComponent(location.hash.slice(8))
+                  : ""),
+            },
           });
           if (error) throw error;
           if (!data.session) {
@@ -243,7 +252,15 @@
       ? i.assignments.some((a) => a.user_id === user.id)
       : !manager());
   async function routeFromLocation() {
+    const callback = new URL(location.href),
+      invitation = callback.searchParams.get("unirse");
+    if (invitation) {
+      callback.searchParams.delete("unirse");
+      callback.hash = "#unirse/" + encodeURIComponent(invitation);
+      history.replaceState(null, "", callback);
+    }
     const [name, id] = location.hash.slice(1).split("/");
+    if (name === "unirse" && id) return joinScreen(id);
     if (name === "configuracion" && id === "nuevo" && manager()) {
       pkg = emptyPackage();
       mode = "configure";
@@ -359,7 +376,31 @@
     );
   }
   const names = () =>
-    Object.fromEntries(members.map((m) => [m.user_id, m.name]));
+    Object.fromEntries(
+      [...(pkg?.inventory.assignments || []), ...members].map((m) => [
+        m.user_id,
+        m.name,
+      ]),
+    );
+  function myParticipation() {
+    return pkg?.inventory.assignments.find((a) => a.user_id === user.id);
+  }
+  async function joinScreen(token) {
+    stopGPS();
+    view = "join";
+    pkg = null;
+    $("app").className = "";
+    $("app").innerHTML =
+      `<section class="card auth"><p class="eyebrow">Enjoy · Invitación</p><h1>Unirme al inventario</h1><div id="join-info"><p>Comprobando el enlace…</p></div>${button("dashboard-counts", "Mis inventarios", "quiet")}</section>`;
+    try {
+      const inv = await rpc("join", { token });
+      $("join-info").innerHTML =
+        `<h2>${h(inv.title)}</h2><p>${h(inv.warehouse)} · ${h(inv.scheduled_date)}</p><p>Entrás como ${h(profile.name)}. Tu conteo se guarda por separado.</p>${button("confirm-join", "Unirme y abrir inventario", "", `data-token="${h(token)}"`)}`;
+    } catch (e) {
+      $("join-info").innerHTML =
+        `<p class="warning">${h(e.message)}</p>${button("retry-join", "Volver a comprobar", "secondary", `data-token="${h(token)}"`)}`;
+    }
+  }
   function collect() {
     const f = $("wizard-form");
     if (!f) return;
@@ -376,20 +417,35 @@
       });
       if (C.MAIN.includes(i.warehouse)) i.procedure = "principal";
     }
-    if (step === 1 && !pkg.counts.length && i.status !== "closed") {
+    if (
+      step === 1 &&
+      !pkg.started &&
+      !pkg.counts.length &&
+      i.status !== "closed"
+    ) {
       i.mb52_date = values.get("mb52_date");
       i.sap_blocked = values.get("sap_blocked") === "on";
       i.sap_blocked_at = values.get("sap_blocked_at");
     }
-    if (step === 2 && !pkg.counts.length && i.status !== "closed") {
-      i.assignments = [];
-      for (const role of ["responsable", "auditor"])
-        if (values.get(role))
-          i.assignments.push({
-            actor: role,
-            user_id: values.get(role),
-            see_stock: values.get(role + "_stock") === "on",
-          });
+    if (step === 2 && i.status !== "closed") {
+      i.assignments = [...f.querySelectorAll("[data-participant]")].map(
+        (row) => {
+          const prev =
+            i.assignments.find((a) => a.user_id === row.dataset.participant) ||
+            {};
+          const participation = row.querySelector(
+            '[data-field="participation"]',
+          ).value;
+          return {
+            ...prev,
+            user_id: row.dataset.participant,
+            actor: row.querySelector('[data-field="actor"]').value,
+            counts_enabled: participation === "count",
+            absent: participation === "absent",
+            see_stock: row.querySelector('[data-field="stock"]').checked,
+          };
+        },
+      );
     }
     if (step === 3) {
       i.management_notes = values.get("management_notes");
@@ -405,6 +461,7 @@
       inventory: pkg.inventory,
       reference: pkg.reference,
       version: pkg.inventory.version || 0,
+      participant_change_reason: $("participant-change-reason")?.value || "",
     });
     await S.savePackage(user.id, pkg);
     if (mode === "configure") route("configuracion", pkg.inventory.id, true);
@@ -437,33 +494,16 @@
   }
   function renderStep() {
     const inv = pkg.inventory,
-      locked = pkg.counts.length || inv.status === "closed",
+      locked = pkg.started || pkg.counts.length || inv.status === "closed",
       off = locked ? "disabled" : "";
     let content = "";
     if (step === 0)
       content = `<section class="card"><h2>1. Datos del inventario</h2><p class="muted">Programá primero la tarea. La base MB52 definitiva se incorpora el día del inventario principal.</p><form id="wizard-form"><div class="grid">${field("Nombre del inventario", "title", inv.title, "text", "required")}${field("Almacén", "warehouse", inv.warehouse, "text", `required ${off}`)}${field("Fecha de conteo", "scheduled_date", inv.scheduled_date, "date", `required ${off}`)}<label>Procedimiento<select name="procedure" ${off}>${option("principal", "Principal · circuito SAP completo", inv.procedure)}${option("otro", "Otro · configurable", inv.procedure)}</select></label></div></form><small>AL04, AL05, AL02 y AL12 usan el procedimiento principal.</small></section>`;
     if (step === 1)
       content = `<section class="card"><h2>2. Mercadería de MB52</h2><p class="muted">Se conserva cada material, lote, centro y unidad. Los productos con stock teórico cero no se incluyen.</p><form id="wizard-form"><div class="grid"><label class="file">Importar Excel MB52<input id="mb52-file" type="file" accept=".xlsx,.xls" ${off}></label>${field("Fecha de extracción de MB52", "mb52_date", inv.mb52_date, "date", off)}${field("Fecha y hora de bloqueo en SAP", "sap_blocked_at", inv.sap_blocked_at, "datetime-local", off)}</div><label class="check"><input type="checkbox" name="sap_blocked" ${inv.sap_blocked ? "checked" : ""} ${off}>Confirmo que SAP bloqueó los movimientos del almacén</label></form><small>La aplicación registra la confirmación. El bloqueo se realiza en SAP al generar sus documentos.</small><div class="kpis"><div class="kpi"><strong>${inv.items.length}</strong><span>Materiales y lotes</span></div><div class="kpi"><strong>${Object.keys(pkg.reference).filter((k) => pkg.reference[k].stock != null).length}</strong><span>Con stock de referencia</span></div></div>${merchTable(locked)}</section>`;
-    if (step === 2) {
-      const eligible = members.filter(
-        (m) =>
-          m.approved &&
-          (m.warehouses.includes(inv.warehouse) || m.role === "finanzas"),
-      );
-      content = `<section class="card"><h2>3. Participantes y visibilidad</h2><p class="muted">Asigná responsable, auditor o ambos. Cada uno registra su propio conteo. Finanzas administra los usuarios y sus almacenes.</p><form id="wizard-form"><div class="grid">${[
-        "responsable",
-        "auditor",
-      ]
-        .map((role) => {
-          const a = inv.assignments.find((x) => x.actor === role);
-          return `<div><label>${role === "responsable" ? "Responsable del almacén" : "Auditor"}<select name="${role}" ${off}>${option("", "Sin asignar", a?.user_id || "")}${eligible.map((m) => option(m.user_id, m.name + " · " + m.role, a?.user_id)).join("")}</select></label><label class="check"><input type="checkbox" name="${role}_stock" ${a?.see_stock ? "checked" : ""} ${off}>Puede ver stock y valor MB52</label></div>`;
-        })
-        .join(
-          "",
-        )}</div></form><div class="warning">El conteo ciego descarga los productos sin stock, valores, diferencias ni archivos de referencia.</div></section>`;
-    }
+    if (step === 2) content = participantsHTML();
     if (step === 3)
-      content = `<section class="card"><h2>4. Programación y publicación</h2><p>${h(inv.items.length)} productos · ${h(inv.assignments.length)} participantes · ${h(inv.scheduled_date)}</p><form id="wizard-form"><label>Observaciones de gestión<textarea name="management_notes">${h(inv.management_notes)}</textarea></label></form><div class="actions">${button("schedule", "Programar tarea")}${button("publish", "Habilitar conteo", "")}</div><small>La tarea aparece en la fecha asignada. Para habilitar un principal se requiere MB52 de ese día y confirmación del bloqueo en SAP.</small></section>`;
+      content = `<section class="card"><h2>4. Programación y publicación</h2><p>${h(inv.items.length)} productos · ${h(inv.assignments.length)} participantes · ${h(inv.assignments.filter(P.counts).length)} cuentan · ${h(inv.scheduled_date)}</p><form id="wizard-form"><label>Observaciones de gestión<textarea name="management_notes">${h(inv.management_notes)}</textarea></label></form><div class="actions">${button("schedule", "Programar tarea")}${button("publish", "Habilitar conteo", "")}</div><small>Cada usuario tendrá su propia pantalla y su propio conteo. La tarea aparece en la fecha asignada. Para habilitar un principal se requiere MB52 de ese día y confirmación del bloqueo en SAP.</small></section>`;
     if (step === 4) {
       $("step-content").innerHTML = countHTML();
       bindCount();
@@ -473,6 +513,7 @@
     if (step === 6) content = sapHTML();
     if (step === 7) content = closeHTML();
     $("step-content").innerHTML = content;
+    if ($("invitation-qr")) drawInvitation();
     const file = $("mb52-file");
     if (file) file.onchange = () => guarded(() => importMb52(file.files[0]));
     $("wizard-form")?.addEventListener("submit", (e) => e.preventDefault());
@@ -481,6 +522,47 @@
     );
     $("report-file")?.addEventListener("change", (e) =>
       guarded(() => importReport(e.target.files[0])),
+    );
+  }
+  function participantsHTML() {
+    const inv = pkg.inventory,
+      closed = inv.status === "closed",
+      off = closed ? "disabled" : "",
+      eligible = members.filter(
+        (m) =>
+          m.approved &&
+          (m.warehouses.includes(inv.warehouse) || m.role === "finanzas") &&
+          !inv.assignments.some((a) => a.user_id === m.user_id),
+      );
+    return `<section class="card"><h2>3. Personas que participan</h2><p class="muted">Agregá tantas personas como necesites. El rol y la participación se eligen por separado: ser responsable o auditor no obliga a contar.</p><form id="wizard-form"><div class="participant-list">${
+      inv.assignments
+        .map((a, k) => {
+          const hasWork = pkg.counts.some((c) => c.user_id === a.user_id),
+            participation = a.absent
+              ? "absent"
+              : P.counts(a)
+                ? "count"
+                : "observe";
+          return `<div class="participant-row" data-participant="${h(a.user_id)}"><strong>${h(a.name || names()[a.user_id] || a.user_id)}</strong><div class="grid"><label>Rol en este inventario<select data-field="actor" ${closed || hasWork ? "disabled" : ""}>${Object.entries(
+            P.roles,
+          )
+            .map(([v, l]) => option(v, l, a.actor))
+            .join(
+              "",
+            )}</select></label><label>Participación<select data-field="participation" ${off}>${option("count", "Cuenta productos", participation)}${option("observe", "Participa sin contar", participation)}${option("absent", "No participa / Ausente", participation)}</select></label></div><label class="check"><input type="checkbox" data-field="stock" ${a.see_stock ? "checked" : ""} ${off}>Puede ver stock y valor MB52</label>${!closed && !pkg.started && !pkg.counts.length ? button("remove-participant", "Quitar persona", "quiet", `data-index="${k}"`) : ""}</div>`;
+        })
+        .join("") ||
+      '<p class="empty">Todavía no agregaste personas. Podés asignarlas aquí o permitir que se unan por enlace/QR.</p>'
+    }</div>${pkg.started || pkg.counts.length ? field("Motivo si cambiás participantes o su participación", "participant_change_reason", "", "text", 'id="participant-change-reason" placeholder="Ej. el auditor no asistió"') : ""}</form>${!closed ? `<div class="inline add-participant"><label>Agregar usuario<select id="participant-user">${option("", "Seleccionar una persona", "")}${eligible.map((m) => option(m.user_id, m.name, "")).join("")}</select></label>${button("add-participant", "Agregar participante")}</div>` : ""}<p class="muted">Solo se solicita entregar el conteo a quienes figuran como «Cuenta productos». Los conteos se comparan por persona y no se suman automáticamente.</p><div class="warning">Quien tenga conteo ciego recibe productos sin stock ni valores. Finanzas conserva su acceso de gestión.</div></section>${invitationHTML()}`;
+  }
+  function invitationHTML() {
+    const invite = pkg.invitation,
+      closed = pkg.inventory.status === "closed";
+    return `<section class="card"><h2>Unirse por enlace o QR</h2>${window.EnjoyDemo ? '<p class="warning">En esta demostración, probá el enlace en este mismo navegador. Compartir entre dispositivos requiere la versión conectada.</p>' : ""}<p class="muted">Cada persona entra con su propio usuario aprobado y habilitado para este almacén. Al unirse, puede contar sin ver el stock. Después podés ajustar su rol y participación.</p>${!closed ? button("toggle-invitation", invite?.enabled ? "Desactivar enlace" : "Habilitar enlace y QR", "secondary") : ""}${invite?.enabled ? `<label>Enlace de este inventario<input id="invitation-link" readonly value="${h(EnjoyInvitations.url(invite.token))}"></label><div class="invite-layout"><div id="invitation-qr" class="invitation-qr" role="img" aria-label="QR para unirse a este inventario"></div><div class="actions">${button("copy-invitation", "Copiar enlace")}${button("download-qr", "Descargar QR")}${button("rotate-invitation", "Renovar enlace", "quiet")}</div></div><small>Renovar invalida el enlace anterior. Los participantes ya unidos conservan su acceso. Los nuevos ingresos se cierran al comenzar a autorizar cantidades.</small>` : ""}</section>`;
+  }
+  function drawInvitation() {
+    $("invitation-qr").innerHTML = EnjoyInvitations.svg(
+      EnjoyInvitations.url(pkg.invitation.token),
     );
   }
   function merchTable(locked) {
@@ -534,14 +616,15 @@
   }
   function countHTML() {
     const inv = pkg.inventory,
-      own = inv.assignments.filter((a) => a.user_id === user.id),
+      participation = myParticipation(),
       rows = ownRows(),
       submitted = pkg.submissions[user.id + ":" + actor]?.submitted,
       can =
+        P.counts(participation) &&
         inv.status === "ready" &&
         !submitted &&
         (inv.scheduled_date === C.today() || inv.allow_late_sync);
-    return `<section class="card count-card"><div class="countbar"><div><h2>${actor === "auditor" ? "Conteo del auditor" : "Conteo del responsable"}</h2><small>${own.length > 1 ? `<select id="actor-select" aria-label="Función de conteo">${own.map((a) => option(a.actor, a.actor, actor)).join("")}</select>` : ""}<span id="count-progress-text">${rows.length} de ${inv.items.length} productos contados</span> · ${pkg.see_stock ? "Stock visible" : "Conteo ciego"}</small></div>${actor && can ? button(active ? "pause" : "start", active ? "Pausar" : "Iniciar conteo", active ? "secondary" : "") : ""}</div><progress id="count-progress" value="${rows.length}" max="${inv.items.length || 1}"></progress>${submitted ? '<div class="warning">Conteo entregado. El supervisor puede reabrirlo si hace falta corregirlo.</div>' : !can ? '<div class="warning">El supervisor todavía no habilitó el conteo para esta fecha.</div>' : ""}${actor && can ? `<div class="lookup"><label for="search">¿Qué producto estás contando?</label><div class="autocomplete"><div id="search-ghost" class="search-ghost" aria-hidden="true"></div><input id="search" type="search" placeholder="Nombre, código o código de barras" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="next" ${!active ? "disabled" : ""} role="combobox" aria-autocomplete="both" aria-controls="results" aria-expanded="false"><button id="clear-search" type="button" aria-label="Borrar búsqueda" hidden>×</button></div><div id="search-popup" class="search-popup" hidden><p id="search-caption" class="search-caption"></p><ul id="results" class="results" role="listbox" aria-label="Productos sugeridos"></ul></div><p id="search-status" class="search-help" role="status">${active ? "Escribí para ver sugerencias. Enter elige el producto." : "Iniciá el conteo para buscar y sumar cantidades."}</p></div><div id="quantity-area"></div><p id="count-feedback" class="count-feedback" role="status"></p><details class="count-options"><summary>Ubicación y sector</summary><div class="grid"><label>Sector (opcional)<input id="sector" value="${h(sessionStorage.getItem("enjoy_sector_" + inv.id) || "")}" placeholder="Ej. cámara de frío"></label><p class="muted subtle" id="gps-status">Ubicación: ${h(EnjoyGPS.get().state)}. Se registra durante el conteo activo.</p></div></details>` : ""}<details class="count-history" open><summary>Productos y correcciones</summary><div class="table-wrap"><table><thead><tr><th>Material / lote</th><th>Producto</th>${pkg.see_stock ? "<th>Stock</th>" : ""}<th>Mi conteo</th><th>Corregir</th></tr></thead><tbody id="count-table">${countRows()}</tbody></table></div></details><div class="actions count-actions">${actor && can ? button("finish", "Entregar mi conteo", "") : ""}${button("count-xlsx", "Descargar mi conteo", "quiet")}</div></section><details class="card"><summary>Guardado y sincronización</summary><div id="pending-events"></div></details>`;
+    return `<section class="card count-card"><div class="countbar"><div><h2>${P.counts(participation) ? "Mi conteo" : "Mi participación"}</h2><p class="muted participant-caption">${h(profile.name)} · ${h(P.roles[actor] || "Participante")}</p><small><span id="count-progress-text">${rows.length} de ${inv.items.length} productos contados</span> · ${pkg.see_stock ? "Stock visible" : "Conteo ciego"}</small></div>${actor && can ? button(active ? "pause" : "start", active ? "Pausar" : "Iniciar conteo", active ? "secondary" : "") : ""}</div><progress id="count-progress" value="${rows.length}" max="${inv.items.length || 1}"></progress>${!P.counts(participation) ? `<div class="warning">${participation?.absent ? "Figurás como ausente en este inventario." : "Participás sin obligación de contar. Si también vas a contar, el encargado puede habilitarlo en la configuración."}</div>` : submitted ? '<div class="warning">Conteo entregado. El supervisor puede reabrirlo si hace falta corregirlo.</div>' : !can ? '<div class="warning">El supervisor todavía no habilitó el conteo para esta fecha.</div>' : ""}${actor && can ? `<div class="lookup"><label for="search">¿Qué producto estás contando?</label><div class="autocomplete"><div id="search-ghost" class="search-ghost" aria-hidden="true"></div><input id="search" type="search" placeholder="Nombre, código o código de barras" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="next" ${!active ? "disabled" : ""} role="combobox" aria-autocomplete="both" aria-controls="results" aria-expanded="false"><button id="clear-search" type="button" aria-label="Borrar búsqueda" hidden>×</button></div><div id="search-popup" class="search-popup" hidden><p id="search-caption" class="search-caption"></p><ul id="results" class="results" role="listbox" aria-label="Productos sugeridos"></ul></div><p id="search-status" class="search-help" role="status">${active ? "Escribí para ver sugerencias. Enter elige el producto." : "Iniciá el conteo para buscar y sumar cantidades."}</p></div><div id="quantity-area"></div><p id="count-feedback" class="count-feedback" role="status"></p><details class="count-options"><summary>Ubicación y sector</summary><div class="grid"><label>Sector (opcional)<input id="sector" value="${h(sessionStorage.getItem("enjoy_sector_" + inv.id) || "")}" placeholder="Ej. cámara de frío"></label><p class="muted subtle" id="gps-status">Ubicación: ${h(EnjoyGPS.get().state)}. Se registra durante el conteo activo.</p></div></details>` : ""}<details class="count-history" open><summary>Productos y correcciones</summary><div class="table-wrap"><table><thead><tr><th>Material / lote</th><th>Producto</th>${pkg.see_stock ? "<th>Stock</th>" : ""}<th>Mi conteo</th><th>Corregir</th></tr></thead><tbody id="count-table">${countRows()}</tbody></table></div></details><div class="actions count-actions">${actor && can ? button("finish", "Entregar mi conteo", "") : ""}${button("count-xlsx", "Descargar mi conteo", "quiet")}</div></section><details class="card"><summary>Guardado y sincronización</summary><div id="pending-events"></div></details>`;
   }
   function updateProgress() {
     const rows = ownRows();
@@ -554,7 +637,7 @@
     return pkg.inventory.items
       .map((i) => {
         const c = ownRows().find((c) => c.item_id === i.id);
-        return `<tr id="row-${pkg.inventory.items.indexOf(i)}"><td>${h(i.code)}<small>${h(i.lot || "Sin lote")} · ${h(i.unit)}</small></td><td>${h(i.name)}</td>${pkg.see_stock ? `<td>${n(pkg.reference[i.id]?.stock)}</td>` : ""}<td class="tabular">${c ? n(c.quantity) : "<small>Sin contar</small>"}</td><td>${actor && pkg.inventory.status === "ready" && !pkg.submissions[user.id + ":" + actor]?.submitted ? button("correct", "Corregir", "quiet", `data-id="${h(i.id)}"`) : ""}</td></tr>`;
+        return `<tr id="row-${pkg.inventory.items.indexOf(i)}"><td>${h(i.code)}<small>${h(i.lot || "Sin lote")} · ${h(i.unit)}</small></td><td>${h(i.name)}</td>${pkg.see_stock ? `<td>${n(pkg.reference[i.id]?.stock)}</td>` : ""}<td class="tabular">${c ? n(c.quantity) : "<small>Sin contar</small>"}</td><td>${P.counts(myParticipation()) && actor && pkg.inventory.status === "ready" && !pkg.submissions[user.id + ":" + actor]?.submitted ? button("correct", "Corregir", "quiet", `data-id="${h(i.id)}"`) : ""}</td></tr>`;
       })
       .join("");
   }
@@ -600,15 +683,6 @@
       }
     });
     $("clear-search")?.addEventListener("click", clearLookup);
-    $("actor-select")?.addEventListener("change", (e) => {
-      if (active) {
-        toast("Pausá el conteo antes de cambiar de función");
-        e.target.value = actor;
-        return;
-      }
-      actor = e.target.value;
-      renderStep();
-    });
     $("sector")?.addEventListener("change", (e) =>
       sessionStorage.setItem(
         "enjoy_sector_" + pkg.inventory.id,
@@ -730,6 +804,10 @@
   }
   async function record(action, item, value, extra = {}) {
     if (!actor) throw Error("No tenés una función asignada");
+    if (!P.counts(myParticipation()))
+      throw Error(
+        "Tu participación no incluye conteo. El encargado puede habilitarlo.",
+      );
     const gps = EnjoyGPS.get(),
       event = {
         id: crypto.randomUUID(),
@@ -809,7 +887,15 @@
     await Y.run(user.id, rpc, async () => {
       if (pkg && view === "inventory" && step === 4) {
         const fresh = await S.get("packages", user.id + "|" + pkg.inventory.id);
-        if (fresh) pkg = fresh;
+        if (fresh) {
+          const before = JSON.stringify(myParticipation());
+          pkg = fresh;
+          if (JSON.stringify(myParticipation()) !== before) {
+            stopGPS();
+            setActor();
+            renderStep();
+          }
+        }
         await pendingHTML();
         if (view === "inventory" && step === 4 && $("count-table"))
           $("count-table").innerHTML = countRows();
@@ -821,8 +907,9 @@
   function reviewHTML() {
     const rows = C.comparison(pkg),
       m = C.metrics(rows),
-      name = names();
-    return `<section class="card"><h2>Comparar y autorizar cantidades</h2><p class="muted">Los conteos permanecen separados. Autorizá la cantidad que se trasladará al CSV y registrá el criterio.</p><div class="kpis"><div class="kpi"><strong>${m.approved}/${m.total}</strong><span>Autorizados</span></div><div class="kpi"><strong>${m.exactRate == null ? "—" : n(m.exactRate * 100) + "%"}</strong><span>Exactitud estricta</span></div><div class="kpi"><strong>${m.within1000}</strong><span>Diferencia menor a $1.000</span></div></div><div class="actions">${button("xlsx", "Descargar comparativo Excel")}${pkg.inventory.status !== "closed" ? button("approve-batch", "Autorizar desde un conteo") : ""}</div><div id="batch-area"></div>${pkg.inventory.assignments.map((a) => `<p><strong>${h(a.actor)}: ${h(name[a.user_id] || a.user_id)}</strong> · ${pkg.submissions[a.user_id + ":" + a.actor]?.submitted ? "Entregado" : "Pendiente"} ${pkg.submissions[a.user_id + ":" + a.actor]?.submitted && pkg.inventory.status !== "closed" ? button("reopen", "Reabrir", "quiet", `data-assignment="${a.user_id}:${a.actor}"`) : ""}</p>`).join("")}<div class="table-wrap"><table><thead><tr><th>Material / lote</th><th>Stock</th><th>Responsable</th><th>Auditor</th><th>Autorizado</th><th>Diferencia</th><th></th></tr></thead><tbody>${rows.map((r) => `<tr><td>${h(r.name)}<small>${h(r.code)} · ${h(r.lot || "Sin lote")} · ${h(r.unit)}</small></td><td>${n(r.stock)}</td><td>${n(r.entries.find((c) => c.actor === "responsable")?.quantity)}</td><td>${n(r.entries.find((c) => c.actor === "auditor")?.quantity)}</td><td>${n(r.approved)}</td><td>${n(r.diff)}</td><td>${pkg.inventory.status !== "closed" ? button("approve", "Autorizar", "secondary", `data-id="${h(r.id)}"`) : ""}</td></tr>`).join("")}</tbody></table></div><div id="approve-area"></div></section>`;
+      name = names(),
+      cols = P.columns(pkg);
+    return `<section class="card"><h2>Comparar y autorizar cantidades</h2><p class="muted">Cada columna pertenece a una persona. «—» significa sin contar; los conteos no se suman automáticamente. Autorizá la cantidad que se trasladará al CSV y registrá el criterio.</p><div class="kpis"><div class="kpi"><strong>${m.approved}/${m.total}</strong><span>Autorizados</span></div><div class="kpi"><strong>${m.exactRate == null ? "—" : n(m.exactRate * 100) + "%"}</strong><span>Exactitud estricta</span></div><div class="kpi"><strong>${m.within1000}</strong><span>Diferencia menor a $1.000</span></div></div><div class="actions">${button("xlsx", "Descargar comparativo Excel")}${pkg.inventory.status !== "closed" ? button("approve-batch", "Autorizar desde un conteo") : ""}</div><div id="batch-area"></div>${pkg.inventory.assignments.map((a) => `<p><strong>${h(a.name || name[a.user_id] || a.user_id)} · ${h(P.roles[a.actor] || a.actor)}</strong> · ${h(P.state(pkg, a))} ${pkg.submissions[a.user_id + ":" + a.actor]?.submitted && pkg.inventory.status !== "closed" ? button("reopen", "Reabrir", "quiet", `data-assignment="${a.user_id}:${a.actor}"`) : ""}</p>`).join("")}<div class="table-wrap"><table><thead><tr><th>Material / lote</th><th>Stock</th>${cols.map((a, k) => `<th>Conteo ${k + 1} · ${h(a.name || name[a.user_id] || a.user_id)}<small>${h(P.roles[a.actor] || a.actor)}</small></th>`).join("")}<th>Autorizado</th><th>Diferencia</th><th></th></tr></thead><tbody>${rows.map((r) => `<tr><td>${h(r.name)}<small>${h(r.code)} · ${h(r.lot || "Sin lote")} · ${h(r.unit)}</small></td><td>${n(r.stock)}</td>${cols.map((a) => `<td>${n(r.entries.find((c) => c.user_id === a.user_id && c.actor === a.actor)?.quantity)}</td>`).join("")}<td>${n(r.approved)}</td><td>${n(r.diff)}</td><td>${pkg.inventory.status !== "closed" ? button("approve", "Autorizar", "secondary", `data-id="${h(r.id)}"`) : ""}</td></tr>`).join("")}</tbody></table></div><div id="approve-area"></div></section>`;
   }
   function sapHTML() {
     return `<section class="card"><h2>Archivos y reporte SAP</h2><p class="muted">Vinculá el CSV inicial y luego CSV_2. Los documentos SAP pueden ser distintos entre etapas. Se mantienen materiales, lotes y posiciones.</p><div class="grid"><label>Etapa del archivo<select id="sap-kind"><option value="csv">CSV inicial · MI04</option><option value="csv_2">CSV_2 · MI08</option></select></label><label class="file">Vincular plantilla SAP<input id="sap-file" type="file" accept=".csv" ${pkg.inventory.status === "closed" ? "disabled" : ""}></label><label class="file">Incorporar Reporte SAP final<input id="report-file" type="file" accept=".xlsx,.xls" ${pkg.inventory.status === "closed" ? "disabled" : ""}></label></div><div class="grid">${field("Fecha de conteo para CSV", "count-date", pkg.inventory.scheduled_date, "date")}${field("Fecha de ingreso en SAP", "entry-date", C.today(), "date")}</div><div class="table-wrap"><table><thead><tr><th>Archivo</th><th>Etapa</th><th>Documento</th><th>Acciones</th></tr></thead><tbody>${pkg.documents.map((d, k) => `<tr><td>${h(d.name)}<small>${date(d.at)}</small></td><td>${h(d.kind)}${d.generated ? " · generado" : ""}</td><td>${h((d.documents || []).join(", "))}</td><td>${d.path ? button("download-original", "Original", "quiet", `data-index="${k}"`) : ""}${d.sap ? button("export-csv", "Completar y descargar", "", `data-index="${k}"`) : ""}</td></tr>`).join("")}</tbody></table></div>${pkg.report ? `<p class="good">Reporte incorporado: ${pkg.report.items.length} posiciones · Documento ${h(pkg.report.documents.join(", "))}.</p>` : ""}<div class="warning">Descargar un CSV no confirma su carga en SAP. Generá y verificá el documento en SAP y vinculá después su reporte.</div></section>`;
@@ -913,7 +1000,7 @@
     view = "members";
     members = await rpc("members");
     $("app").innerHTML =
-      `<div class="heading"><div><p class="eyebrow">Finanzas</p><h1>Usuarios y permisos</h1><p class="muted">Aprobá solicitudes y asigná los almacenes autorizados. La clave de empresa no otorga permisos.</p></div>${button("dashboard", "Volver")}</div>${members.map((m, k) => `<form class="card member-form" data-index="${k}"><h3>${h(m.name)} ${!m.approved ? '<span class="pill">Pendiente</span>' : ""}</h3><div class="grid"><label>Rol<select name="role">${["responsable", "auditor", "supervisor", "finanzas"].map((r) => option(r, r, m.role)).join("")}</select></label>${field("Almacenes, separados por coma", "warehouses", m.warehouses.join(", "))}</div><label class="check"><input name="approved" type="checkbox" ${m.approved ? "checked" : ""}>Acceso aprobado</label><label class="check"><input name="can_manage" type="checkbox" ${m.can_manage ? "checked" : ""}>Puede gestionar inventarios de sus almacenes</label><button>Guardar permisos</button></form>`).join("")}`;
+      `<div class="heading"><div><p class="eyebrow">Finanzas</p><h1>Usuarios y permisos</h1><p class="muted">Aprobá solicitudes y asigná los almacenes autorizados. La clave de empresa no otorga permisos.</p></div>${button("dashboard", "Volver")}</div>${members.map((m, k) => `<form class="card member-form" data-index="${k}"><h3>${h(m.name)} ${!m.approved ? '<span class="pill">Pendiente</span>' : ""}</h3><div class="grid"><label>Rol<select name="role">${["contador", "responsable", "auditor", "supervisor", "finanzas"].map((r) => option(r, r, m.role)).join("")}</select></label>${field("Almacenes, separados por coma", "warehouses", m.warehouses.join(", "))}</div><label class="check"><input name="approved" type="checkbox" ${m.approved ? "checked" : ""}>Acceso aprobado</label><label class="check"><input name="can_manage" type="checkbox" ${m.can_manage ? "checked" : ""}>Puede gestionar inventarios de sus almacenes</label><button>Guardar permisos</button></form>`).join("")}`;
     document.querySelectorAll(".member-form").forEach(
       (f) =>
         (f.onsubmit = (e) => {
@@ -950,6 +1037,66 @@
       guarded(() => update("late_sync", { enabled: e.target.checked }));
   }
   async function handle(action, b) {
+    if (action === "retry-join") return joinScreen(b.dataset.token);
+    if (action === "confirm-join") {
+      const joined = await rpc("join", {
+        token: b.dataset.token,
+        confirm: true,
+      });
+      await S.savePackage(user.id, joined);
+      members = await rpc("members");
+      return openInventory(joined.inventory.id);
+    }
+    if (action === "add-participant" || action === "remove-participant") {
+      collect();
+      if (action === "remove-participant")
+        pkg.inventory.assignments.splice(+b.dataset.index, 1);
+      else {
+        const person = members.find(
+          (m) => m.user_id === $("participant-user").value,
+        );
+        if (!person) throw Error("Seleccioná una persona");
+        if (pkg.inventory.assignments.some((a) => a.user_id === person.user_id))
+          throw Error("Esta persona ya participa");
+        pkg.inventory.assignments.push({
+          user_id: person.user_id,
+          name: person.name,
+          actor: "contador",
+          counts_enabled: true,
+          absent: false,
+          see_stock: false,
+        });
+      }
+      return renderStep();
+    }
+    if (action === "toggle-invitation" || action === "rotate-invitation") {
+      await save();
+      pkg = await rpc("invitation", {
+        inventory_id: pkg.inventory.id,
+        enabled: action === "rotate-invitation" || !pkg.invitation?.enabled,
+        rotate: action === "rotate-invitation",
+      });
+      await S.savePackage(user.id, pkg);
+      return renderStep();
+    }
+    if (action === "copy-invitation") {
+      const input = $("invitation-link");
+      try {
+        await navigator.clipboard.writeText(input.value);
+        toast("Enlace copiado");
+      } catch {
+        input.focus();
+        input.select();
+        toast("Enlace seleccionado. Podés copiarlo desde este campo.");
+      }
+      return;
+    }
+    if (action === "download-qr")
+      return E.download(
+        EnjoyInvitations.svg(EnjoyInvitations.url(pkg.invitation.token)),
+        `Enjoy_${pkg.inventory.warehouse}_QR.svg`,
+        "image/svg+xml",
+      );
     if (action === "change-company") {
       sessionStorage.removeItem("empresa_nombre");
       sessionStorage.removeItem("empresa_validada");
@@ -1010,11 +1157,20 @@
     }
     if (action === "start") return start();
     if (action === "pause") return pause();
-    if (action === "finish") {
-      if (ownRows().length !== pkg.inventory.items.length)
+    if (action === "finish" || action === "confirm-finish") {
+      if (!ownRows().length)
         throw Error(
-          "Hay productos sin contar. Ingresá cero cuando corresponda",
+          "Registrá al menos un producto. Si no vas a contar, el encargado puede cambiar tu participación.",
         );
+      if (
+        action === "finish" &&
+        ownRows().length !== pkg.inventory.items.length
+      ) {
+        $("quantity-area").innerHTML =
+          `<div class="card correction"><h3>Entregar lo que conté</h3><p>Contaste ${ownRows().length} de ${pkg.inventory.items.length} productos. Los demás quedarán como «Sin contar» en tu planilla. No se convertirán en cero.</p>${button("confirm-finish", "Confirmar entrega", "")}${button("cancel-correction", "Seguir contando")}</div>`;
+        $("quantity-area").scrollIntoView({ block: "center" });
+        return;
+      }
       if (active) await pause();
       await record("finish");
       stopGPS();
@@ -1043,7 +1199,22 @@
     if (action === "cancel-correction") return clearLookup();
     if (action === "approve-batch") {
       $("batch-area").innerHTML =
-        `<form id="batch-form" class="card"><h3>Autorizar cantidades desde un conteo entregado</h3><p>Revisá el comparativo antes de confirmar. Las diferencias quedan marcadas «Para revisar» y podés ajustar cada autorización después.</p><label>Conteo de origen<select name="source">${pkg.inventory.assignments.map((a) => option(a.user_id + ":" + a.actor, a.actor + " · " + (names()[a.user_id] || a.user_id), "")).join("")}</select></label>${field("Criterio de autorización", "comment", "", "text", "required")}<button>Autorizar cantidades del conteo seleccionado</button></form>`;
+        `<form id="batch-form" class="card"><h3>Autorizar cantidades desde un conteo entregado</h3><p>Revisá el comparativo antes de confirmar. Las diferencias quedan marcadas «Para revisar» y podés ajustar cada autorización después.</p><label>Conteo de origen<select name="source">${P.columns(
+          pkg,
+        )
+          .filter((a) => pkg.submissions[P.key(a)]?.submitted)
+          .map((a) =>
+            option(
+              P.key(a),
+              (a.name || names()[a.user_id] || a.user_id) +
+                " · " +
+                (P.roles[a.actor] || a.actor),
+              "",
+            ),
+          )
+          .join(
+            "",
+          )}</select></label>${field("Criterio de autorización", "comment", "", "text", "required")}<button>Autorizar cantidades del conteo seleccionado</button></form>`;
       $("batch-form").onsubmit = (e) => {
         e.preventDefault();
         guarded(async () => {
@@ -1172,11 +1343,7 @@
       return E.download(data, d.name, data.type);
     }
     if (action === "export-csv") {
-      if (
-        pkg.inventory.assignments.some(
-          (a) => !pkg.submissions[a.user_id + ":" + a.actor]?.submitted,
-        )
-      )
+      if (!P.delivered(pkg))
         throw Error("Primero deben entregarse todos los conteos");
       const d = pkg.documents[+b.dataset.index],
         format = (s) => s.split("-").reverse().join("."),

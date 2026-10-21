@@ -795,3 +795,45 @@ mark {
     justify-content: space-between;
   }
 }
+
+.participant-row {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--line, #d9e3e8);
+}
+.participant-row > strong {
+  display: block;
+  margin-bottom: 14px;
+}
+.participant-row .quiet {
+  padding-left: 0;
+}
+.add-participant {
+  margin: 22px 0;
+  align-items: end;
+}
+.add-participant label {
+  flex: 1;
+}
+.participant-caption {
+  margin: 4px 0;
+}
+.invite-layout {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+.invitation-qr {
+  width: 220px;
+  max-width: 100%;
+  background: white;
+}
+.invitation-qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.participant-list .empty {
+  padding: 20px 0;
+}

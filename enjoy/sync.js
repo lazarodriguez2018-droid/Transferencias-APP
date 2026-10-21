@@ -3,7 +3,8 @@
   const C = root.EnjoyCore,
     S = root.EnjoyStore;
   let chain = Promise.resolve(),
-    syncing = false;
+    syncing = false,
+    requested = false;
   const networkLock = (owner, fn) =>
     navigator.locks
       ? navigator.locks.request(
@@ -101,7 +102,11 @@
       });
     },
     async run(owner, rpc, onChange) {
-      if (syncing || !navigator.onLine) return;
+      if (!navigator.onLine) return;
+      if (syncing) {
+        requested = true;
+        return;
+      }
       syncing = true;
       try {
         await networkLock(owner, async () => {
@@ -142,6 +147,10 @@
         await onChange?.();
       } finally {
         syncing = false;
+        if (requested) {
+          requested = false;
+          await this.run(owner, rpc, onChange);
+        }
       }
     },
   };

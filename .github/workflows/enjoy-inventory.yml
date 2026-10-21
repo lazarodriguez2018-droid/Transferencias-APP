@@ -14,7 +14,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --prefix work --no-audit --no-fund --save-exact @electric-sql/pglite@0.5.11 fake-indexeddb@6.2.6 jsdom@26.1.0
+      - run: npm install --prefix work --no-audit --no-fund --save-exact @electric-sql/pglite@0.5.11 fake-indexeddb@6.2.6 jsdom@26.1.0 jsqr@1.4.0
       - run: node --test enjoy/tests/*.test.js
         env:
           PGLITE_PATH: ${{ github.workspace }}/work/node_modules/@electric-sql/pglite

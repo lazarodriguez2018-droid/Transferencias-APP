@@ -6,7 +6,7 @@ grant usage on schema enjoy_private to authenticated;
 
 create table enjoy_private.members (
  user_id uuid primary key references auth.users(id), name text not null,
- role text not null default 'responsable' check(role in ('responsable','auditor','supervisor','finanzas')),
+ role text not null default 'contador' check(role in ('contador','responsable','auditor','supervisor','finanzas')),
  approved boolean not null default false, can_manage boolean not null default false,
  warehouses text[] not null default '{}', created_at timestamptz not null default now()
 );
@@ -15,13 +15,14 @@ create table enjoy_private.inventories (
  reference jsonb not null default '{}', approvals jsonb not null default '{}',
  documents jsonb not null default '[]', report jsonb, adjustments jsonb not null default '[]',
  submissions jsonb not null default '{}', closed_at timestamptz,
+ join_token uuid not null default gen_random_uuid() unique, join_enabled boolean not null default false,
  created_by uuid not null references auth.users(id), created_at timestamptz not null default now(),
  updated_at timestamptz not null default now(), version bigint not null default 1
 );
 create index enjoy_inventory_warehouse_idx on enjoy_private.inventories ((data->>'warehouse'),updated_at desc);
 create table enjoy_private.counts (
  inventory_id uuid not null references enjoy_private.inventories(id), user_id uuid not null references auth.users(id),
- actor text not null check(actor in ('responsable','auditor')), item_id text not null,
+ actor text not null check(actor in ('contador','responsable','auditor','supervisor')), item_id text not null,
  quantity numeric(20,6) not null check(quantity>=0), version bigint not null default 1,
  updated_at timestamptz not null default now(), primary key(inventory_id,user_id,actor,item_id)
 );
@@ -70,9 +71,11 @@ begin
  select coalesce(jsonb_agg(to_jsonb(c)),'[]') into ct from enjoy_private.counts c
  where c.inventory_id=p_id and (manager or c.user_id=auth.uid());
  inv:=i.data||jsonb_build_object('id',i.id,'version',i.version,'closed_at',i.closed_at,'updated_at',i.updated_at);
+ inv:=jsonb_set(inv,'{assignments}',(select coalesce(jsonb_agg(a||jsonb_build_object('name',me.name)),'[]') from jsonb_array_elements(inv->'assignments') a join enjoy_private.members me on me.user_id=(a->>'user_id')::uuid));
  if not manager then inv:=inv-'management_notes'; end if;
  return jsonb_build_object('inventory',inv,'reference',case when see_stock then i.reference else '{}'::jsonb end,
- 'counts',ct,'manager',manager,'see_stock',see_stock,
+ 'counts',ct,'manager',manager,'see_stock',see_stock,'started',exists(select 1 from enjoy_private.events ev where ev.inventory_id=p_id),
+ 'invitation',case when manager then jsonb_build_object('enabled',i.join_enabled,'token',i.join_token) else null end,
  'approvals',case when manager then i.approvals else '{}'::jsonb end,
  'documents',case when manager then i.documents else '[]'::jsonb end,
  'report',case when manager then i.report else null end,
@@ -96,6 +99,21 @@ begin
  end if;
  if p_action='profile' then return coalesce(to_jsonb(m),'null'::jsonb); end if;
  if m.user_id is null or not m.approved then raise exception 'Tu acceso a Enjoy está pendiente de aprobación'; end if;
+ if p_action='join' then
+  if coalesce(p->>'token','') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then raise exception 'El enlace no está disponible. Solicitá uno vigente al encargado'; end if;
+  select * into i from enjoy_private.inventories where join_token=(p->>'token')::uuid for update;
+  if not found or not i.join_enabled or i.closed_at is not null or i.data->>'status'='draft' then raise exception 'El enlace no está disponible. Solicitá uno vigente al encargado'; end if;
+  if not (i.data->>'warehouse'=any(m.warehouses) or m.role='finanzas') then raise exception 'Finanzas debe habilitarte este almacén'; end if;
+  if (i.data->>'scheduled_date')::date>(now() at time zone 'America/Montevideo')::date then raise exception 'El inventario estará disponible el %',i.data->>'scheduled_date'; end if;
+  if p->>'confirm'='true' then
+   if not exists(select 1 from jsonb_array_elements(i.data->'assignments') a where a->>'user_id'=uid::text) then
+    update enjoy_private.inventories set data=jsonb_set(data,'{assignments}',data->'assignments'||jsonb_build_array(jsonb_build_object('user_id',uid,'actor','contador','see_stock',false,'counts_enabled',true,'absent',false))),version=version+1,updated_at=now() where id=i.id;
+    insert into enjoy_private.management_log(inventory_id,user_id,action,detail) values(i.id,uid,'join',jsonb_build_object('method','link','actor','contador'));
+   end if;
+   return enjoy_private.snapshot(i.id);
+  end if;
+  return jsonb_build_object('id',i.id,'title',i.data->>'title','warehouse',i.data->>'warehouse','scheduled_date',i.data->>'scheduled_date');
+ end if;
  if p_action='members' then
   select coalesce(jsonb_agg(to_jsonb(v)),'[]') into out from (
    select user_id,name,role,approved,can_manage,warehouses from enjoy_private.members x
@@ -126,13 +144,11 @@ begin
   if not enjoy_private.is_manager(d->>'warehouse') then raise exception 'No tenés permiso para este almacén'; end if;
   if nullif(d->>'scheduled_date','') is null or jsonb_typeof(p->'reference') is distinct from 'object' then raise exception 'Falta fecha o referencia'; end if;
   perform (d->>'scheduled_date')::date;
-  if d->>'status'<>'draft' and jsonb_array_length(d->'assignments')=0 then raise exception 'Asigná al menos un responsable o auditor'; end if;
   for v_assignment in select value from jsonb_array_elements(d->'assignments') loop
-   if v_assignment->>'actor' not in ('responsable','auditor') or not exists(select 1 from enjoy_private.members x where x.user_id=(v_assignment->>'user_id')::uuid and x.approved and (d->>'warehouse'=any(x.warehouses) or x.role='finanzas')) then raise exception 'Participante no autorizado para el almacén'; end if;
+   if coalesce(v_assignment->>'actor','') not in ('contador','responsable','auditor','supervisor') or not exists(select 1 from enjoy_private.members x where x.user_id=(v_assignment->>'user_id')::uuid and x.approved and (d->>'warehouse'=any(x.warehouses) or x.role='finanzas')) then raise exception 'Participante no autorizado para el almacén'; end if;
   end loop;
-  if jsonb_array_length(d->'assignments')<>(select count(distinct (a->>'user_id')||':'||(a->>'actor')) from jsonb_array_elements(d->'assignments') a) then raise exception 'Participante duplicado'; end if;
-  if (select count(*) from jsonb_array_elements(d->'assignments') a where a->>'actor'='responsable')>1
-   or (select count(*) from jsonb_array_elements(d->'assignments') a where a->>'actor'='auditor')>1 then raise exception 'Asigná una persona por función en este inventario'; end if;
+  if jsonb_array_length(d->'assignments')<>(select count(distinct a->>'user_id') from jsonb_array_elements(d->'assignments') a) then raise exception 'Participante duplicado. Cada persona tiene un único conteo'; end if;
+  d:=jsonb_set(d,'{assignments}',(select coalesce(jsonb_agg(jsonb_build_object('user_id',a->>'user_id','actor',a->>'actor','see_stock',coalesce((a->>'see_stock')::boolean,false),'counts_enabled',not coalesce((a->>'absent')::boolean,false) and coalesce((a->>'counts_enabled')::boolean,true),'absent',coalesce((a->>'absent')::boolean,false))),'[]') from jsonb_array_elements(d->'assignments') a));
   for v_assignment in select value from jsonb_array_elements(d->'items') loop
    if jsonb_typeof(v_assignment) is distinct from 'object' or v_assignment ? 'stock' or v_assignment ? 'value' or v_assignment ? 'reference' or v_assignment->>'warehouse'<>d->>'warehouse' or coalesce(v_assignment->>'id','')='' then raise exception 'La mercadería contiene datos inválidos'; end if;
   end loop;
@@ -143,7 +159,13 @@ begin
    inv_id:=(d->>'id')::uuid;select * into i from enjoy_private.inventories where id=inv_id for update;
    if not found or not enjoy_private.is_manager(i.data->>'warehouse') or i.closed_at is not null then raise exception 'Inventario no editable'; end if;
    if i.version<>coalesce((p->>'version')::bigint,0) then raise exception 'El inventario cambió. Actualizá antes de guardar'; end if;
-   if exists(select 1 from enjoy_private.counts where inventory_id=inv_id) and (d->'items' is distinct from i.data->'items' or p->'reference' is distinct from i.reference or d->'assignments' is distinct from i.data->'assignments' or d->>'warehouse'<>i.data->>'warehouse' or d->>'scheduled_date'<>i.data->>'scheduled_date') then raise exception 'La base y las asignaciones quedan protegidas al comenzar el conteo'; end if;
+   if exists(select 1 from enjoy_private.events where inventory_id=inv_id) and (d->'items' is distinct from i.data->'items' or p->'reference' is distinct from i.reference or d->>'warehouse'<>i.data->>'warehouse' or d->>'scheduled_date'<>i.data->>'scheduled_date') then raise exception 'La base queda protegida al comenzar el conteo'; end if;
+   if exists(select 1 from enjoy_private.events ev where ev.inventory_id=inv_id and not exists(select 1 from jsonb_array_elements(d->'assignments') a where a->>'user_id'=ev.user_id::text and a->>'actor'=ev.actor)) then raise exception 'Conservá la persona y función que tienen actividad. Podés marcarla ausente o sin conteo'; end if;
+   if d->'assignments' is distinct from i.data->'assignments' then
+    if exists(select 1 from enjoy_private.events where inventory_id=inv_id) and length(trim(coalesce(p->>'participant_change_reason','')))<3 then raise exception 'Indicá el motivo del cambio de participantes'; end if;
+    update enjoy_private.inventories set approvals='{}',report=null where id=inv_id;
+    insert into enjoy_private.management_log(inventory_id,user_id,action,detail) values(inv_id,uid,'participants',jsonb_build_object('before',i.data->'assignments','after',d->'assignments','reason',p->>'participant_change_reason'));
+   end if;
    update enjoy_private.inventories set data=d-'id'-'version'-'closed_at'-'updated_at',reference=p->'reference',version=version+1,updated_at=now() where id=inv_id;
   else
    insert into enjoy_private.inventories(data,reference,created_by) values(d-'id'-'version',coalesce(p->'reference','{}'),uid) returning id into inv_id;
@@ -180,6 +202,7 @@ begin
    if old_event.user_id<>uid or old_event.inventory_id<>inv_id or old_event.payload<>e then raise exception 'Identificador de movimiento reutilizado'; end if;
    return jsonb_build_object('ok',true,'duplicate',true);
   end if;
+  if not exists(select 1 from jsonb_array_elements(i.data->'assignments') a where a->>'user_id'=uid::text and a->>'actor'=v_actor and coalesce((a->>'counts_enabled')::boolean,true) and not coalesce((a->>'absent')::boolean,false)) then raise exception 'Tu participación no incluye conteo. El encargado puede habilitarlo'; end if;
   if i.closed_at is not null or i.data->>'status'<>'ready' then raise exception 'El inventario no admite movimientos. Se conserva tu carga para revisión'; end if;
   if (i.data->>'scheduled_date')::date<>(now() at time zone 'America/Montevideo')::date and not coalesce((i.data->>'allow_late_sync')::boolean,false) then raise exception 'La fecha del inventario requiere revisión del supervisor para recibir cargas tardías'; end if;
   if coalesce((i.submissions->(uid::text||':'||v_actor)->>'submitted')::boolean,false) then raise exception 'Conteo entregado. Solicitá su reapertura'; end if;
@@ -200,7 +223,7 @@ begin
   insert into enjoy_private.events(id,inventory_id,user_id,actor,device_id,client_sequence,occurred_at,action,item_id,before_quantity,after_quantity,payload)
    values((e->>'id')::uuid,inv_id,uid,v_actor,e->>'device_id',(e->>'sequence')::bigint,(e->>'occurred_at')::timestamptz,e->>'action',item,c.quantity,new_qty,e);
   if e->>'action'='finish' then
-   if (select count(*) from enjoy_private.counts x where x.inventory_id=inv_id and x.user_id=uid and x.actor=v_actor)<>jsonb_array_length(i.data->'items') then raise exception 'Hay productos pendientes. Registrá cero cuando corresponda'; end if;
+   if not exists(select 1 from enjoy_private.counts x where x.inventory_id=inv_id and x.user_id=uid and x.actor=v_actor) then raise exception 'Registrá al menos un producto o solicitá participar sin conteo'; end if;
    update enjoy_private.inventories set submissions=jsonb_set(submissions,array[uid::text||':'||v_actor],jsonb_build_object('submitted',true,'at',now()),true) where id=inv_id;
   end if;
   update enjoy_private.inventories set updated_at=now() where id=inv_id;
@@ -208,13 +231,17 @@ begin
  end if;
  if not ismgr then raise exception 'Esta acción requiere permisos de gestión'; end if;
  if i.closed_at is not null and p_action not in ('adjustments','document') then raise exception 'Inventario cerrado'; end if;
- if p_action in ('approve','approve_many') then
+ if p_action='invitation' then
+  if coalesce((p->>'enabled')::boolean,false) and (i.approvals<>'{}'::jsonb or i.report is not null) then raise exception 'La revisión de cantidades ya comenzó. Revisá los participantes antes de habilitar nuevos ingresos'; end if;
+  update enjoy_private.inventories set join_enabled=coalesce((p->>'enabled')::boolean,false),join_token=case when coalesce((p->>'rotate')::boolean,false) then gen_random_uuid() else join_token end where id=inv_id;
+ elsif p_action in ('approve','approve_many') then
   for d in select value from jsonb_array_elements(case when p_action='approve_many' then p->'approvals' else jsonb_build_array(p) end) loop
   item:=d->>'item_id';val:=(d->>'quantity')::numeric;
   if val is null or val<0 or val>1000000000 or val<>round(val,6) or not exists(select 1 from jsonb_array_elements(i.data->'items') x where x->>'id'=item) then raise exception 'Cantidad o material inválido'; end if;
-  if exists(select 1 from jsonb_array_elements(i.data->'assignments') z where not coalesce((i.submissions->((z->>'user_id')||':'||(z->>'actor'))->>'submitted')::boolean,false)) then raise exception 'Primero deben entregarse los conteos'; end if;
+  if not exists(select 1 from enjoy_private.counts ct where ct.inventory_id=inv_id) then raise exception 'Faltan conteos'; end if;
+  if exists(select 1 from jsonb_array_elements(i.data->'assignments') z where coalesce((z->>'counts_enabled')::boolean,true) and not coalesce((z->>'absent')::boolean,false) and not coalesce((i.submissions->((z->>'user_id')||':'||(z->>'actor'))->>'submitted')::boolean,false)) then raise exception 'Primero deben entregarse los conteos de quienes cuentan'; end if;
   if length(trim(coalesce(d->>'comment','')))=0 then raise exception 'Indicá el criterio de autorización'; end if;
-  update enjoy_private.inventories set approvals=jsonb_set(approvals,array[item],jsonb_build_object('quantity',val,'reason',d->>'reason','comment',d->>'comment','user_id',uid,'at',now()),true),updated_at=now() where id=inv_id;
+  update enjoy_private.inventories set join_enabled=false,approvals=jsonb_set(approvals,array[item],jsonb_build_object('quantity',val,'reason',d->>'reason','comment',d->>'comment','user_id',uid,'at',now()),true),updated_at=now() where id=inv_id;
   end loop;
  elsif p_action='document' then
   d:=p->'document';if d->>'kind' not in ('csv','csv_2','mb52','reporte','acta','ajustes','consolidado','evidencia') then raise exception 'Tipo de archivo inválido'; end if;
@@ -235,11 +262,11 @@ begin
  elsif p_action='close' then
   if (select count(*) from jsonb_object_keys(i.approvals))<>jsonb_array_length(i.data->'items') then raise exception 'Faltan cantidades autorizadas'; end if;
   for v_assignment in select value from jsonb_array_elements(i.data->'assignments') loop
-   if not coalesce((i.submissions->((v_assignment->>'user_id')||':'||(v_assignment->>'actor'))->>'submitted')::boolean,false) then raise exception 'Faltan conteos entregados'; end if;
+   if coalesce((v_assignment->>'counts_enabled')::boolean,true) and not coalesce((v_assignment->>'absent')::boolean,false) and not coalesce((i.submissions->((v_assignment->>'user_id')||':'||(v_assignment->>'actor'))->>'submitted')::boolean,false) then raise exception 'Faltan conteos entregados'; end if;
   end loop;
   if i.data->>'procedure'='principal' and i.report is null then raise exception 'Falta incorporar el Reporte SAP'; end if;
   if not coalesce((p->>'confirmed')::boolean,false) then raise exception 'Confirmá la revisión final'; end if;
-  update enjoy_private.inventories set closed_at=now(),data=jsonb_set(data,'{status}','"closed"'),updated_at=now(),version=version+1 where id=inv_id;
+  update enjoy_private.inventories set join_enabled=false,closed_at=now(),data=jsonb_set(data,'{status}','"closed"'),updated_at=now(),version=version+1 where id=inv_id;
  else raise exception 'Acción desconocida'; end if;
  insert into enjoy_private.management_log(inventory_id,user_id,action,detail) values(inv_id,uid,p_action,p-'document'-'report');
  return enjoy_private.snapshot(inv_id);
