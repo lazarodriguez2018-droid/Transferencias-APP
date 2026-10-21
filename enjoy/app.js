@@ -42,6 +42,10 @@
     list = [],
     pkg = null,
     step = 0,
+    mode = "count",
+    dashboardArea = "counts",
+    highlightExplicit = false,
+    completion = "",
     actor = "",
     active = false,
     selected = null,
@@ -192,7 +196,7 @@
         `<div class="auth card"><p class="eyebrow">Solicitud recibida</p><h1>Tu acceso está pendiente</h1><p>Finanzas debe asignarte un rol y los almacenes en los que podés trabajar.</p>${button("refresh-profile", "Comprobar aprobación")}</div>`;
       return;
     }
-    await dashboard();
+    await routeFromLocation();
     sync();
   }
   async function bootAuth() {
@@ -209,7 +213,7 @@
         if (cached?.profile?.approved) {
           user = cached.user;
           profile = cached.profile;
-          await dashboard();
+          await routeFromLocation();
           return;
         }
       }
@@ -220,7 +224,7 @@
         if (cached?.profile?.approved) {
           user = cached.user;
           profile = cached.profile;
-          await dashboard();
+          await routeFromLocation();
           return;
         }
       }
@@ -228,24 +232,61 @@
       auth();
     }
   }
+  function route(name, id, replace = false) {
+    const hash = "#" + name + (id ? "/" + id : "");
+    if (location.hash !== hash)
+      history[replace ? "replaceState" : "pushState"](null, "", hash);
+  }
+  const assigned = (i) =>
+    i.assigned_to_me ??
+    (Array.isArray(i.assignments)
+      ? i.assignments.some((a) => a.user_id === user.id)
+      : !manager());
+  async function routeFromLocation() {
+    const [name, id] = location.hash.slice(1).split("/");
+    if (name === "configuracion" && id === "nuevo" && manager()) {
+      pkg = emptyPackage();
+      mode = "configure";
+      step = 0;
+      setActor();
+      return render();
+    }
+    if (id && ["conteo", "configuracion", "resultados"].includes(name))
+      return openInventory(
+        id,
+        { conteo: "count", configuracion: "configure", resultados: "results" }[
+          name
+        ],
+      );
+    dashboardArea = name === "administracion" && manager() ? "admin" : "counts";
+    return dashboard();
+  }
   async function dashboard() {
     stopGPS();
     pkg = null;
     view = "dashboard";
+    mode = "count";
+    if (!manager()) dashboardArea = "counts";
+    route(dashboardArea === "admin" ? "administracion" : "conteos");
     if (navigator.onLine) {
       list = await rpc("list");
       members = await rpc("members");
     } else list = (await S.packages(user.id)).map((p) => p.inventory);
     const cache = await S.packages(user.id),
-      ids = new Set(cache.map((p) => p.inventory.id));
+      ids = new Set(cache.map((p) => p.inventory.id)),
+      admin = dashboardArea === "admin",
+      visible = admin ? list : list.filter(assigned);
+    $("home").textContent = "Mis inventarios";
+    $("app").className = "";
     $("app").innerHTML =
-      `<div class="heading"><div><p class="eyebrow">${h(profile.role)} · Enjoy</p><h1>Hola, ${h(profile.name.split(" ")[0])}.</h1><p class="muted">Tus inventarios y el estado de cada conteo.</p></div><div class="actions">${manager() ? button("new", "+ Nuevo inventario", "") : ""}${profile.role === "finanzas" ? button("members", "Usuarios y permisos") : ""}</div></div><div class="grid">${list.map((i) => `<article class="card"><div class="row-open"><span class="pill">${h(i.status === "ready" ? "Listo para contar" : i.status === "scheduled" ? "Programado" : i.status === "closed" ? "Cerrado" : "Borrador")}</span><small>${h(i.warehouse)}</small></div><h2 style="margin-top:16px">${h(i.title)}</h2><p class="muted">${h(i.scheduled_date)} · ${i.procedure === "principal" ? "Inventario principal" : "Inventario de almacén"}</p><div class="row-open">${button("open", "Abrir inventario", "", `data-id="${i.id}"`)}<small>${ids.has(i.id) ? "Disponible en este dispositivo" : "Descargar al abrir"}</small></div></article>`).join("") || '<div class="card empty">No hay inventarios disponibles para hoy. Los programados aparecerán en la fecha asignada.</div>'}</div><div class="card"><h3>Preparado para trabajar sin conexión</h3><p class="muted">Abrí tu inventario con conexión antes de ir al almacén. Se guardan los productos, tus permisos y cada movimiento. Las nuevas asignaciones requieren una descarga.</p><div id="offline-ready"></div></div>`;
+      `<div class="heading"><div><p class="eyebrow">Enjoy · ${h(profile.name)}</p><h1>${admin ? "Preparar y revisar inventarios" : "Mis conteos"}</h1><p class="muted">${admin ? "Creá el inventario, asigná a las personas y revisá los resultados cuando entreguen su conteo." : "Abrí una tarea asignada y dedicá la pantalla a contar."}</p></div>${admin ? `<div class="actions">${button("new", "+ Crear inventario", "")}${profile.role === "finanzas" ? button("members", "Usuarios y permisos") : ""}</div>` : ""}</div>${manager() ? `<nav class="workspace-tabs" aria-label="Áreas de trabajo">${button("dashboard-counts", "Mis conteos", !admin ? "active" : "secondary")}${button("dashboard-admin", "Preparación y resultados", admin ? "active" : "secondary")}</nav>` : ""}<div class="grid">${visible.map((i) => `<article class="card inventory-card"><div class="row-open"><span class="pill">${h(i.status === "ready" ? "Listo para contar" : i.status === "scheduled" ? "Programado" : i.status === "closed" ? "Finalizado" : "En preparación")}</span><small>${h(i.warehouse)}</small></div><h2 style="margin-top:16px">${h(i.title)}</h2><p class="muted">${h(i.scheduled_date)} · ${i.procedure === "principal" ? "Inventario principal" : "Inventario de almacén"}</p><div class="actions">${admin ? `${button("open-configure", "Configuración", "secondary", `data-id="${i.id}"`)}${button("open-results", "Resultados y SAP", "", `data-id="${i.id}"`)}` : button("open", i.status === "closed" ? "Ver mi conteo" : "Abrir conteo", "", `data-id="${i.id}"`)}</div>${!admin ? `<small>${ids.has(i.id) ? "Disponible en este dispositivo" : "Se descarga al abrir con conexión"}</small>` : ""}</article>`).join("") || `<div class="card empty">${admin ? "Todavía no hay inventarios. Creá el primero para preparar las tareas." : "No tenés conteos disponibles. Los programados aparecerán en la fecha asignada."}</div>`}</div>${!admin ? `<div class="card offline-info"><h3>Continuá también sin conexión</h3><p class="muted">Abrí tu conteo con conexión antes de ir al almacén. Cada cantidad se guarda en este dispositivo y se envía al recuperar la señal.</p><div id="offline-ready"></div></div>` : ""}`;
     await status();
     const registration =
       await navigator.serviceWorker?.getRegistration("/enjoy/");
-    $("offline-ready").textContent = registration?.active
-      ? "Aplicación preparada · Verificá que tu inventario figure como disponible."
-      : "La preparación de la aplicación sigue en curso. Mantené esta pantalla abierta con conexión.";
+    if ($("offline-ready"))
+      $("offline-ready").textContent = registration?.active
+        ? "Aplicación preparada para abrir sin conexión."
+        : "Preparando la aplicación. Mantené esta pantalla abierta con conexión.";
   }
   function emptyPackage() {
     return {
@@ -272,7 +313,7 @@
       see_stock: true,
     };
   }
-  async function openInventory(id) {
+  async function openInventory(id, target = "count") {
     stopGPS();
     const cached = await S.get("packages", user.id + "|" + id);
     if (navigator.onLine) pkg = await Y.refresh(user.id, rpc, id);
@@ -282,7 +323,21 @@
       pkg = cached;
     }
     navigator.storage?.persist?.().catch(() => {});
-    step = pkg.manager ? (pkg.inventory.status === "draft" ? 0 : 4) : 4;
+    if (target !== "count" && !pkg.manager)
+      throw Error("No tenés acceso a la gestión de este inventario");
+    if (
+      target === "count" &&
+      !pkg.inventory.assignments.some((a) => a.user_id === user.id)
+    )
+      throw Error("Este inventario no tiene un conteo asignado a tu usuario");
+    mode = target;
+    step = mode === "configure" ? 0 : mode === "results" ? 5 : 4;
+    route(
+      { count: "conteo", configure: "configuracion", results: "resultados" }[
+        mode
+      ],
+      id,
+    );
     setActor();
     render();
     await status();
@@ -291,6 +346,9 @@
     const own = pkg.inventory.assignments.filter((a) => a.user_id === user.id);
     actor = own.some((a) => a.actor === actor) ? actor : own[0]?.actor || "";
     selected = null;
+    results = [];
+    completion = "";
+    highlightExplicit = false;
     index = SucaneitorSearch.createSearchIndex(
       pkg.inventory.items.map((i) => ({
         ...i,
@@ -349,14 +407,32 @@
       version: pkg.inventory.version || 0,
     });
     await S.savePackage(user.id, pkg);
+    if (mode === "configure") route("configuracion", pkg.inventory.id, true);
     setActor();
+  }
+  function areaSteps() {
+    return mode === "configure"
+      ? [0, 1, 2, 3]
+      : mode === "results"
+        ? [5, 6, 7]
+        : [4];
   }
   function render() {
     view = "inventory";
-    const inv = pkg.inventory;
-    const allowed = pkg.manager ? C.STEPS.map((_, i) => i) : [4];
+    const inv = pkg.inventory,
+      allowed = areaSteps();
+    if (!allowed.includes(step)) step = allowed[0];
+    $("home").textContent = mode === "count" ? "Mis conteos" : "Inventarios";
+    $("app").className =
+      mode === "count" ? "count-workspace" : "management-workspace";
+    const title =
+      mode === "count"
+        ? "Conteo"
+        : mode === "configure"
+          ? "Configuración del inventario"
+          : "Resultados y SAP";
     $("app").innerHTML =
-      `<div class="heading"><div><p class="eyebrow">${h(inv.warehouse)} · ${h(inv.scheduled_date)} <span class="pill">${h(inv.status)}</span></p><h1>${h(inv.title || "Nuevo inventario")}</h1><small>${pkg.downloaded_at ? "Descargado: " + date(pkg.downloaded_at) : inv.id ? "Configuración guardada" : "Completá los datos para guardar el borrador."}</small></div>${pkg.manager ? button("activity", "Actividad y ubicación") : ""}</div><nav class="steps" aria-label="Pasos del inventario">${allowed.map((s) => button("step", `${s + 1}. ${C.STEPS[s]}`, s === step ? "active" : "", `data-step="${s}"`)).join("")}</nav><div id="step-content"></div>${pkg.manager ? `<div class="footer"><div>${step > 0 ? button("back", "← Atrás") : ""}</div><div class="inline">${button("save-exit", "Guardar y salir")}${step < 7 ? button("next", "Siguiente →", "") : ""}</div></div>` : ""}`;
+      `<div class="heading"><div><p class="eyebrow">${title} · ${h(inv.warehouse)} · ${h(inv.scheduled_date)}</p><h1>${h(inv.title || "Nuevo inventario")}</h1><small>${mode === "count" ? "Buscá, seleccioná y sumá cantidades." : mode === "configure" ? "Prepará la base y las asignaciones antes de comenzar a contar." : "Compará las planillas y generá los archivos de cierre."}</small></div>${mode === "results" ? button("activity", "Actividad y ubicación") : ""}</div>${mode !== "count" ? `<nav class="steps" aria-label="${mode === "configure" ? "Pasos de configuración" : "Pasos de resultados"}">${allowed.map((n, k) => button("step", `${k + 1}. ${C.STEPS[n]}`, n === step ? "active" : "", `data-step="${n}"`)).join("")}</nav>` : ""}<div id="step-content"></div>${mode !== "count" ? `<div class="footer"><div>${step > allowed[0] ? button("back", "← Atrás") : ""}</div><div class="inline">${button("save-exit", mode === "configure" ? "Guardar y salir" : "Volver a inventarios")}${step < allowed.at(-1) ? button("next", "Siguiente →", "") : ""}</div></div>` : ""}`;
     renderStep();
   }
   function renderStep() {
@@ -465,7 +541,14 @@
         inv.status === "ready" &&
         !submitted &&
         (inv.scheduled_date === C.today() || inv.allow_late_sync);
-    return `<section class="card"><div class="countbar"><div><h2>5. Conteo ${actor ? "· " + h(actor) : ""}</h2><small>${own.length > 1 ? `<select id="actor-select" aria-label="Función de conteo">${own.map((a) => option(a.actor, a.actor, actor)).join("")}</select>` : ""}${rows.length} / ${inv.items.length} productos registrados · ${pkg.see_stock ? "Stock visible" : "Conteo ciego"}</small></div>${actor && can ? button(active ? "pause" : "start", active ? "Pausar conteo" : "Iniciar conteo", active ? "secondary" : "") : ""}</div><progress value="${rows.length}" max="${inv.items.length || 1}"></progress>${!actor ? '<div class="warning">No estás asignado para contar. Podés revisar y gestionar este inventario desde los siguientes pasos.</div>' : submitted ? '<div class="warning">Conteo entregado. El supervisor puede reabrirlo si hace falta corregirlo.</div>' : !can ? '<div class="warning">El conteo todavía no está habilitado para esta fecha. La configuración corresponde al supervisor.</div>' : ""}${actor && can ? `<div class="grid" style="margin-top:16px"><div><label>Sector (opcional)<input id="sector" value="${h(sessionStorage.getItem("enjoy_sector_" + inv.id) || "")}" placeholder="Ej. cámara de frío"></label></div><div><p class="muted subtle" id="gps-status">Ubicación: ${h(EnjoyGPS.get().state)}. Se registra automáticamente durante el conteo activo.</p></div></div><label class="searchbox">Buscar producto<input id="search" type="search" placeholder="Nombre, código o código de barras" autocomplete="off" enterkeyhint="next" ${!active ? "disabled" : ""} role="combobox" aria-autocomplete="list" aria-controls="results" aria-expanded="false"></label><ul id="results" class="results" role="listbox"></ul><div id="quantity-area"></div><small>Enter selecciona el producto. La siguiente cantidad se suma y el cursor vuelve al buscador.</small>` : ""}<div class="actions">${actor && can ? button("finish", "Entregar mi conteo") : ""}${button("count-xlsx", "Descargar mi planilla")}</div><div class="table-wrap"><table><thead><tr><th>Material / lote</th><th>Producto</th>${pkg.see_stock ? "<th>Stock</th>" : ""}<th>Mi conteo</th><th>Corregir</th></tr></thead><tbody id="count-table">${countRows()}</tbody></table></div></section><details class="card"><summary>Movimientos pendientes de sincronizar</summary><div id="pending-events"></div></details>`;
+    return `<section class="card count-card"><div class="countbar"><div><h2>${actor === "auditor" ? "Conteo del auditor" : "Conteo del responsable"}</h2><small>${own.length > 1 ? `<select id="actor-select" aria-label="Función de conteo">${own.map((a) => option(a.actor, a.actor, actor)).join("")}</select>` : ""}<span id="count-progress-text">${rows.length} de ${inv.items.length} productos contados</span> · ${pkg.see_stock ? "Stock visible" : "Conteo ciego"}</small></div>${actor && can ? button(active ? "pause" : "start", active ? "Pausar" : "Iniciar conteo", active ? "secondary" : "") : ""}</div><progress id="count-progress" value="${rows.length}" max="${inv.items.length || 1}"></progress>${submitted ? '<div class="warning">Conteo entregado. El supervisor puede reabrirlo si hace falta corregirlo.</div>' : !can ? '<div class="warning">El supervisor todavía no habilitó el conteo para esta fecha.</div>' : ""}${actor && can ? `<div class="lookup"><label for="search">¿Qué producto estás contando?</label><div class="autocomplete"><div id="search-ghost" class="search-ghost" aria-hidden="true"></div><input id="search" type="search" placeholder="Nombre, código o código de barras" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="next" ${!active ? "disabled" : ""} role="combobox" aria-autocomplete="both" aria-controls="results" aria-expanded="false"><button id="clear-search" type="button" aria-label="Borrar búsqueda" hidden>×</button></div><div id="search-popup" class="search-popup" hidden><p id="search-caption" class="search-caption"></p><ul id="results" class="results" role="listbox" aria-label="Productos sugeridos"></ul></div><p id="search-status" class="search-help" role="status">${active ? "Escribí para ver sugerencias. Enter elige el producto." : "Iniciá el conteo para buscar y sumar cantidades."}</p></div><div id="quantity-area"></div><p id="count-feedback" class="count-feedback" role="status"></p><details class="count-options"><summary>Ubicación y sector</summary><div class="grid"><label>Sector (opcional)<input id="sector" value="${h(sessionStorage.getItem("enjoy_sector_" + inv.id) || "")}" placeholder="Ej. cámara de frío"></label><p class="muted subtle" id="gps-status">Ubicación: ${h(EnjoyGPS.get().state)}. Se registra durante el conteo activo.</p></div></details>` : ""}<details class="count-history" open><summary>Productos y correcciones</summary><div class="table-wrap"><table><thead><tr><th>Material / lote</th><th>Producto</th>${pkg.see_stock ? "<th>Stock</th>" : ""}<th>Mi conteo</th><th>Corregir</th></tr></thead><tbody id="count-table">${countRows()}</tbody></table></div></details><div class="actions count-actions">${actor && can ? button("finish", "Entregar mi conteo", "") : ""}${button("count-xlsx", "Descargar mi conteo", "quiet")}</div></section><details class="card"><summary>Guardado y sincronización</summary><div id="pending-events"></div></details>`;
+  }
+  function updateProgress() {
+    const rows = ownRows();
+    if ($("count-progress")) $("count-progress").value = rows.length;
+    if ($("count-progress-text"))
+      $("count-progress-text").textContent =
+        `${rows.length} de ${pkg.inventory.items.length} productos contados`;
   }
   function countRows() {
     return pkg.inventory.items
@@ -478,9 +561,14 @@
   function bindCount() {
     const search = $("search");
     search?.addEventListener("input", () => showResults(search.value));
+    search?.addEventListener("focus", () => {
+      if (active && !selected) showResults(search.value);
+    });
     search?.addEventListener("keydown", (e) => {
+      if (e.isComposing) return;
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
+        if (!results.length) showResults(search.value);
         highlight = Math.max(
           0,
           Math.min(
@@ -488,13 +576,30 @@
             highlight + (e.key === "ArrowDown" ? 1 : -1),
           ),
         );
+        highlightExplicit = true;
         drawResults();
-      }
-      if (e.key === "Enter") {
+        document
+          .getElementById("suggestion-" + highlight)
+          ?.scrollIntoView({ block: "nearest" });
+      } else if (e.key === "Enter") {
         e.preventDefault();
-        chooseResult();
+        chooseResult(highlight, highlightExplicit);
+      } else if (
+        (e.key === "Tab" || e.key === "ArrowRight") &&
+        completion &&
+        search.selectionStart === search.value.length &&
+        search.selectionEnd === search.value.length
+      ) {
+        e.preventDefault();
+        search.value = completion;
+        showResults(search.value);
+        search.setSelectionRange(search.value.length, search.value.length);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        clearLookup();
       }
     });
+    $("clear-search")?.addEventListener("click", clearLookup);
     $("actor-select")?.addEventListener("change", (e) => {
       if (active) {
         toast("Pausá el conteo antes de cambiar de función");
@@ -513,67 +618,114 @@
     pendingHTML();
     if (active) search?.focus();
   }
+  function clearLookup() {
+    selected = null;
+    results = [];
+    completion = "";
+    highlightExplicit = false;
+    if ($("quantity-area")) $("quantity-area").innerHTML = "";
+    const search = $("search");
+    if (search) {
+      search.value = "";
+      search.focus();
+      showResults("");
+    }
+  }
+  function closeSuggestions() {
+    if ($("search-popup")) $("search-popup").hidden = true;
+    if ($("search-ghost")) $("search-ghost").innerHTML = "";
+    $("search")?.setAttribute("aria-expanded", "false");
+    $("search")?.removeAttribute("aria-activedescendant");
+    completion = "";
+  }
   function showResults(query) {
     highlight = 0;
+    highlightExplicit = false;
     selected = null;
     $("quantity-area").innerHTML = "";
-    const q = query.trim(),
-      numeric = /^\d+$/.test(q),
-      normalized = numeric ? C.code(q) : q;
-    const exact = index
-      .filter((e) => e.product.barcode === q || e.product.code === normalized)
-      .map((e) => e.product);
-    const partial = index
-      .filter((e) => e.product.barcode && e.product.barcode.includes(q))
-      .map((e) => e.product);
-    const ranked = [
-      ...SucaneitorSearch.searchByCode(index, normalized, 30),
-      ...SucaneitorSearch.rankProducts(index, q, {}, 30),
-    ].map((e) => e.product);
-    results = q
-      ? [
-          ...new Map(
-            [...exact, ...partial, ...ranked].map((i) => [i.id, i]),
-          ).values(),
-        ].slice(0, 30)
-      : [];
+    if (query.trim())
+      results = EnjoyFinder.find(index, query, SucaneitorSearch);
+    else {
+      const recent = ownRows()
+        .slice()
+        .sort((a, b) =>
+          String(b.updated_at || "").localeCompare(String(a.updated_at || "")),
+        )
+        .map((c) => pkg.inventory.items.find((i) => i.id === c.item_id))
+        .filter(Boolean);
+      results = recent.slice(0, 5);
+    }
     drawResults();
   }
-  function drawResults() {
-    const el = $("results");
-    el.innerHTML = results
-      .map(
-        (i, k) =>
-          `<li role="option" aria-selected="${k === highlight}"><button data-result="${k}" class="${k === highlight ? "selected" : ""}"><strong>${h(i.name)}</strong><small style="display:block">${h(i.code)} · Lote ${h(i.lot || "sin lote")} · ${h(i.unit)}</small></button></li>`,
-      )
+  function marked(text, query) {
+    return EnjoyFinder.segments(text, query)
+      .map((p) => (p.match ? `<mark>${h(p.text)}</mark>` : h(p.text)))
       .join("");
-    $("search").setAttribute("aria-expanded", String(results.length > 0));
+  }
+  function drawResults() {
+    const search = $("search"),
+      query = search.value.trim(),
+      el = $("results");
+    el.innerHTML = results
+      .map((i, k) => {
+        const row = ownRows().find((c) => c.item_id === i.id);
+        return `<li id="suggestion-${k}" role="option" aria-selected="${k === highlight}" class="${k === highlight ? "selected" : ""}"><button type="button" data-result="${k}" tabindex="-1"><span class="suggestion-main"><strong>${marked(i.name, query)}</strong><small>${marked(i.code, query)} · ${h(i.unit)}${i.barcode ? ` · Barras ${marked(i.barcode, query)}` : ""}</small></span><span class="suggestion-side"><span class="lot-tag">${h(i.lot || "Sin lote")}</span><small>${row ? "Contado: " + n(row.quantity) : "Sin contar"}</small></span></button></li>`;
+      })
+      .join("");
+    $("search-popup").hidden = !results.length;
+    search.setAttribute("aria-expanded", String(results.length > 0));
+    if (results[highlight])
+      search.setAttribute("aria-activedescendant", "suggestion-" + highlight);
+    else search.removeAttribute("aria-activedescendant");
+    $("search-caption").textContent = query
+      ? "Elegí el producto y su lote"
+      : "Usados recientemente";
+    $("search-status").textContent = query
+      ? results.length
+        ? `${results.length} sugerencias · ↑ ↓ elegir · Enter cantidad · Tab completar`
+        : "No encontramos ese producto. Probá con otra palabra, código o código de barras."
+      : "Escribí un nombre o código. Elegí una sugerencia y presioná Enter.";
+    $("clear-search").hidden = !search.value;
+    completion = EnjoyFinder.completion(search.value, results[highlight]);
+    $("search-ghost").innerHTML = completion
+      ? `<span class="ghost-prefix">${h(search.value)}</span><span>${h(completion.slice(search.value.length))}</span>`
+      : "";
   }
   function chooseResult(k = highlight, explicit = false) {
-    if (!results[k]) {
-      toast("No hay un producto seleccionado");
+    if (!results[k] || (!$("search").value.trim() && !explicit)) {
+      $("search-status").textContent =
+        "Escribí para buscar o tocá un producto de la lista.";
       return;
     }
     const candidate = results[k],
+      query = $("search").value.trim(),
       exact = results.filter(
-        (i) =>
-          i.code === C.code($("search").value.trim()) ||
-          (i.barcode && i.barcode === $("search").value.trim()),
+        (i) => i.code === C.code(query) || (i.barcode && i.barcode === query),
       );
     if (!explicit && exact.length > 1) {
-      toast("Este código tiene varios lotes. Elegí el lote en los resultados.");
+      $("search-status").textContent =
+        "Este código tiene varios lotes. Elegí con ↑ ↓ y Enter, o tocá el lote correcto.";
       return;
     }
     selected = candidate;
     const current = ownRows().find((c) => c.item_id === selected.id);
-    $("results").innerHTML = "";
-    $("search").setAttribute("aria-expanded", "false");
+    closeSuggestions();
+    $("search").value = selected.name;
+    $("clear-search").hidden = false;
+    $("search-status").textContent =
+      "Producto seleccionado. Ingresá la cantidad a sumar.";
     $("quantity-area").innerHTML =
-      `<div class="selected-item"><strong>${h(selected.name)}</strong><small style="display:block">${h(selected.code)} · Lote ${h(selected.lot || "sin lote")} · ${h(selected.unit)} · Total contado: ${current ? n(current.quantity) : "sin contar"}</small><form id="quantity-form" class="count-entry"><label>Cantidad a sumar<input id="quantity" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="0" required></label><button>Sumar ↵</button></form></div>`;
+      `<div class="selected-item"><div class="selected-product"><div><strong>${h(selected.name)}</strong><small>${h(selected.code)} · ${h(selected.lot || "Sin lote")} · ${h(selected.unit)}</small></div><div class="selected-total"><small>Total contado</small><strong>${current ? n(current.quantity) : "—"} <small>${h(selected.unit)}</small></strong></div></div><form id="quantity-form" class="count-entry"><label>Cantidad a sumar<input id="quantity" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="0" required></label><button>Sumar ↵</button></form><small class="quantity-help">Enter suma y vuelve al buscador · Esc cambia de producto</small></div>`;
     $("quantity-form").onsubmit = (e) => {
       e.preventDefault();
       guarded(() => addQuantity("add", $("quantity").value, selected.id));
     };
+    $("quantity").addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        clearLookup();
+      }
+    });
     $("quantity").focus();
   }
   async function record(action, item, value, extra = {}) {
@@ -607,12 +759,16 @@
       action,
       value,
     );
+    const item = pkg.inventory.items.find((i) => i.id === id);
     await record(action, id, value);
     selected = null;
     if ($("quantity-area")) $("quantity-area").innerHTML = "";
     if ($("count-table")) $("count-table").innerHTML = countRows();
     await pendingHTML();
-    toast("Cantidad guardada en este dispositivo");
+    updateProgress();
+    if ($("count-feedback"))
+      $("count-feedback").textContent =
+        `${action === "set" ? "Total actualizado" : action === "subtract" ? "Restaste " + n(C.number(value)) + " " + item.unit : "Sumaste " + n(C.number(value)) + " " + item.unit} · ${item.name}${item.lot ? " (" + item.lot + ")" : ""} · Total: ${n(ownRows().find((c) => c.item_id === id)?.quantity)} ${item.unit}`;
     if ($("search")) {
       $("search").value = "";
       $("search").focus();
@@ -657,6 +813,7 @@
         await pendingHTML();
         if (view === "inventory" && step === 4 && $("count-table"))
           $("count-table").innerHTML = countRows();
+        updateProgress();
       }
       await status();
     });
@@ -665,15 +822,15 @@
     const rows = C.comparison(pkg),
       m = C.metrics(rows),
       name = names();
-    return `<section class="card"><h2>6. Comparar y autorizar cantidades</h2><p class="muted">Los conteos permanecen separados. Autorizá la cantidad que se trasladará al CSV y registrá el criterio.</p><div class="kpis"><div class="kpi"><strong>${m.approved}/${m.total}</strong><span>Autorizados</span></div><div class="kpi"><strong>${m.exactRate == null ? "—" : n(m.exactRate * 100) + "%"}</strong><span>Exactitud estricta</span></div><div class="kpi"><strong>${m.within1000}</strong><span>Diferencia menor a $1.000</span></div></div><div class="actions">${button("xlsx", "Descargar comparativo Excel")}${pkg.inventory.status !== "closed" ? button("approve-batch", "Autorizar desde un conteo") : ""}</div><div id="batch-area"></div>${pkg.inventory.assignments.map((a) => `<p><strong>${h(a.actor)}: ${h(name[a.user_id] || a.user_id)}</strong> · ${pkg.submissions[a.user_id + ":" + a.actor]?.submitted ? "Entregado" : "Pendiente"} ${pkg.submissions[a.user_id + ":" + a.actor]?.submitted && pkg.inventory.status !== "closed" ? button("reopen", "Reabrir", "quiet", `data-assignment="${a.user_id}:${a.actor}"`) : ""}</p>`).join("")}<div class="table-wrap"><table><thead><tr><th>Material / lote</th><th>Stock</th><th>Responsable</th><th>Auditor</th><th>Autorizado</th><th>Diferencia</th><th></th></tr></thead><tbody>${rows.map((r) => `<tr><td>${h(r.name)}<small>${h(r.code)} · ${h(r.lot || "Sin lote")} · ${h(r.unit)}</small></td><td>${n(r.stock)}</td><td>${n(r.entries.find((c) => c.actor === "responsable")?.quantity)}</td><td>${n(r.entries.find((c) => c.actor === "auditor")?.quantity)}</td><td>${n(r.approved)}</td><td>${n(r.diff)}</td><td>${pkg.inventory.status !== "closed" ? button("approve", "Autorizar", "secondary", `data-id="${h(r.id)}"`) : ""}</td></tr>`).join("")}</tbody></table></div><div id="approve-area"></div></section>`;
+    return `<section class="card"><h2>Comparar y autorizar cantidades</h2><p class="muted">Los conteos permanecen separados. Autorizá la cantidad que se trasladará al CSV y registrá el criterio.</p><div class="kpis"><div class="kpi"><strong>${m.approved}/${m.total}</strong><span>Autorizados</span></div><div class="kpi"><strong>${m.exactRate == null ? "—" : n(m.exactRate * 100) + "%"}</strong><span>Exactitud estricta</span></div><div class="kpi"><strong>${m.within1000}</strong><span>Diferencia menor a $1.000</span></div></div><div class="actions">${button("xlsx", "Descargar comparativo Excel")}${pkg.inventory.status !== "closed" ? button("approve-batch", "Autorizar desde un conteo") : ""}</div><div id="batch-area"></div>${pkg.inventory.assignments.map((a) => `<p><strong>${h(a.actor)}: ${h(name[a.user_id] || a.user_id)}</strong> · ${pkg.submissions[a.user_id + ":" + a.actor]?.submitted ? "Entregado" : "Pendiente"} ${pkg.submissions[a.user_id + ":" + a.actor]?.submitted && pkg.inventory.status !== "closed" ? button("reopen", "Reabrir", "quiet", `data-assignment="${a.user_id}:${a.actor}"`) : ""}</p>`).join("")}<div class="table-wrap"><table><thead><tr><th>Material / lote</th><th>Stock</th><th>Responsable</th><th>Auditor</th><th>Autorizado</th><th>Diferencia</th><th></th></tr></thead><tbody>${rows.map((r) => `<tr><td>${h(r.name)}<small>${h(r.code)} · ${h(r.lot || "Sin lote")} · ${h(r.unit)}</small></td><td>${n(r.stock)}</td><td>${n(r.entries.find((c) => c.actor === "responsable")?.quantity)}</td><td>${n(r.entries.find((c) => c.actor === "auditor")?.quantity)}</td><td>${n(r.approved)}</td><td>${n(r.diff)}</td><td>${pkg.inventory.status !== "closed" ? button("approve", "Autorizar", "secondary", `data-id="${h(r.id)}"`) : ""}</td></tr>`).join("")}</tbody></table></div><div id="approve-area"></div></section>`;
   }
   function sapHTML() {
-    return `<section class="card"><h2>7. Circuito SAP</h2><p class="muted">Vinculá el CSV inicial y luego CSV_2. Los documentos SAP pueden ser distintos entre etapas. Se mantienen materiales, lotes y posiciones.</p><div class="grid"><label>Etapa del archivo<select id="sap-kind"><option value="csv">CSV inicial · MI04</option><option value="csv_2">CSV_2 · MI08</option></select></label><label class="file">Vincular plantilla SAP<input id="sap-file" type="file" accept=".csv" ${pkg.inventory.status === "closed" ? "disabled" : ""}></label><label class="file">Incorporar Reporte SAP final<input id="report-file" type="file" accept=".xlsx,.xls" ${pkg.inventory.status === "closed" ? "disabled" : ""}></label></div><div class="grid">${field("Fecha de conteo para CSV", "count-date", pkg.inventory.scheduled_date, "date")}${field("Fecha de ingreso en SAP", "entry-date", C.today(), "date")}</div><div class="table-wrap"><table><thead><tr><th>Archivo</th><th>Etapa</th><th>Documento</th><th>Acciones</th></tr></thead><tbody>${pkg.documents.map((d, k) => `<tr><td>${h(d.name)}<small>${date(d.at)}</small></td><td>${h(d.kind)}${d.generated ? " · generado" : ""}</td><td>${h((d.documents || []).join(", "))}</td><td>${d.path ? button("download-original", "Original", "quiet", `data-index="${k}"`) : ""}${d.sap ? button("export-csv", "Completar y descargar", "", `data-index="${k}"`) : ""}</td></tr>`).join("")}</tbody></table></div>${pkg.report ? `<p class="good">Reporte incorporado: ${pkg.report.items.length} posiciones · Documento ${h(pkg.report.documents.join(", "))}.</p>` : ""}<div class="warning">Descargar un CSV no confirma su carga en SAP. Generá y verificá el documento en SAP y vinculá después su reporte.</div></section>`;
+    return `<section class="card"><h2>Archivos y reporte SAP</h2><p class="muted">Vinculá el CSV inicial y luego CSV_2. Los documentos SAP pueden ser distintos entre etapas. Se mantienen materiales, lotes y posiciones.</p><div class="grid"><label>Etapa del archivo<select id="sap-kind"><option value="csv">CSV inicial · MI04</option><option value="csv_2">CSV_2 · MI08</option></select></label><label class="file">Vincular plantilla SAP<input id="sap-file" type="file" accept=".csv" ${pkg.inventory.status === "closed" ? "disabled" : ""}></label><label class="file">Incorporar Reporte SAP final<input id="report-file" type="file" accept=".xlsx,.xls" ${pkg.inventory.status === "closed" ? "disabled" : ""}></label></div><div class="grid">${field("Fecha de conteo para CSV", "count-date", pkg.inventory.scheduled_date, "date")}${field("Fecha de ingreso en SAP", "entry-date", C.today(), "date")}</div><div class="table-wrap"><table><thead><tr><th>Archivo</th><th>Etapa</th><th>Documento</th><th>Acciones</th></tr></thead><tbody>${pkg.documents.map((d, k) => `<tr><td>${h(d.name)}<small>${date(d.at)}</small></td><td>${h(d.kind)}${d.generated ? " · generado" : ""}</td><td>${h((d.documents || []).join(", "))}</td><td>${d.path ? button("download-original", "Original", "quiet", `data-index="${k}"`) : ""}${d.sap ? button("export-csv", "Completar y descargar", "", `data-index="${k}"`) : ""}</td></tr>`).join("")}</tbody></table></div>${pkg.report ? `<p class="good">Reporte incorporado: ${pkg.report.items.length} posiciones · Documento ${h(pkg.report.documents.join(", "))}.</p>` : ""}<div class="warning">Descargar un CSV no confirma su carga en SAP. Generá y verificá el documento en SAP y vinculá después su reporte.</div></section>`;
   }
   function closeHTML() {
     const rows = C.comparison(pkg),
       m = C.metrics(rows);
-    return `<section class="card"><h2>8. Cierre, ajustes y acta</h2><div class="kpis"><div class="kpi"><strong>${m.approved}/${m.total}</strong><span>Autorizados</span></div><div class="kpi"><strong>${n(m.net)}</strong><span>Diferencia neta estimada UYU</span></div><div class="kpi"><strong>${pkg.report ? n(pkg.report.totals.differenceValue) : "—"}</strong><span>Diferencia Reporte SAP</span></div></div><p class="muted">El acta incluye participantes, indicadores, diferencias, justificaciones y ajustes. Se emite como borrador hasta cerrar el inventario.</p><div class="actions">${button("acta", "Descargar acta Word", "")}${button("xlsx", "Excel completo")}${pkg.inventory.warehouse === "AL05" ? button("consolidate", "Consolidar AL05") : ""}</div><h3>Ajustes posteriores</h3><p class="muted">Una propuesta no equivale a un ajuste ejecutado en SAP. Registrá su evidencia y fecha cuando se complete.</p><div class="table-wrap"><table><thead><tr><th>Material / lote</th><th>Cantidad</th><th>Estado</th><th>Fecha y evidencia</th></tr></thead><tbody>${pkg.adjustments.map((a) => `<tr><td>${h(a.code)} · ${h(a.lot)}</td><td>${n(a.quantity)}</td><td>${a.executed ? "Ejecutado" : "Propuesto"}</td><td>${h(a.date)} ${h(a.evidence)}</td></tr>`).join("")}</tbody></table></div>${`<form id="adjust-form" class="card"><div class="grid"><label>Material / lote<select name="item">${pkg.inventory.items.map((i) => option(i.id, i.code + " · " + i.lot + " · " + i.name, "")).join("")}</select></label>${field("Cantidad final propuesta", "quantity", "", "text", 'inputmode="decimal" required')}${field("Fecha", "date", C.today(), "date")}${field("Documento SAP o evidencia", "evidence", "")}</div><label class="check"><input name="executed" type="checkbox">Ajuste ejecutado y verificado en SAP</label><button>Registrar ajuste</button></form>`}${pkg.inventory.status !== "closed" ? `<label class="check"><input id="close-confirm" type="checkbox">Revisé las cantidades, las entregas, las justificaciones y el Reporte SAP</label>${button("close", "Cerrar inventario", "")}` : `<p class="good">Inventario cerrado el ${date(pkg.inventory.closed_at)}. Los movimientos y documentos quedan conservados.</p>`}</section>`;
+    return `<section class="card"><h2>Cierre, ajustes y acta</h2><div class="kpis"><div class="kpi"><strong>${m.approved}/${m.total}</strong><span>Autorizados</span></div><div class="kpi"><strong>${n(m.net)}</strong><span>Diferencia neta estimada UYU</span></div><div class="kpi"><strong>${pkg.report ? n(pkg.report.totals.differenceValue) : "—"}</strong><span>Diferencia Reporte SAP</span></div></div><p class="muted">El acta incluye participantes, indicadores, diferencias, justificaciones y ajustes. Se emite como borrador hasta cerrar el inventario.</p><div class="actions">${button("acta", "Descargar acta Word", "")}${button("xlsx", "Excel completo")}${pkg.inventory.warehouse === "AL05" ? button("consolidate", "Consolidar AL05") : ""}</div><h3>Ajustes posteriores</h3><p class="muted">Una propuesta no equivale a un ajuste ejecutado en SAP. Registrá su evidencia y fecha cuando se complete.</p><div class="table-wrap"><table><thead><tr><th>Material / lote</th><th>Cantidad</th><th>Estado</th><th>Fecha y evidencia</th></tr></thead><tbody>${pkg.adjustments.map((a) => `<tr><td>${h(a.code)} · ${h(a.lot)}</td><td>${n(a.quantity)}</td><td>${a.executed ? "Ejecutado" : "Propuesto"}</td><td>${h(a.date)} ${h(a.evidence)}</td></tr>`).join("")}</tbody></table></div>${`<form id="adjust-form" class="card"><div class="grid"><label>Material / lote<select name="item">${pkg.inventory.items.map((i) => option(i.id, i.code + " · " + i.lot + " · " + i.name, "")).join("")}</select></label>${field("Cantidad final propuesta", "quantity", "", "text", 'inputmode="decimal" required')}${field("Fecha", "date", C.today(), "date")}${field("Documento SAP o evidencia", "evidence", "")}</div><label class="check"><input name="executed" type="checkbox">Ajuste ejecutado y verificado en SAP</label><button>Registrar ajuste</button></form>`}${pkg.inventory.status !== "closed" ? `<label class="check"><input id="close-confirm" type="checkbox">Revisé las cantidades, las entregas, las justificaciones y el Reporte SAP</label>${button("close", "Cerrar inventario", "")}` : `<p class="good">Inventario cerrado el ${date(pkg.inventory.closed_at)}. Los movimientos y documentos quedan conservados.</p>`}</section>`;
   }
   async function uploadDocument(file, kind, extra, report) {
     if (!pkg.inventory.id) await save();
@@ -802,15 +959,26 @@
     if (action === "login") return auth();
     if (action === "register") return auth(true);
     if (action === "refresh-profile") return enter(user);
+    if (action === "dashboard-counts" || action === "dashboard-admin") {
+      dashboardArea = action === "dashboard-admin" ? "admin" : "counts";
+      return dashboard();
+    }
     if (action === "dashboard") return dashboard();
     if (action === "members") return memberScreen();
     if (action === "new") {
       pkg = emptyPackage();
+      mode = "configure";
       step = 0;
+      route("configuracion", "nuevo");
       setActor();
       return render();
     }
-    if (action === "open") return openInventory(b.dataset.id);
+    if (action === "open") return openInventory(b.dataset.id, "count");
+    if (action === "open-configure" || action === "open-results")
+      return openInventory(
+        b.dataset.id,
+        action === "open-configure" ? "configure" : "results",
+      );
     if (action === "return-step") return renderStep();
     if (action === "activity") return activity();
     if (action === "step" || action === "back" || action === "next") {
@@ -821,19 +989,24 @@
         action === "step"
           ? +b.dataset.step
           : step + (action === "next" ? 1 : -1);
+      if (!areaSteps().includes(step)) step = areaSteps().at(-1);
       return render();
     }
     if (action === "save-exit") {
       if (active) await pause();
       if (step < 4 && pkg.inventory.status !== "closed") await save();
+      dashboardArea = "admin";
       return dashboard();
     }
     if (action === "schedule" || action === "publish") {
       await save(action === "schedule" ? "scheduled" : "ready");
       toast(
-        action === "publish" ? "Conteo habilitado" : "Inventario programado",
+        action === "publish"
+          ? "Inventario preparado. El conteo se abre desde Mis conteos."
+          : "Inventario programado",
       );
-      return render();
+      dashboardArea = "admin";
+      return dashboard();
     }
     if (action === "start") return start();
     if (action === "pause") return pause();
@@ -867,10 +1040,7 @@
       $("correction-form").elements.namedItem("value").focus();
       return;
     }
-    if (action === "cancel-correction") {
-      $("quantity-area").innerHTML = "";
-      return $("search").focus();
-    }
+    if (action === "cancel-correction") return clearLookup();
     if (action === "approve-batch") {
       $("batch-area").innerHTML =
         `<form id="batch-form" class="card"><h3>Autorizar cantidades desde un conteo entregado</h3><p>Revisá el comparativo antes de confirmar. Las diferencias quedan marcadas «Para revisar» y podés ajustar cada autorización después.</p><label>Conteo de origen<select name="source">${pkg.inventory.assignments.map((a) => option(a.user_id + ":" + a.actor, a.actor + " · " + (names()[a.user_id] || a.user_id), "")).join("")}</select></label>${field("Criterio de autorización", "comment", "", "text", "required")}<button>Autorizar cantidades del conteo seleccionado</button></form>`;
@@ -1074,6 +1244,10 @@
       toast("Inventario cerrado");
     }
   }
+  document.addEventListener("pointerdown", (e) => {
+    if (!e.target.closest(".lookup")) closeSuggestions();
+    if (e.target.closest("[data-result]")) e.preventDefault();
+  });
   document.addEventListener("click", (e) => {
     const result = e.target.closest("[data-result]");
     if (result) {
@@ -1119,6 +1293,7 @@
   $("home").onclick = () =>
     guarded(async () => {
       if (active) await pause();
+      dashboardArea = mode === "count" ? "counts" : "admin";
       await dashboard();
     });
   $("sync").onclick = () =>
@@ -1140,6 +1315,13 @@
       await status();
       auth();
     });
+  window.addEventListener("popstate", () => {
+    if (profile?.approved)
+      guarded(async () => {
+        if (active) await pause();
+        await routeFromLocation();
+      });
+  });
   window.addEventListener("online", () => {
     status();
     sync();

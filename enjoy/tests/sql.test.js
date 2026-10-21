@@ -76,7 +76,9 @@ test("Enjoy authorization, independent counts, blind packages and idempotent off
     }),
     id = pkg.inventory.id;
   assert.equal(pkg.manager, true);
+  assert.equal((await api("list"))[0].assigned_to_me, false);
   await login(counter);
+  assert.equal((await api("list"))[0].assigned_to_me, true);
   let blind = await api("open", { inventory_id: id });
   assert.deepEqual(blind.reference, {});
   assert.deepEqual(blind.documents, []);

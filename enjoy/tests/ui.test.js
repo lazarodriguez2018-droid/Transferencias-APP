@@ -109,6 +109,7 @@ test("single-search Enter adds a decimal, returns focus, rejects ambiguous lot, 
   for (const f of [
     "../../operaciones/search-engine.js",
     "../core.js",
+    "../finder.js",
     "../store.js",
     "../sync.js",
     "../exports.js",

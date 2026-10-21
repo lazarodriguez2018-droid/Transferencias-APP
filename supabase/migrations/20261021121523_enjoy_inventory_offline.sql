@@ -114,7 +114,7 @@ begin
  if p_action='list' then
   select coalesce(jsonb_agg(v order by v->>'scheduled_date' desc),'[]') into out from (
    select jsonb_build_object('id',x.id,'title',x.data->>'title','warehouse',x.data->>'warehouse','scheduled_date',x.data->>'scheduled_date',
-   'status',x.data->>'status','procedure',x.data->>'procedure','updated_at',x.updated_at,'closed_at',x.closed_at) v
+   'status',x.data->>'status','procedure',x.data->>'procedure','assigned_to_me',exists(select 1 from jsonb_array_elements(x.data->'assignments') ass where ass->>'user_id'=uid::text),'updated_at',x.updated_at,'closed_at',x.closed_at) v
    from enjoy_private.inventories x where enjoy_private.has_inventory(x.id)) t;
   return out;
  end if;

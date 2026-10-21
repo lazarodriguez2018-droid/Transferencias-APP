@@ -4,11 +4,11 @@ Aplicación independiente en `/enjoy/inventarios` (scope offline `/enjoy/`), con
 
 ## Flujo
 
-Datos → MB52 → participantes → programación → conteo → revisión → SAP → cierre. Los botones Atrás, Siguiente y Guardar y salir conservan el borrador en el servidor. Se puede programar antes de disponer de la base definitiva. AL04, AL05, AL02 y AL12 usan el procedimiento principal: MB52 de la fecha del inventario y bloqueo confirmado por el gestor. La aplicación registra el bloqueo realizado en SAP; no lo ejecuta.
+Hay tres pantallas independientes. **Configuración** usa cuatro pasos: datos, MB52, participantes y programación. **Conteo** se abre desde Mis conteos, sin pestañas de configuración, importaciones ni botones de resultados. **Resultados y SAP** tiene su propio recorrido: comparar/autorizar, archivos SAP y cierre. Los botones Atrás, Siguiente y Guardar y salir pertenecen al asistente de configuración; el conteo conserva sus cantidades automáticamente. Las rutas `#configuracion/ID`, `#conteo/ID` y `#resultados/ID` permiten volver al área correspondiente sin mezclar las pantallas. Se puede programar antes de disponer de la base definitiva. AL04, AL05, AL02 y AL12 usan el procedimiento principal: MB52 de la fecha del inventario y bloqueo confirmado por el gestor. La aplicación registra el bloqueo realizado en SAP; no lo ejecuta.
 
 La importación conserva centro, almacén, material, lote y unidad. El stock teórico cero se excluye; el cero contado es válido y distinto de un material sin contar. Se admiten hasta seis decimales. Los códigos de barras se pueden asociar antes del inicio, sin exigir un padrón global.
 
-El buscador combina códigos, barras y el motor de nombres de SUCAN. Enter selecciona; Enter en cantidad suma y devuelve el foco al buscador. Si un código corresponde a varios lotes se exige elegir uno. Restar y establecer un total son correcciones secundarias en la misma pantalla.
+El buscador combina códigos, barras y el motor de nombres de SUCAN. Muestra sugerencias al escribir, resalta coincidencias y anticipa el resto del nombre o código sin reemplazar lo escrito. Tab o flecha derecha acepta la sugerencia; las flechas arriba/abajo eligen el producto y su lote. También muestra productos usados recientemente y avisa cuando no hay coincidencias. Enter selecciona; Enter en cantidad suma y devuelve el foco al buscador. Si un código corresponde a varios lotes se exige elegir uno. Restar y establecer un total son correcciones secundarias en la misma pantalla.
 
 ## Sin conexión y auditoría
 

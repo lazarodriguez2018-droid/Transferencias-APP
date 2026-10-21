@@ -1,4 +1,4 @@
-const CACHE = "enjoy-static-v1";
+const CACHE = "enjoy-static-v2";
 const FILES = [
   "/enjoy/",
   "/enjoy/inventarios",
@@ -11,6 +11,7 @@ const FILES = [
   "/enjoy/icon.svg",
   "/enjoy/manifest.webmanifest",
   "/enjoy/core.js",
+  "/enjoy/finder.js",
   "/enjoy/store.js",
   "/enjoy/sync.js",
   "/enjoy/gps.js",
