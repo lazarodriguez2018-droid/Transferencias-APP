@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#133b50" />
+    <meta name="description" content="Inventarios Enjoy · LABAMA" />
+    <link rel="manifest" href="/enjoy/manifest.webmanifest" />
+    <link rel="stylesheet" href="/enjoy/style.css" />
+    <title>Demostración Enjoy · LABAMA</title>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="/enjoy/inventarios"
+        >LABAMA <span>ENJOY / INVENTARIOS</span></a
+      >
+      <div class="top">
+        <span id="connection" role="status">Iniciando…</span
+        ><button id="sync" class="quiet" hidden>Sincronizar</button
+        ><button id="home" class="quiet" hidden>Mis inventarios</button
+        ><button id="logout" class="quiet" hidden>Salir</button>
+      </div>
+    </header>
+    <div
+      class="warning"
+      style="margin: 0; border-radius: 0; text-align: center"
+    >
+      DEMOSTRACIÓN · Datos ficticios. Los movimientos quedan en este navegador.
+      GPS desactivado.
+      <button id="reset-demo" class="quiet">Restablecer ejemplo</button>
+    </div>
+    <main id="app" aria-live="polite">
+      <div class="empty">Preparando tus inventarios…</div>
+    </main>
+    <div id="toast" role="status"></div>
+    <script src="/enjoy/vendor/supabase-2.58.0.js"></script>
+    <script src="/operaciones/xlsx.full.min.js"></script>
+    <script src="/enjoy/vendor/jszip-3.10.1.js"></script>
+    <script src="/operaciones/search-engine.js"></script>
+    <script src="/enjoy/core.js"></script>
+    <script src="/enjoy/demo-client.js"></script>
+    <script src="/enjoy/store.js"></script>
+    <script src="/enjoy/gps.js"></script>
+    <script src="/enjoy/sync.js"></script>
+    <script src="/enjoy/exports.js"></script>
+    <script src="/enjoy/app.js"></script>
+  </body>
+</html>

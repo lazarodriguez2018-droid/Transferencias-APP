@@ -1,0 +1,21 @@
+name: Enjoy inventory checks
+on:
+  pull_request:
+    paths: ['enjoy/**', 'api/company-access.js', 'app.js', 'vercel.json', 'supabase/migrations/**', '.github/workflows/enjoy-inventory.yml']
+  push:
+    branches: [feat/enjoy-inventarios]
+permissions:
+  contents: read
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix work --no-audit --no-fund --save-exact @electric-sql/pglite@0.5.11 fake-indexeddb@6.2.6 jsdom@26.1.0
+      - run: node --test enjoy/tests/*.test.js
+        env:
+          PGLITE_PATH: ${{ github.workspace }}/work/node_modules/@electric-sql/pglite
+      - run: node tools/company-access.test.js && node tools/registration-flow.test.js && node tools/navigation-routing.test.js

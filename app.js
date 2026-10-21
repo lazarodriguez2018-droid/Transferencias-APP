@@ -541,6 +541,7 @@ showPage('auth-page');
 }
 
 async function checkSession(){
+if(sessionStorage.getItem('empresa_nombre')==='ENJOY'){location.replace('/enjoy/inventarios');return;}
 const {data:{session}}=await db.auth.getSession();
 if(!session){
 appState.currentUser=null;
@@ -3867,6 +3868,7 @@ try{
   if(error||!data) return showErr('empresa-error','Clave incorrecta. Revisala o contactanos para obtener acceso.');
   sessionStorage.setItem('empresa_validada', '1');
   sessionStorage.setItem('empresa_nombre', data.nombre);
+  if(data.nombre==='ENJOY'){location.assign('/enjoy/inventarios');return;}
   el('empresa-nombre-display').textContent = data.nombre;
   el('auth-forms').style.display='block';
   showPage('auth-page');
@@ -3885,6 +3887,7 @@ requestAnimationFrame(()=>el('empresa-clave')?.focus());
 }
 
 function checkEmpresaClave(){
+if(sessionStorage.getItem('empresa_nombre')==='ENJOY'){location.replace('/enjoy/inventarios');return false;}
 const validada = sessionStorage.getItem('empresa_validada');
 if(validada==='1'){
 el('empresa-nombre-display').textContent = sessionStorage.getItem('empresa_nombre')||'';
