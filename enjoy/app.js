@@ -85,12 +85,16 @@
   async function guarded(fn) {
     if (busy) return;
     busy = true;
+    $("app").setAttribute("aria-busy", "true");
+    for (const id of ["home", "logout", "sync"]) $(id).disabled = true;
     try {
       await fn();
     } catch (e) {
       toast(e.message);
     } finally {
       busy = false;
+      $("app").setAttribute("aria-busy", "false");
+      for (const id of ["home", "logout", "sync"]) $(id).disabled = false;
     }
   }
   function button(action, text, cls = "secondary", extra = "") {

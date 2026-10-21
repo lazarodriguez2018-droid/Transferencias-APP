@@ -5,7 +5,7 @@ const { test } = require("node:test"),
   { indexedDB } = require("../../work/node_modules/fake-indexeddb"),
   C = require("../core");
 const until = async (fn) => {
-  for (let i = 0; i < 400; i++) {
+  for (let i = 0; i < 1000; i++) {
     if (await fn()) return;
     await new Promise((r) => setTimeout(r, 5));
   }
@@ -118,9 +118,14 @@ test("single-search Enter adds a decimal, returns focus, rejects ambiguous lot, 
   await until(() => w.document.querySelector('[data-action="open"]'));
   online = false;
   await w.EnjoyStore.savePackage(owner, pkg);
+  await until(
+    () => w.document.getElementById("app").getAttribute("aria-busy") !== "true",
+  );
   w.document.querySelector('[data-action="open"]').click();
   await until(() => w.document.querySelector('[data-action="start"]'));
-  await new Promise((r) => setTimeout(r, 20));
+  await until(
+    () => w.document.getElementById("app").getAttribute("aria-busy") !== "true",
+  );
   w.document.querySelector('[data-action="start"]').click();
   await until(
     () =>
@@ -160,9 +165,16 @@ test("single-search Enter adds a decimal, returns focus, rejects ambiguous lot, 
   assert.equal(saved.counts[0].quantity, 9.95);
   assert.equal((await w.EnjoyStore.events(owner, id)).length, 3);
   assert.deepEqual(Object.keys(saved.reference), []);
+  await until(() => !w.document.getElementById("home").disabled);
   w.document.getElementById("home").click();
   await until(() => w.document.querySelector('[data-action="open"]'));
+  await until(
+    () => w.document.getElementById("app").getAttribute("aria-busy") !== "true",
+  );
   w.document.querySelector('[data-action="open"]').click();
   await until(() => w.document.getElementById("count-table"));
   assert(w.document.getElementById("count-table").textContent.includes("9,95"));
+  await until(
+    () => w.document.getElementById("app").getAttribute("aria-busy") !== "true",
+  );
 });
