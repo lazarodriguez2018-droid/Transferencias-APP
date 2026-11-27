@@ -14,6 +14,8 @@ const repoProductSearchTimers = new Map();
 const repoOriginalBytesCache = new Map();
 let repoScannerClosingPromise = Promise.resolve();
 let repoScannerGeneration = 0;
+let repoScannerExpected = '';
+let repoBrowsingCode = '';
 let repoSupervisionMode = false;
 let repoListSection = 'reposition';
 
@@ -247,8 +249,19 @@ function repoClearOwnedAssignments() {
   repoExhausted = false;
 }
 
+function repoReviewItem(item) {
+  return {code:item.codigo,name:item.nombre,review:item.review};
+}
+
+async function repoTeamAction(item) {
+  await RepoReview.act(item,sessionId,null,async args => {
+    const {error} = await window.SucanCloud.db.rpc('op_reposicion_revision',args);
+    if (error) throw error;
+  },()=>repoRefreshState(),message=>toast(message,'i'));
+}
+
 function repoItemPending(item) {
-  return !!item && ['pendiente','parcial'].includes(SucaneitorReposition.status(item));
+  return !!item && !item.review && ['pendiente','parcial'].includes(SucaneitorReposition.status(item));
 }
 
 function repoItemOwnedByMe(item) {
@@ -270,6 +283,7 @@ function repoMergeItem(item) {
 }
 
 async function repoClaimProduct(code, options = {}) {
+  repoBrowsingCode = '';
   if (!window.SucanCloud || !repoCanEdit() || repoSupervisionMode || !sessionId) return null;
   if (repoClaimInFlight) {
     try { await repoClaimInFlight; } catch (_) {}
@@ -280,6 +294,7 @@ async function repoClaimProduct(code, options = {}) {
       if (repoItemOwnedByMe(current)) return current;
     }
   }
+  const claimSession=sessionId;
   const claim = (async () => {
     const response = await repoApi('/api/reposicion/claim', {
       method:'POST',headers:{'Content-Type':'application/json'},
@@ -287,6 +302,7 @@ async function repoClaimProduct(code, options = {}) {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo asignar el producto');
+    if (sessionId!==claimSession || currentModule!=='reposicion') return null;
     if (data.viewer_client_id) repoState.viewer_client_id = data.viewer_client_id;
     if (!code) repoExhausted = !data.item;
     else if (data.item) repoExhausted = false;
@@ -379,10 +395,12 @@ async function repoRefreshState({claimIfNeeded = true} = {}) {
   try {
     do {
       repoRefreshQueued = false;
+      const refreshSession = sessionId;
       const currentCode = repoState.items?.[repoCurrentIndex]?.codigo;
       const response = await fetch(`/api/reposicion/state?rid=${encodeURIComponent(sessionId)}`);
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo sincronizar');
+      if (refreshSession !== sessionId || currentModule !== 'reposicion') continue;
       repoState = repoHydrateStateFromCatalog(data.repo);
       let index = repoState.items.findIndex(repoItemOwnedByMe);
       if (index >= 0) repoExhausted = false;
@@ -589,6 +607,8 @@ function requireRepoEditable() {
 function renderRepoCurrent() {
   const card = document.getElementById('repo-current-card');
   if (!card || !repoState) return;
+  RepoReview.panel(document.getElementById('repo-team-review'),repoState.items.map(repoReviewItem),
+    repoCanEdit() ? window.SucanCloud?.user?.id : null,repoTeamAction);
   if (!repoState.items.length || (repoShouldAutoAssign() && repoExhausted && !repoState.items.some(repoItemOwnedByMe))) {
     const pickup = SucaneitorReposition.pickupState(repoState);
     const subtitle = pickup.completed
@@ -609,6 +629,10 @@ function renderRepoCurrent() {
   }
   repoCurrentIndex = Math.max(0, Math.min(repoCurrentIndex, repoState.items.length - 1));
   const item = repoState.items[repoCurrentIndex];
+  if (repoShouldAutoAssign() && !repoItemOwnedByMe(item) && repoBrowsingCode !== String(item.codigo)) {
+    card.innerHTML='<div class="repo-empty" role="status">Esperando una asignación vigente…</div>';
+    return;
+  }
   const status = SucaneitorReposition.status(item);
   const pending = Math.max(0, Number(item.pedido) - Number(item.preparado));
   const label = {completo:'Completo',excedido:'Cantidad excedida',no_encontrado:'Marcado no encontrado',incompleto:'Cerrado incompleto',parcial:'En preparación',pendiente:'Pendiente'}[status];
@@ -633,10 +657,15 @@ function renderRepoCurrent() {
     : prepared === 0
       ? `<button class="btn repo-decision repo-decision-missing" onclick="repoMark('${code}','no_encontrado')">No encontrado</button>`
       : `<button class="btn repo-decision" type="button" disabled>✓ Cantidad lista</button>`;
-  const controls = repoShouldAutoAssign() ? `
+  const controls = repoShouldAutoAssign() && !repoItemOwnedByMe(item)
+    ? (repoItemPending(item) && !item.asignado_cliente
+        ? `<button class="btn btn-p" onclick="repoClaimProduct(repoDecoded('${code}'))">Asignarme este producto</button>`
+        : '<p role="status">Producto en consulta.</p>')
+    : repoShouldAutoAssign() ? `
     <div class="repo-primary-decisions" aria-label="Acciones para este producto">
       <button class="btn repo-decision repo-decision-found" onclick="repoFound('${code}')">✓ Encontrado</button>
       ${partialDecision}
+      <button class="btn repo-decision" onclick="repoTeamAction(repoReviewItem(repoState.items.find(r => String(r.codigo) === repoDecoded('${code}'))))">Pedir comprobación</button>
       <button class="btn repo-decision repo-decision-scan" onclick="openRepoScanner('requested',true)">▣ Escanear para comprobación</button>
     </div>`
     : repoIsSupervising()
@@ -658,7 +687,12 @@ async function repoFound(encodedCode) {
   const code = repoDecoded(encodedCode);
   const item = repoState.items.find(row => String(row.codigo) === code);
   if (!item) return;
-  if (!await repoEnsureClaim(item)) return;
+  if (!repoItemOwnedByMe(item) || !repoItemPending(item)) { await repoRefreshState(); return; }
+  if (!await RepoReview.identify(item.codigo,item.barras,item.nombre,toast)) return;
+  const latest=repoState.items.find(row=>row.codigo===item.codigo);
+  if (!repoItemOwnedByMe(latest) || latest.asignado_at!==item.asignado_at || latest.preparado!==item.preparado) {
+    toast('Tu asignación cambió. Revisá el producto actual.','w'); return;
+  }
   const suggested = Math.max(0, Number(item.pedido || 0) - Number(item.preparado || 0));
   repoOpenQuantityModal(encodedCode, suggested, 'add');
 }
@@ -668,6 +702,7 @@ function repoOpenQuantityModal(encodedCode, suggested, mode) {
   const item = repoState.items.find(row => String(row.codigo) === code);
   if (!item) return;
   window._repoQtyCode = encodedCode;
+  window._repoQtyClaim = [item.asignado_at,item.preparado,sessionId];
   window._repoQtyMode = mode;
   document.getElementById('modal-title').textContent = mode === 'add' ? 'Producto encontrado' : 'Editar cantidad juntada';
   document.getElementById('modal-subtitle').textContent = item.nombre;
@@ -692,6 +727,10 @@ function confirmRepoModalQty() {
   const value = Number.parseInt(document.getElementById('repo-modal-qty')?.value,10);
   if (!item || !Number.isInteger(value) || value < 0) { toast('Ingresá una cantidad válida','e'); return; }
   closeModal();
+  const [assigned,prepared,session] = window._repoQtyClaim;
+  if (!repoItemOwnedByMe(item) || assigned !== item.asignado_at || prepared !== item.preparado || session !== sessionId) {
+    toast('El producto cambió. Revisá tu asignación actual.','w'); repoRefreshState(); return;
+  }
   if (window._repoQtyMode === 'add') repoChangeQty(repoEncoded(code),value,'encontrado');
   else repoSetAbsolute(repoEncoded(code),value,'manual');
 }
@@ -723,7 +762,10 @@ async function repoUpdateQuantity(encodedCode, change, source) {
   if (!requireRepoEditable()) return false;
   const code = repoDecoded(encodedCode);
   let item = repoState.items.find(row => String(row.codigo) === code);
-  if (!item || !await repoEnsureClaim(item)) return false;
+  if (!item) return false;
+  if (source === 'lista') {
+    if (!await repoEnsureClaim(item)) return false;
+  } else if (!repoItemOwnedByMe(item)) { await repoRefreshState(); return false; }
   item = repoState.items.find(row => String(row.codigo) === code) || item;
   const qty = change.absolute == null ? Number(item.preparado || 0) + Number(change.delta || 0) : Number(change.absolute);
   if (!item || !Number.isInteger(qty) || qty < 0) { toast('Cantidad inválida', 'e'); renderRepositionAll(); return false; }
@@ -749,7 +791,7 @@ async function repoUpdateQuantity(encodedCode, change, source) {
   try {
     const response = await repoApi('/api/reposicion/update_qty', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({reposition_id:sessionId,codigo:code,absolute:change.absolute == null ? null : qty,delta:change.absolute == null ? Number(change.delta || 0) : null,usuario:usuarioNombre,source})
+      body:JSON.stringify({reposition_id:sessionId,codigo:code,claimed_at:item.asignado_at,previous:item.preparado,absolute:change.absolute == null ? null : qty,delta:change.absolute == null ? Number(change.delta || 0) : null,usuario:usuarioNombre,source})
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo actualizar');
@@ -875,6 +917,7 @@ async function repoSelectNext(preferPending, direction = 1) {
     const index = (repoCurrentIndex + direction * step + length * 2) % length;
     if (!preferPending || ['pendiente','parcial'].includes(SucaneitorReposition.status(repoState.items[index]))) {
       repoCurrentIndex = index;
+      repoBrowsingCode = String(repoState.items[index].codigo);
       renderRepoCurrent();
       window.scrollTo({top:0,behavior:'auto'});
       return;
@@ -890,6 +933,7 @@ function repoOpenItem(encodedCode) {
   if (index >= 0) {
     repoExhausted = false;
     repoCurrentIndex = index;
+    repoBrowsingCode = code;
     showRepoTab('preparar');
     renderRepoCurrent();
   }
@@ -946,7 +990,7 @@ function renderRepoList() {
     const reason = item.motivo_label || item.motivo || '';
     const source = Number(item.pedido_clientes) > 0 ? ` · Repo ${Number(item.pedido_reposicion)||0} · Clientes ${Number(item.pedido_clientes)||0}` : '';
     const canClosePartial=Number(item.preparado)>0&&Number(item.preparado)<Number(item.pedido)&&!item.cerrado_incompleto;
-    const actions=repoShouldAutoAssign()?`<div class="repo-row-actions"><button class="btn btn-s" onclick="repoChangeQty('${code}',-1,'lista')">−</button><input class="input repo-qty-input" type="number" min="0" inputmode="numeric" value="${item.preparado}" onchange="repoSetAbsolute('${code}',this.value,'lista')"><button class="btn btn-s" onclick="repoChangeQty('${code}',1,'lista')">+</button>${canClosePartial?`<button class="btn btn-s" type="button" onclick="repoMark('${code}','cerrado_incompleto')">Terminar con ${Number(item.preparado)||0}</button>`:''}</div>`:`<strong>${item.preparado}/${item.pedido}</strong>`;
+    const actions=repoShouldAutoAssign()&&!item.review?`<div class="repo-row-actions"><button class="btn btn-s" onclick="repoChangeQty('${code}',-1,'lista')">−</button><input class="input repo-qty-input" type="number" min="0" inputmode="numeric" value="${item.preparado}" onchange="repoSetAbsolute('${code}',this.value,'lista')"><button class="btn btn-s" onclick="repoChangeQty('${code}',1,'lista')">+</button>${canClosePartial?`<button class="btn btn-s" type="button" onclick="repoMark('${code}','cerrado_incompleto')">Terminar con ${Number(item.preparado)||0}</button>`:''}</div>`:`<strong>${item.preparado}/${item.pedido}</strong>`;
     return `<article class="repo-row ${rowClass}"><div onclick="repoOpenItem('${code}')" style="cursor:pointer"><h3>${esc(item.nombre)}</h3><div class="repo-row-meta">Código ${esc(item.codigo)}${item.barras ? ` · Barras ${esc(item.barras)}` : ''} · Cantidad solicitada ${Number(item.pedido)||0} · Cantidad juntada ${Number(item.preparado)||0}${source} · ${esc(status.replaceAll('_',' '))}${reason ? ` · ${esc(reason)}` : ''}${item.updated_by ? ` · Último cambio: ${esc(item.updated_by)}` : ''}</div></div>${actions}</article>`;
   }).join('') + (rows.length > visibleRows.length ? `<button class="btn btn-s btn-full" onclick="repoShowMoreItems()">Mostrar ${Math.min(200,rows.length-visibleRows.length)} más · quedan ${rows.length-visibleRows.length}</button>` : '') : '<div class="repo-empty">No hay productos para este filtro.</div>';
 }
@@ -1074,6 +1118,18 @@ function renderRepoExtras() {
   if (extraCount) extraCount.textContent = String((repoState.items || []).filter(item => Number(item.pedido_clientes) > 0).length + repoState.extras.filter(item => Number(item.cantidad) > 0).length);
 }
 
+async function repoClosePrepared() {
+  if (!repoCanEdit()) return;
+  const id=sessionId;
+  const values=await RepoReview.ask('Registrar salida de la reposición','Confirmá cuando la mercadería salga del local. La preparación quedará cerrada.',
+    [{name:'transporte',label:'Transporte o repartidor'}],'Registrar salida');
+  if (!values || sessionId!==id) return;
+  const {error}=await window.SucanCloud.db.rpc('op_reposicion_cerrar_preparacion',{p_reposicion:id,p_transporte:values.transporte});
+  if (error) toast(error.message,'w');
+  else toast('Salida registrada','s');
+  await repoRefreshState({claimIfNeeded:false});
+}
+
 function renderRepoSummary() {
   if (!repoState) return;
   const summary = SucaneitorReposition.summary(repoState);
@@ -1126,6 +1182,7 @@ async function handleRepoBarcode(code, source = 'camera') {
     document.getElementById('modal-overlay').classList.add('show');
     return;
   }
+  if (result.matches.length > 1 && (repoScannerExpected || source==='manual')) { toast('Estas barras corresponden a varias variantes. Verificá el SKU del envase.','w'); return; }
   if (result.matches.length > 1) {
     window._repoBarcodeMatches = result.matches;
     window._repoBarcodeCode = code;
@@ -1150,6 +1207,12 @@ async function routeRepoScannedProduct(product, code, source) {
   const requested = repoState.items.find(item => String(item.codigo) === String(product.codigo));
   const current = repoState.items[repoCurrentIndex];
   const help = document.getElementById('repo-camera-help');
+  if ((repoScannerExpected || source === 'manual') && (!requested || !repoItemOwnedByMe(requested) ||
+      String(requested.codigo) !== String(repoScannerExpected || current?.codigo))) {
+    toast('El código leído no coincide con tu producto asignado.','w');
+    if (help) help.textContent = 'Revisá la variante del envase.';
+    return;
+  }
   if (repoScannerMode === 'extra') {
     showRepoScanDecision(product,'extra');
     return;
@@ -1211,6 +1274,7 @@ async function openRepoScanner(mode = 'requested', verifyCurrent = false) {
     return;
   }
   repoScannerBusy = false;
+  repoScannerExpected = verifyCurrent ? String(repoState?.items?.[repoCurrentIndex]?.codigo || '') : '';
   repoScannerMode = mode === 'extra' ? 'extra' : 'requested';
   repoLastScanCode = '';
   repoLastScanTime = 0;
@@ -1256,6 +1320,7 @@ async function openRepoScanner(mode = 'requested', verifyCurrent = false) {
 
 async function closeRepoScanner() {
   document.getElementById('repo-camera-modal')?.classList.remove('show');
+  repoScannerExpected = '';
   repoScannerGeneration += 1;
   repoScannerOpening = false;
   repoScannerBusy = false;
@@ -1301,33 +1366,34 @@ async function repoBuildSummary() {
   return SucaneitorRepositionExport.buildSummary(repoState,XLSX,SucaneitorReposition);
 }
 
-async function repoLoadOriginalForReport() {
-  if(repoOriginalBytesCache.has(sessionId))return repoOriginalBytesCache.get(sessionId).slice(0);
-  const response=await repoApi(`/api/reposicion/original?rid=${encodeURIComponent(sessionId)}`);
+async function repoLoadOriginalForReport(id=sessionId) {
+  if(repoOriginalBytesCache.has(id))return repoOriginalBytesCache.get(id).slice(0);
+  const response=await repoApi(`/api/reposicion/original?rid=${encodeURIComponent(id)}`);
   const data=await response.json().catch(()=>({}));
   if(!response.ok||!data.ok||!data.url)throw new Error(data.error||'Archivo original no disponible');
   const original=await fetch(data.url);
   if(!original.ok)throw new Error('No se pudo recuperar el archivo original');
   const bytes=await original.arrayBuffer();
-  repoOriginalBytesCache.set(sessionId,bytes.slice(0));
+  repoOriginalBytesCache.set(id,bytes.slice(0));
   return bytes;
 }
 
-async function repoBuildProcessedSource() {
-  const XLSX=await waitForXlsx(),source=await repoLoadOriginalForReport();
-  const workbook=SucaneitorRepositionExport.buildProcessedSource(source,XLSX,repoState,SucaneitorReposition,'xlsx');
+async function repoBuildProcessedSource(state=repoState) {
+  const XLSX=await waitForXlsx(),source=await repoLoadOriginalForReport(state.id);
+  const workbook=SucaneitorRepositionExport.buildProcessedSource(source,XLSX,state,SucaneitorReposition,'xlsx');
   return SucaneitorRepositionExport.applyProcessedSourcePresentation(workbook,window.JSZip);
 }
 
 async function repoGenerateExports(options={}) {
-  const route = `${repoSafeName(repoState.origin)}_${repoSafeName(repoState.destination)}`;
+  const state = options.state || structuredClone(repoState);
+  const route = `${repoSafeName(state.origin)}_${repoSafeName(state.destination)}`;
   const files = [
-    {type:'main',name:`Remito_Reposicion_${route}.xls`,mime:'application/vnd.ms-excel',buffer:await repoBuildTransfer(SucaneitorReposition.mainTransferRows(repoState))},
-    {type:'orders',name:`Remito_Pedidos_${route}.xls`,mime:'application/vnd.ms-excel',buffer:await repoBuildTransfer(SucaneitorReposition.orderTransferRows(repoState))},
-    {type:'extras',name:`Remito_Extras_${route}.xls`,mime:'application/vnd.ms-excel',buffer:await repoBuildTransfer(SucaneitorReposition.extraTransferRows(repoState))}
+    {type:'main',name:`Remito_Reposicion_${route}.xls`,mime:'application/vnd.ms-excel',buffer:await repoBuildTransfer(SucaneitorReposition.mainTransferRows(state))},
+    {type:'orders',name:`Remito_Pedidos_${route}.xls`,mime:'application/vnd.ms-excel',buffer:await repoBuildTransfer(SucaneitorReposition.orderTransferRows(state))},
+    {type:'extras',name:`Remito_Extras_${route}.xls`,mime:'application/vnd.ms-excel',buffer:await repoBuildTransfer(SucaneitorReposition.extraTransferRows(state))}
   ];
   if(options.includeProcessed){
-    files.push({type:'processed',name:`Reposicion_Procesada_${route}.xlsx`,mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:await repoBuildProcessedSource()});
+    files.push({type:'processed',name:`Reposicion_Procesada_${route}.xlsx`,mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:await repoBuildProcessedSource(state)});
   }
   return files;
 }
@@ -1343,7 +1409,17 @@ async function repoLogExport(file, exportSessionId = sessionId) {
 
 async function downloadRepoExport(type) {
   if (!repoState) return;
-  const stats = SucaneitorReposition.summary(repoState);
+  if (window.SucanCloud) {
+    const response = await repoApi('/api/reposicion/state?rid='+encodeURIComponent(sessionId)).catch(()=>null);
+    const data = await response?.json().catch(()=>null);
+    if (!response?.ok || !data?.ok) { toast('Sin conexión para comprobar el remito.','w'); return; }
+    repoState = repoHydrateStateFromCatalog(data.repo);
+    if (repoState.items.some(row=>row.review)) { showRepoTab('preparar'); renderRepositionAll(); toast('Resolvé las comprobaciones del equipo antes de exportar.','w'); return; }
+    if (repoVerificationItems().length && repoCanEdit()) { openRepoQuantityVerification(()=>downloadRepoExport(type)); return; }
+    if (repoVerificationItems().length) { toast('El origen debe completar el control físico antes de exportar.','w'); return; }
+  }
+  const exportState=structuredClone(repoState);
+  const stats = SucaneitorReposition.summary(exportState);
   if (stats.faltantes > 0) {
     const confirmed = await appConfirm({
       title: 'La reposición todavía tiene faltantes',
@@ -1355,8 +1431,8 @@ async function downloadRepoExport(type) {
   }
   try {
     toast('Generando archivos…','i');
-    const exportSessionId = sessionId;
-    const files = await repoGenerateExports({includeProcessed:type==='processed'||type==='package'});
+    const exportSessionId = exportState.id;
+    const files = await repoGenerateExports({state:exportState,includeProcessed:type==='processed'||type==='package'});
     if (type === 'package') {
       if (!window.JSZip) throw new Error('No se pudo preparar el paquete. Recargá la página e intentá nuevamente.');
       const zip = new window.JSZip();
