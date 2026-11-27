@@ -116,9 +116,11 @@ function renderRepo(){
   const content=$('guest-module-content'),mine=myRepoItem(),pending=(app.state.items||[]).filter(repoPending);
   RepoReview.panel($('repo-team-review'),app.state.items,app.state.guest.id,guestTeamAction);
   if(!mine){
-    if(!pending.some(row=>!row.assigned_client)){content.innerHTML='<div class="guest-empty"><span>✓</span><h2>No quedan productos para recoger</h2><p>Todos los productos fueron completados, informados como no encontrados o están siendo preparados por otras personas.</p></div>';return;}
+    if(!pending.length){content.innerHTML='<div class="guest-empty"><span>✓</span><h2>No quedan productos para recoger</h2><p>Todos los productos fueron completados, informados como no encontrados o están siendo preparados por otras personas.</p></div>';return;}
     content.innerHTML='<div class="guest-empty"><span>↻</span><h2>Buscando tu próximo producto…</h2><p>Esperá un momento mientras se busca un producto disponible para vos.</p></div>';
-    if(!app.claiming){app.claiming=true;operate('repo_claim','',null,{},false).finally(()=>app.claiming=false);}return;
+    const available=pending.some(row=>!row.assigned_client);
+    if(!available)content.innerHTML='<div class="guest-empty" role="status">El equipo está preparando los productos restantes.</div>';
+    if(!app.claiming&&(available||Date.now()-(app.lastClaimProbe||0)>10000)){app.lastClaimProbe=Date.now();app.claiming=true;operate('repo_claim','',null,{},false).finally(()=>app.claiming=false);}return;
   }
   app.selected=mine.code;const prepared=num(mine.prepared),remain=Math.max(0,num(mine.requested)-prepared),orders=Array.isArray(mine.orders)?mine.orders:[],automatic=num(mine.requested_reposition),customer=num(mine.requested_customers),hasCoverage=automatic>0||customer>0,session=app.state.session||{};
   const coverage=hasCoverage?`<div class="guest-source-breakdown"><div><span>Reposición automática</span><strong>${automatic}</strong></div><div><span>Pedidos de clientes</span><strong>${customer}</strong></div><div><span>Total físico</span><strong>${num(mine.requested)}</strong></div></div>`:'';

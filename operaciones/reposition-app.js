@@ -294,6 +294,7 @@ async function repoClaimProduct(code, options = {}) {
       if (repoItemOwnedByMe(current)) return current;
     }
   }
+  const claimSession=sessionId;
   const claim = (async () => {
     const response = await repoApi('/api/reposicion/claim', {
       method:'POST',headers:{'Content-Type':'application/json'},
@@ -301,6 +302,7 @@ async function repoClaimProduct(code, options = {}) {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo asignar el producto');
+    if (sessionId!==claimSession || currentModule!=='reposicion') return null;
     if (data.viewer_client_id) repoState.viewer_client_id = data.viewer_client_id;
     if (!code) repoExhausted = !data.item;
     else if (data.item) repoExhausted = false;
@@ -393,10 +395,12 @@ async function repoRefreshState({claimIfNeeded = true} = {}) {
   try {
     do {
       repoRefreshQueued = false;
+      const refreshSession = sessionId;
       const currentCode = repoState.items?.[repoCurrentIndex]?.codigo;
       const response = await fetch(`/api/reposicion/state?rid=${encodeURIComponent(sessionId)}`);
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo sincronizar');
+      if (refreshSession !== sessionId || currentModule !== 'reposicion') continue;
       repoState = repoHydrateStateFromCatalog(data.repo);
       let index = repoState.items.findIndex(repoItemOwnedByMe);
       if (index >= 0) repoExhausted = false;
